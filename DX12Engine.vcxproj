@@ -156,6 +156,7 @@
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="d3dx12Residency.h" />
     <ClInclude Include="DX12Engine.h" />
+    <ClInclude Include="DX12Helper.h" />
     <ClInclude Include="DXCore.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="Game.h" />

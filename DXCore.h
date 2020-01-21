@@ -9,8 +9,8 @@
 #include <string>
 #include<sstream>
 #include<memory>
-#include<stdexcept>
 #include<wrl/client.h>
+#include"DX12Helper.h"
 
 #include"d3dx12.h"
 
@@ -19,37 +19,7 @@
 using namespace Microsoft::WRL;
 // We can include the correct library files here
 // instead of in Visual Studio settings if we want
-#pragma comment(lib, "d3d12.lib")
-#pragma comment(lib, "d3dcompiler.lib")
-#pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "dxguid.lib")
 
-
-inline std::string HrToString(HRESULT hr)
-{
-	char s_str[64] = {};
-	sprintf_s(s_str, "HRESULT of 0x%08X", static_cast<UINT>(hr));
-	return std::string(s_str);
-}
-
-class HrException : public std::runtime_error
-{
-public:
-	HrException(HRESULT hr) : std::runtime_error(HrToString(hr)), m_hr(hr) {}
-	HRESULT Error() const { return m_hr; }
-private:
-	const HRESULT m_hr;
-};
-
-#define SAFE_RELEASE(p) if (p) (p)->Release()
-
-inline void ThrowIfFailed(HRESULT hr)
-{
-	if (FAILED(hr))
-	{
-		throw HrException(hr);
-	}
-}
 
 class DXCore
 {
