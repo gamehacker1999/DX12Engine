@@ -1,7 +1,9 @@
 cbuffer SceneConstantBuffer: register(b0)
 {
 	float4 offset;
-}
+	matrix view;
+	matrix projection;
+};
 
 struct VertexShaderInput
 {
@@ -19,8 +21,9 @@ struct VertexToPixel
 VertexToPixel main(VertexShaderInput input)
 {
 	VertexToPixel output;
-	input.position.x += offset.x;
-	output.position = float4(input.position,1.0);
+	
+	matrix viewProj = mul(view, projection);
+	output.position = mul(float4(input.position,1.0), viewProj);
 	output.color = input.color;
 	return output;
 }

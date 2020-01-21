@@ -94,12 +94,13 @@ HRESULT Game::Init()
 		}
 	}
 
+
 	hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)));
 	if (FAILED(hr)) return hr;
 
 	//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE ranges[1];
-	CD3DX12_ROOT_PARAMETER rootParams[1]; // specifies the descriptor table
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+	CD3DX12_ROOT_PARAMETER1 rootParams[1]; // specifies the descriptor table
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 
@@ -110,13 +111,13 @@ HRESULT Game::Init()
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
 
-	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init(_countof(rootParams), rootParams, 0, nullptr, rootSignatureFlags);
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr, rootSignatureFlags);
 
 	ComPtr<ID3DBlob> signature;
 	ComPtr<ID3DBlob> error;
 
-	hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+	hr = D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
 		signature.GetAddressOf(), error.GetAddressOf());
 	if (FAILED(hr)) return hr;
 
@@ -143,7 +144,8 @@ HRESULT Game::Init()
 	psoDesc.pRootSignature = rootSignature.Get();
 	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
 	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	psoDesc.DepthStencilState.StencilEnable = FALSE;
 	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
 	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
 	psoDesc.SampleMask = UINT_MAX;
@@ -165,9 +167,9 @@ HRESULT Game::Init()
 	float aspectRatio = static_cast<float>(width / height);
 	Vertex triangleVBO[] = 
 	{
-		{ { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ { 0.25f, -0.25f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ { -0.25f, -0.25f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+		{ { +0.0f, +1.0f, +0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { +1.5f, -1.0f, +0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -1.5f, -1.0f, +0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
 	};
 
 	UINT vertexBufferSize = sizeof(triangleVBO);
@@ -226,6 +228,11 @@ HRESULT Game::Init()
 	{
 		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 	}
+
+	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 3.5f, -18.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
+
+	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
+
 
 	WaitForPreviousFrame();
 
@@ -370,8 +377,16 @@ void Game::Update(float deltaTime, float totalTime)
 	if (GetAsyncKeyState(VK_ESCAPE))
 		Quit();
 
-	constantBufferData.offset.x += 0.005f;
+	mainCamera->Update(deltaTime);
+
+	const float translationSpeed = 0.005f;
+	const float offsetBounds = 1.25f;
+
+	constantBufferData.offset.x += translationSpeed;
+	constantBufferData.projection = mainCamera->GetProjectionMatrix();
+	constantBufferData.view = mainCamera->GetViewMatrix();
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
+
 }
 
 // --------------------------------------------------------
@@ -559,6 +574,16 @@ void Game::OnMouseUp(WPARAM buttonState, int x, int y)
 // --------------------------------------------------------
 void Game::OnMouseMove(WPARAM buttonState, int x, int y)
 {
+	// Save the previous mouse position, so we have it for the future
+
+	if (buttonState & 0x0001)
+	{
+		int deltaX = x - prevMousePos.x;
+		int deltaY = y - prevMousePos.y;
+
+		//changing the yaw and pitch of the camera
+		mainCamera->ChangeYawAndPitch((float)deltaX, (float)deltaY);
+	}
 	// Save the previous mouse position, so we have it for the future
 	prevMousePos.x = x;
 	prevMousePos.y = y;

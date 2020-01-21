@@ -30,6 +30,8 @@ private:
 	struct SceneConstantBuffer
 	{
 		XMFLOAT4 offset;
+		XMFLOAT4X4 view;
+		XMFLOAT4X4 projection;
 	};
 
 
