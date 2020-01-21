@@ -159,9 +159,17 @@ HRESULT Game::Init()
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator.Get(), pipelineState.Get(),
 		IID_PPV_ARGS(commandList.GetAddressOf())));
 
-	//command lists are created in record state but since there is nothing to record yet
-	//close it for the main loop
-	ThrowIfFailed(commandList->Close());
+	//create synchronization object and wait till the objects have been passed to the gpu
+	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
+	fenceValue = 1;
+	//fence event handle for synchronization
+	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+	if (fenceEvent == nullptr)
+	{
+		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+	}
+
 
 	//creating the vertex buffer
 	float aspectRatio = static_cast<float>(width / height);
@@ -175,24 +183,58 @@ HRESULT Game::Init()
 	UINT vertexBufferSize = sizeof(triangleVBO);
 
 	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(vertexBuffer.GetAddressOf())
+	));
+
+	ComPtr<ID3D12Resource> vbufferUpload;
+	ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(vertexBuffer.GetAddressOf())
+		IID_PPV_ARGS(vbufferUpload.GetAddressOf())
 	));
+	D3D12_SUBRESOURCE_DATA bufferData = {};
+	bufferData.pData = reinterpret_cast<BYTE*>(triangleVBO);
+	bufferData.RowPitch = vertexBufferSize;
+	bufferData.SlicePitch = vertexBufferSize;
 
+	UpdateSubresources<1>(commandList.Get(), vertexBuffer.Get(), vbufferUpload.Get(), 0, 0, 1,&bufferData);
 	//copy triangle data to vertex buffer
 	UINT8* vertexDataBegin;
 	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
-	ThrowIfFailed(vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
-	memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
-	vertexBuffer->Unmap(0, nullptr);
+	//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
+	//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
+	//vbufferUpload->Unmap(0, nullptr);
+
+	/*commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+		D3D12_RESOURCE_STATE_COPY_DEST));
+	commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*/
+	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+
+	
+
+	//command lists are created in record state but since there is nothing to record yet
+	//close it for the main loop
+
+	ThrowIfFailed(commandList->Close());
+	ID3D12CommandList* commandLists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+
+	//WaitForPreviousFrame();
 
 	vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
 	vertexBufferView.StrideInBytes = sizeof(Vertex);
 	vertexBufferView.SizeInBytes = sizeof(triangleVBO);
+
+
 
 	//creating the constant buffer
 	ThrowIfFailed(device->CreateCommittedResource(
@@ -216,18 +258,6 @@ HRESULT Game::Init()
 	//can keep the constant buffer mapped for the entire application
 	ThrowIfFailed(constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
-
-
-	//create synchronization object and wait till the objects have been passed to the gpu
-	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
-	fenceValue = 1;
-	//fence event handle for synchronization
-	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-
-	if (fenceEvent == nullptr)
-	{
-		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-	}
 
 	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 3.5f, -18.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
 

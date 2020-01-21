@@ -152,6 +152,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Camera.h" />
+    <ClInclude Include="CommonStructs.h" />
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="d3dx12Residency.h" />
     <ClInclude Include="DX12Engine.h" />
