@@ -28,7 +28,7 @@ Game::Game(HINSTANCE hInstance)
 	CreateConsoleWindow(500, 120, 32, 120);
 	printf("Console window created successfully.  Feel free to printf() here.\n");
 #endif
-
+	constantBufferBegin = nullptr;
 }
 
 Game::~Game()
@@ -42,7 +42,7 @@ Game::~Game()
 // Called once per program, after DirectX and the window
 // are initialized but before the game loop.
 // --------------------------------------------------------
-void Game::Init()
+HRESULT Game::Init()
 {
 	// Helper methods for loading shaders, creating some basic
 	// geometry to draw and some simple camera matrices.
@@ -52,6 +52,78 @@ void Game::Init()
 
 	ComPtr<ID3DBlob> vertexShaderBlob;
 	ComPtr<ID3DBlob> pixelShaderBlob;
+
+	frameIndex = this->swapChain->GetCurrentBackBufferIndex();
+
+	HRESULT hr;
+
+	// Create descriptor heaps.
+	{
+		// Describe and create a render target view (RTV) descriptor heap.
+		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+		rtvHeapDesc.NumDescriptors = frameCount;
+		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+		hr = (device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvDescriptorHeap)));
+		if (FAILED(hr)) return hr;
+
+		rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+		//creating a srv,uav, cbv descriptor heap
+		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
+		cbvHeapDesc.NumDescriptors = 1;
+		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+		hr = device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(constantBufferHeap.GetAddressOf()));
+		if (FAILED(hr)) return hr;
+
+	}
+
+	// Create frame resources.
+	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
+		// Create a RTV for each frame.
+		for (UINT n = 0; n < frameCount; n++)
+		{
+			hr = (this->swapChain->GetBuffer(n, IID_PPV_ARGS(&renderTargets[n])));
+			if (FAILED(hr)) return hr;
+			device->CreateRenderTargetView(renderTargets[n].Get(), nullptr, rtvHandle);
+			rtvHandle.Offset(1, rtvDescriptorSize);
+		}
+	}
+
+	hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)));
+	if (FAILED(hr)) return hr;
+
+	//this describes the type of constant buffer and which register to map the data to
+	CD3DX12_DESCRIPTOR_RANGE ranges[1];
+	CD3DX12_ROOT_PARAMETER rootParams[1]; // specifies the descriptor table
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+
+	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init(_countof(rootParams), rootParams, 0, nullptr, rootSignatureFlags);
+
+	ComPtr<ID3DBlob> signature;
+	ComPtr<ID3DBlob> error;
+
+	hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		signature.GetAddressOf(), error.GetAddressOf());
+	if (FAILED(hr)) return hr;
+
+	hr = device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+		IID_PPV_ARGS(rootSignature.GetAddressOf()));
+
+	if (FAILED(hr)) return hr;
 
 	//load shaders
 	ThrowIfFailed(D3DReadFileToBlob(L"VertexShader.cso", vertexShaderBlob.GetAddressOf()));
@@ -71,10 +143,9 @@ void Game::Init()
 	psoDesc.pRootSignature = rootSignature.Get();
 	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
 	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	psoDesc.DepthStencilState.DepthEnable = FALSE;
-	psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
 	psoDesc.SampleMask = UINT_MAX;
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
@@ -91,7 +162,7 @@ void Game::Init()
 	ThrowIfFailed(commandList->Close());
 
 	//creating the vertex buffer
-	float aspectRatio = width / height;
+	float aspectRatio = static_cast<float>(width / height);
 	Vertex triangleVBO[] = 
 	{
 		{ { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
@@ -121,6 +192,30 @@ void Game::Init()
 	vertexBufferView.StrideInBytes = sizeof(Vertex);
 	vertexBufferView.SizeInBytes = sizeof(triangleVBO);
 
+	//creating the constant buffer
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),//must be a multiple of 64kb
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(constantBuffer.GetAddressOf())
+		));
+
+	//create a constant buffer view
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+	cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress(); //gpu address of the constant buffer
+	cbvDesc.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
+	device->CreateConstantBufferView(&cbvDesc, constantBufferHeap->GetCPUDescriptorHandleForHeapStart());
+
+	ZeroMemory(&constantBufferData, sizeof(constantBufferData));
+
+	//setting range to 0,0 so that the cpu cannot read from this resource
+	//can keep the constant buffer mapped for the entire application
+	ThrowIfFailed(constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
+	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
+
+
 	//create synchronization object and wait till the objects have been passed to the gpu
 	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
 	fenceValue = 1;
@@ -133,6 +228,8 @@ void Game::Init()
 	}
 
 	WaitForPreviousFrame();
+
+	return S_OK;
 }
 
 // --------------------------------------------------------
@@ -272,6 +369,9 @@ void Game::Update(float deltaTime, float totalTime)
 	// Quit if the escape key is pressed
 	if (GetAsyncKeyState(VK_ESCAPE))
 		Quit();
+
+	constantBufferData.offset.x += 0.005f;
+	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 }
 
 // --------------------------------------------------------
@@ -371,6 +471,13 @@ void Game::PopulateCommandList()
 	commandList->SetGraphicsRootSignature(rootSignature.Get());
 	commandList->RSSetViewports(1, &viewport);
 	commandList->RSSetScissorRects(1, &scissorRect);
+
+	//setting the constant buffer descriptor table
+	ID3D12DescriptorHeap* ppHeaps[] = { constantBufferHeap.Get() };
+	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	//set the descriptor table 0 as the constant buffer descriptor
+	commandList->SetGraphicsRootDescriptorTable(0, constantBufferHeap->GetGPUDescriptorHandleForHeapStart());
 
 	//indicate that the back buffer is the render target
 	commandList->ResourceBarrier(1, 

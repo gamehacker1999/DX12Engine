@@ -1,8 +1,6 @@
-cbuffer externalData: register(b0)
+cbuffer SceneConstantBuffer: register(b0)
 {
-	matrix view;
-	matrix projection;
-	matrix model;
+	float4 offset;
 }
 
 struct VertexShaderInput
@@ -21,6 +19,7 @@ struct VertexToPixel
 VertexToPixel main(VertexShaderInput input)
 {
 	VertexToPixel output;
+	input.position.x += offset.x;
 	output.position = float4(input.position,1.0);
 	output.color = input.color;
 	return output;

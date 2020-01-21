@@ -1,5 +1,6 @@
 #pragma once
 #include "DXCore.h"
+#include "Camera.h"
 #include <DirectXMath.h>
 
 class Game
@@ -12,7 +13,7 @@ public:
 
 	// Overridden setup and game loop methods, which
 	// will be called automatically
-	void Init();
+	HRESULT Init();
 	void OnResize();
 	void Update(float deltaTime, float totalTime);
 	void Draw(float deltaTime, float totalTime);
@@ -25,6 +26,12 @@ public:
 	void OnMouseMove(WPARAM buttonState, int x, int y);
 	void OnMouseWheel(float wheelDelta, int x, int y);
 private:
+
+	struct SceneConstantBuffer
+	{
+		XMFLOAT4 offset;
+	};
+
 
 	// Initialization helper methods - feel free to customize, combine, etc.
 	void LoadShaders();
@@ -39,6 +46,13 @@ private:
 	DirectX::XMFLOAT4X4 worldMatrix;
 	DirectX::XMFLOAT4X4 viewMatrix;
 	DirectX::XMFLOAT4X4 projectionMatrix;
+
+	ComPtr<ID3D12DescriptorHeap> constantBufferHeap;
+	ComPtr<ID3D12Resource> constantBuffer;
+	SceneConstantBuffer constantBufferData;
+	UINT8* constantBufferBegin;
+
+	std::shared_ptr<Camera> mainCamera;
 
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.

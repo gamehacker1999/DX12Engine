@@ -17,8 +17,8 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 	fpsFrameCount = 0;
 	fpsTimeElapsed = 0;
 	frameIndex = 0;
-	viewport.Height = height;
-	viewport.Width = width;
+	viewport.Height = static_cast<FLOAT>(height);
+	viewport.Width = static_cast<FLOAT>(width);
 	viewport.TopLeftX=0;
 	viewport.TopLeftY = 0;
 
@@ -250,52 +250,6 @@ HRESULT DXCore::InitDirectX()
 	hr = (factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 	if (FAILED(hr)) return hr;
 
-	frameIndex = this->swapChain->GetCurrentBackBufferIndex();
-
-	// Create descriptor heaps.
-	{
-		// Describe and create a render target view (RTV) descriptor heap.
-		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-		rtvHeapDesc.NumDescriptors = frameCount;
-		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		hr=(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvDescriptorHeap)));
-		if (FAILED(hr)) return hr;
-
-		rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	}
-
-	// Create frame resources.
-	{
-		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-
-		// Create a RTV for each frame.
-		for (UINT n = 0; n < frameCount; n++)
-		{
-			hr=(this->swapChain->GetBuffer(n, IID_PPV_ARGS(&renderTargets[n])));
-			if (FAILED(hr)) return hr;
-			device->CreateRenderTargetView(renderTargets[n].Get(), nullptr, rtvHandle);
-			rtvHandle.Offset(1, rtvDescriptorSize);
-		}
-	}
-
-	hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)));
-	if (FAILED(hr)) return hr;
-
-	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-	ComPtr<ID3DBlob> signature;
-	ComPtr<ID3DBlob> error;
-
-	hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, 
-		signature.GetAddressOf(), error.GetAddressOf());
-	if (FAILED(hr)) return hr;
-
-	hr = device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), 
-		IID_PPV_ARGS(rootSignature.GetAddressOf()));
-
-	if (FAILED(hr)) return hr;
 
 	// Return an "everything is ok" HRESULT value
 	return S_OK;

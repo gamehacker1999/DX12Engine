@@ -77,7 +77,7 @@ public:
 	virtual void OnResize();
 
 	// Pure virtual methods for setup and game functionality
-	virtual void Init() = 0;
+	virtual HRESULT Init() = 0;
 	virtual void Update(float deltaTime, float totalTime) = 0;
 	virtual void Draw(float deltaTime, float totalTime) = 0;
 	virtual void PopulateCommandList() =0;
