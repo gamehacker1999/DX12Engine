@@ -12,9 +12,6 @@
 #include<wrl/client.h>
 #include"DX12Helper.h"
 
-#include"d3dx12.h"
-
-
 
 using namespace Microsoft::WRL;
 // We can include the correct library files here

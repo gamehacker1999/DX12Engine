@@ -158,8 +158,10 @@
     <ClInclude Include="DX12Engine.h" />
     <ClInclude Include="DX12Helper.h" />
     <ClInclude Include="DXCore.h" />
+    <ClInclude Include="Entity.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="Game.h" />
+    <ClInclude Include="Mesh.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SimpleShader.h" />
     <ClInclude Include="targetver.h" />
@@ -168,8 +170,11 @@
   <ItemGroup>
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="DX12Engine.cpp" />
+    <ClCompile Include="DX12Helper.cpp" />
     <ClCompile Include="DXCore.cpp" />
+    <ClCompile Include="Entity.cpp" />
     <ClCompile Include="Game.cpp" />
+    <ClCompile Include="Mesh.cpp" />
     <ClCompile Include="SimpleShader.cpp" />
   </ItemGroup>
   <ItemGroup>

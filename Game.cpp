@@ -57,6 +57,7 @@ HRESULT Game::Init()
 
 	HRESULT hr;
 
+	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer) + 255) & ~255;
 	// Create descriptor heaps.
 	{
 		// Describe and create a render target view (RTV) descriptor heap.
@@ -78,6 +79,16 @@ HRESULT Game::Init()
 		hr = device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(constantBufferHeap.GetAddressOf()));
 		if (FAILED(hr)) return hr;
 
+		//creating the depth stencil heap
+		D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
+		dsHeapDesc.NumDescriptors = 1;
+		dsHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+		dsHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+		hr = device->CreateDescriptorHeap(&dsHeapDesc, IID_PPV_ARGS(dsDescriptorHeap.GetAddressOf()));
+		if (FAILED(hr)) return hr;
+
+
 	}
 
 	// Create frame resources.
@@ -92,8 +103,32 @@ HRESULT Game::Init()
 			device->CreateRenderTargetView(renderTargets[n].Get(), nullptr, rtvHandle);
 			rtvHandle.Offset(1, rtvDescriptorSize);
 		}
+
 	}
 
+	//creating depth stencil view
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
+	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+	//optimized clear value for depth stencil buffer
+	D3D12_CLEAR_VALUE depthClearValue = {};
+	depthClearValue.DepthStencil.Depth = 1.0f;
+	depthClearValue.DepthStencil.Stencil = 0;
+	depthClearValue.Format = dsDesc.Format;
+
+	//creating the default resource heap for the depth stencil
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, width, height, 1,1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		&depthClearValue,
+		IID_PPV_ARGS(depthStencilBuffer.GetAddressOf())
+	));
+
+	device->CreateDepthStencilView(depthStencilBuffer.Get(), &dsDesc, dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
 	hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)));
 	if (FAILED(hr)) return hr;
@@ -135,7 +170,9 @@ HRESULT Game::Init()
 	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+
 	};
 
 	//creating a pipeline state object
@@ -144,13 +181,15 @@ HRESULT Game::Init()
 	psoDesc.pRootSignature = rootSignature.Get();
 	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
 	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-	psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
-	psoDesc.DepthStencilState.StencilEnable = FALSE;
+	////psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	//psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
 	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
 	psoDesc.SampleMask = UINT_MAX;
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
+	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	psoDesc.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
@@ -172,13 +211,16 @@ HRESULT Game::Init()
 
 
 	//creating the vertex buffer
+	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 	float aspectRatio = static_cast<float>(width / height);
-	Vertex triangleVBO[] = 
+	/*Vertex triangleVBO[] = 
 	{
-		{ { +0.0f, +1.0f, +0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ { +1.5f, -1.0f, +0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ { -1.5f, -1.0f, +0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+		{ { +0.0f, +1.0f, +0.0f }, { 1.0f, 0.0f, 0.0f},{1.0,0.f} },
+		{ { +1.5f, -1.0f, +0.0f }, { 0.0f, 1.0f, 0.0f},{1.0,0.f}  },
+		{ { -1.5f, -1.0f, +0.0f }, { 0.0f, 0.0f, 1.0f},{1.0,0.f}  }
 	};
+
+	unsigned int indexListMesh1[] = { 0,1,2 };
 
 	UINT vertexBufferSize = sizeof(triangleVBO);
 
@@ -208,33 +250,40 @@ HRESULT Game::Init()
 	UpdateSubresources<1>(commandList.Get(), vertexBuffer.Get(), vbufferUpload.Get(), 0, 0, 1,&bufferData);
 	//copy triangle data to vertex buffer
 	UINT8* vertexDataBegin;
-	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 	//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
 	//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
 	//vbufferUpload->Unmap(0, nullptr);
 
-	/*commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-		D3D12_RESOURCE_STATE_COPY_DEST));
-	commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*/
+	///commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+		//D3D12_RESOURCE_STATE_COPY_DEST));
+	//commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
-
-	
 
 	//command lists are created in record state but since there is nothing to record yet
 	//close it for the main loop
 
-	ThrowIfFailed(commandList->Close());
-	ID3D12CommandList* commandLists[] = { commandList.Get() };
-	commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+	//ThrowIfFailed(commandList->Close());
+	//ID3D12CommandList* commandLists[] = { commandList.Get() };
+	//commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
 
 	//WaitForPreviousFrame();
 
-	vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
-	vertexBufferView.StrideInBytes = sizeof(Vertex);
-	vertexBufferView.SizeInBytes = sizeof(triangleVBO);
+	//vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+	//vertexBufferView.StrideInBytes = sizeof(Vertex);
+	//vertexBufferView.SizeInBytes = sizeof(triangleVBO);*/
 
+	//mesh1 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList);
+	//mesh2 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList, commandQueue, this);
 
+	mesh1 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
+	entity1 = std::make_shared<Entity>(mesh1);
+	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
+
+	//copying the data from upload heaps to default heaps
+	ThrowIfFailed(commandList->Close());
+	ID3D12CommandList* commandLists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
 
 	//creating the constant buffer
 	ThrowIfFailed(device->CreateCommittedResource(
@@ -259,7 +308,7 @@ HRESULT Game::Init()
 	ThrowIfFailed(constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 
-	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 3.5f, -18.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
+	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 0.f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
 
 	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
 
@@ -412,7 +461,8 @@ void Game::Update(float deltaTime, float totalTime)
 	const float translationSpeed = 0.005f;
 	const float offsetBounds = 1.25f;
 
-	constantBufferData.offset.x += translationSpeed;
+	//constantBufferData.offset.x += translationSpeed;
+	constantBufferData.world = entity1->GetModelMatrix();
 	constantBufferData.projection = mainCamera->GetProjectionMatrix();
 	constantBufferData.view = mainCamera->GetViewMatrix();
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
@@ -532,14 +582,21 @@ void Game::PopulateCommandList()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 		frameIndex,rtvDescriptorSize);
-	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &CD3DX12_CPU_DESCRIPTOR_HANDLE(dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart()));
+	commandList->ClearDepthStencilView(dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
 
 	//record commands
 	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
-	commandList->DrawInstanced(3, 1, 0, 0);
+	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = mesh1->GetVertexBuffer();
+	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+	auto indexBuffer = mesh1->GetIndexBuffer();
+	commandList->IASetIndexBuffer(&indexBuffer);
+	unsigned int indexCount = mesh1->GetIndexCount();
+	//commandList->DrawInstanced(3, 1, 0, 0);
+	commandList->DrawIndexedInstanced(mesh1->GetIndexCount(),1,0,0,0);
 
 	//back buffer will now be used to present
 
@@ -563,7 +620,8 @@ void Game::WaitForPreviousFrame()
 		ThrowIfFailed(fence->SetEventOnCompletion(pfence, fenceEvent));
 		WaitForSingleObject(fenceEvent, INFINITE);
 	}
-
+	
+	//WaitToFlushGPU(commandQueue,fence,fenceValue,fenceEvent);
 	frameIndex = swapChain->GetCurrentBackBufferIndex();
 }
 

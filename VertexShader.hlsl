@@ -1,14 +1,15 @@
 cbuffer SceneConstantBuffer: register(b0)
 {
-	float4 offset;
 	matrix view;
 	matrix projection;
+	matrix world;
 };
 
 struct VertexShaderInput
 {
 	float3 position: POSITION;
-	float4 color: COLOR;
+	float3 normal: NORMAL;
+	float2 uv: TEXCOORD;
 
 };
 
@@ -22,8 +23,8 @@ VertexToPixel main(VertexShaderInput input)
 {
 	VertexToPixel output;
 	
-	matrix viewProj = mul(view, projection);
-	output.position = mul(float4(input.position,1.0), viewProj);
-	output.color = input.color;
+	matrix worldViewProj = mul(world,mul(view, projection));
+	output.position = mul(float4(input.position,1.0), worldViewProj);
+	output.color = float4(input.normal,1);
 	return output;
 }

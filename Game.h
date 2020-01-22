@@ -1,6 +1,8 @@
 #pragma once
 #include "DXCore.h"
 #include "Camera.h"
+#include"Mesh.h"
+#include"Entity.h"
 #include <DirectXMath.h>
 
 class Game
@@ -29,11 +31,12 @@ private:
 
 	struct SceneConstantBuffer
 	{
-		XMFLOAT4 offset;
 		XMFLOAT4X4 view;
 		XMFLOAT4X4 projection;
+		XMFLOAT4X4 world;
 	};
 
+	int sceneConstantBufferAlignmentSize;
 
 	// Initialization helper methods - feel free to customize, combine, etc.
 	void LoadShaders();
@@ -54,7 +57,15 @@ private:
 	SceneConstantBuffer constantBufferData;
 	UINT8* constantBufferBegin;
 
+	ComPtr<ID3D12Resource> depthStencilBuffer;
+	ComPtr<ID3D12DescriptorHeap> dsDescriptorHeap;
+
 	std::shared_ptr<Camera> mainCamera;
+
+	std::shared_ptr<Mesh> mesh1;
+	std::shared_ptr<Entity> entity1;
+	std::shared_ptr<Mesh> mesh2;
+
 
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.
