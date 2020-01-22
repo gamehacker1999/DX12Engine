@@ -55,6 +55,7 @@ private:
 	ComPtr<ID3D12DescriptorHeap> constantBufferHeap;
 	ComPtr<ID3D12Resource> constantBuffer;
 	SceneConstantBuffer constantBufferData;
+	UINT cbvDescriptorSize;
 	UINT8* constantBufferBegin;
 
 	ComPtr<ID3D12Resource> depthStencilBuffer;
@@ -65,6 +66,7 @@ private:
 	std::shared_ptr<Mesh> mesh1;
 	std::shared_ptr<Entity> entity1;
 	std::shared_ptr<Mesh> mesh2;
+	std::shared_ptr<Entity> entity2;
 
 
 	// Keeps track of the old mouse position.  Useful for 

@@ -72,12 +72,14 @@ HRESULT Game::Init()
 
 		//creating a srv,uav, cbv descriptor heap
 		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-		cbvHeapDesc.NumDescriptors = 1;
+		cbvHeapDesc.NumDescriptors = 2;
 		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
 		hr = device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(constantBufferHeap.GetAddressOf()));
 		if (FAILED(hr)) return hr;
+
+		cbvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 		//creating the depth stencil heap
 		D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
@@ -276,9 +278,12 @@ HRESULT Game::Init()
 	//mesh1 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList);
 	//mesh2 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList, commandQueue, this);
 
-	mesh1 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
+	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
+	mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
 	entity1 = std::make_shared<Entity>(mesh1);
+	entity2 = std::make_shared<Entity>(mesh2);
 	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
+	entity2->SetPosition(XMFLOAT3(3, 0, 1.0f));
 
 	//copying the data from upload heaps to default heaps
 	ThrowIfFailed(commandList->Close());
@@ -299,7 +304,10 @@ HRESULT Game::Init()
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 	cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress(); //gpu address of the constant buffer
 	cbvDesc.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
-	device->CreateConstantBufferView(&cbvDesc, constantBufferHeap->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(constantBufferHeap->GetCPUDescriptorHandleForHeapStart(), 0, 0);
+	device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle2(constantBufferHeap->GetCPUDescriptorHandleForHeapStart(), 1, cbvDescriptorSize);
+	device->CreateConstantBufferView(&cbvDesc, cbvHandle2);
 
 	ZeroMemory(&constantBufferData, sizeof(constantBufferData));
 
@@ -307,6 +315,7 @@ HRESULT Game::Init()
 	//can keep the constant buffer mapped for the entire application
 	ThrowIfFailed(constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
+	memcpy(constantBufferBegin + sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBuffer));
 
 	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 0.f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
 
@@ -466,6 +475,8 @@ void Game::Update(float deltaTime, float totalTime)
 	constantBufferData.projection = mainCamera->GetProjectionMatrix();
 	constantBufferData.view = mainCamera->GetViewMatrix();
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
+	constantBufferData.world = entity2->GetModelMatrix();
+	memcpy(constantBufferBegin + sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBufferData));
 
 }
 
@@ -572,7 +583,10 @@ void Game::PopulateCommandList()
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	//set the descriptor table 0 as the constant buffer descriptor
+	
 	commandList->SetGraphicsRootDescriptorTable(0, constantBufferHeap->GetGPUDescriptorHandleForHeapStart());
+	//commandList->SetGraphic
+	//commandList-
 
 	//indicate that the back buffer is the render target
 	commandList->ResourceBarrier(1, 
@@ -590,13 +604,21 @@ void Game::PopulateCommandList()
 	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = mesh1->GetVertexBuffer();
+	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entity1->GetMesh()->GetVertexBuffer();
 	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-	auto indexBuffer = mesh1->GetIndexBuffer();
+	auto indexBuffer = entity1->GetMesh()->GetIndexBuffer();
 	commandList->IASetIndexBuffer(&indexBuffer);
-	unsigned int indexCount = mesh1->GetIndexCount();
+	unsigned int indexCount = entity1->GetMesh()->GetIndexCount();
 	//commandList->DrawInstanced(3, 1, 0, 0);
-	commandList->DrawIndexedInstanced(mesh1->GetIndexCount(),1,0,0,0);
+	commandList->DrawIndexedInstanced(indexCount,1,0,0,0);
+
+	
+	CD3DX12_GPU_DESCRIPTOR_HANDLE handle(constantBufferHeap->GetGPUDescriptorHandleForHeapStart(), cbvDescriptorSize);
+	commandList->SetGraphicsRootDescriptorTable(0, handle);
+
+	commandList->IASetVertexBuffers(0, 1, &entity2->GetMesh()->GetVertexBuffer());
+	commandList->IASetIndexBuffer(&entity2->GetMesh()->GetIndexBuffer());
+	commandList->DrawIndexedInstanced(entity2->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 
 	//back buffer will now be used to present
 
