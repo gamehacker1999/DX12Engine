@@ -4,8 +4,6 @@ using namespace DirectX;
 
 #ifdef __cplusplus
 
-#define STRUCT(name,id) struct name\
-
 
 #define MATRIX XMFLOAT4X4;
 #define FLOAT4 XMFLOAT4;

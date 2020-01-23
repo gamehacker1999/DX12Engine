@@ -3,6 +3,7 @@
 #include "Camera.h"
 #include"Mesh.h"
 #include"Entity.h"
+#include"Lights.h"
 #include <DirectXMath.h>
 
 class Game
@@ -36,7 +37,14 @@ private:
 		XMFLOAT4X4 world;
 	};
 
+	struct LightData
+	{
+		DirectionalLight light1;
+		XMFLOAT3 cameraPosition;
+	};
+
 	int sceneConstantBufferAlignmentSize;
+	int lightConstantBUfferAlignmentSize;
 
 	// Initialization helper methods - feel free to customize, combine, etc.
 	void LoadShaders();
@@ -57,6 +65,11 @@ private:
 	SceneConstantBuffer constantBufferData;
 	UINT cbvDescriptorSize;
 	UINT8* constantBufferBegin;
+
+	ComPtr<ID3D12Resource> lightConstantBuffer;
+	LightData lightConstantBufferData;
+	UINT8* lightConstantBufferBegin;
+	DirectionalLight light1;
 
 	ComPtr<ID3D12Resource> depthStencilBuffer;
 	ComPtr<ID3D12DescriptorHeap> dsDescriptorHeap;

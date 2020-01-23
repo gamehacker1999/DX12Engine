@@ -133,20 +133,20 @@ HRESULT Game::Init()
 	if (FAILED(hr)) return hr;
 
 	//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
-	CD3DX12_ROOT_PARAMETER1 rootParams[1]; // specifies the descriptor table
+	//CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+	CD3DX12_ROOT_PARAMETER1 rootParams[2]; // specifies the descriptor table
 	//ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	//rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 
-	rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
+	rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParams[1].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_PIXEL);
 	
 
 	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
 	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr, rootSignatureFlags);
@@ -361,7 +361,7 @@ void Game::CreateBasicGeometry()
 	entities.emplace_back(entity1);
 	entities.emplace_back(entity2);
 	entities.emplace_back(std::make_shared<Entity>(mesh3));
-	entities[2]->SetPosition(XMFLOAT3(-1.5f, 0, 1.5f));
+	entities[2]->SetPosition(XMFLOAT3(-1.5f, 0, 2.5f));
 
 	//copying the data from upload heaps to default heaps
 	ThrowIfFailed(commandList->Close());
@@ -378,6 +378,21 @@ void Game::CreateBasicGeometry()
 		IID_PPV_ARGS(constantBuffer.GetAddressOf())
 	));
 
+	//creating the light constant buffer
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(1024*64),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(lightConstantBuffer.GetAddressOf())
+	));
+
+	light1 = {};
+	light1.ambientColor = XMFLOAT4(0.3f, 0.3f, 0.3f,1.0f);
+	light1.diffuse = XMFLOAT4(1.f, 0.f, 0.f, 1.f);
+	light1.specularity = XMFLOAT4(0.0f, 0.f, 0.f, 0.0f);
+	light1.direction = XMFLOAT3(0, -1.f, 1.0f);
 	//create a constant buffer view
 	/*D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 	cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress(); //gpu address of the constant buffer
@@ -391,17 +406,17 @@ void Game::CreateBasicGeometry()
 	device->CreateConstantBufferView(&cbvDesc2, cbvHandle);*/
 
 	ZeroMemory(&constantBufferData, sizeof(constantBufferData));
+	ZeroMemory(&lightConstantBufferData, sizeof(lightConstantBufferData));
 
 	//setting range to 0,0 so that the cpu cannot read from this resource
 	//can keep the constant buffer mapped for the entire application
 	ThrowIfFailed(constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
+	ThrowIfFailed(lightConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&lightConstantBufferBegin)));
 	for (int i = 0; i < entities.size(); i++)
 	{
 		memcpy(constantBufferBegin + (i * sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
+		memcpy(lightConstantBufferBegin + (i * lightConstantBUfferAlignmentSize), &lightConstantBufferData, sizeof(lightConstantBufferData));
 	}
-
-
-
 
 }
 
@@ -442,6 +457,9 @@ void Game::Update(float deltaTime, float totalTime)
 	constantBufferData.projection = mainCamera->GetProjectionMatrix();
 	constantBufferData.view = mainCamera->GetViewMatrix();
 
+	lightConstantBufferData.light1 = light1;
+	lightConstantBufferData.cameraPosition = mainCamera->GetPosition();
+
 	//constantBufferData.offset.x += translationSpeed;
 	/*constantBufferData.world = entity1->GetModelMatrix();
 
@@ -454,6 +472,7 @@ void Game::Update(float deltaTime, float totalTime)
 	{
 		constantBufferData.world = entities[i]->GetModelMatrix();
 		memcpy(constantBufferBegin + (i * (size_t)sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
+		memcpy(lightConstantBufferBegin + (i * (size_t)lightConstantBUfferAlignmentSize), &lightConstantBufferData, sizeof(lightConstantBufferData));
 		//std::copy(&constantBufferData, &constantBufferData + sizeof(constantBufferData), &constantBufferBegin);
 	}
 
@@ -609,6 +628,7 @@ void Game::PopulateCommandList()
 		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
 		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
 		commandList->SetGraphicsRootConstantBufferView(0, constantBuffer->GetGPUVirtualAddress() + sceneConstantBufferAlignmentSize * i);
+		commandList->SetGraphicsRootConstantBufferView(1, lightConstantBuffer->GetGPUVirtualAddress() + lightConstantBUfferAlignmentSize * i);
 		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
 		commandList->IASetIndexBuffer(&indexBuffer);
 		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0); 

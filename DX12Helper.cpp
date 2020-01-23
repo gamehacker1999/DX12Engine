@@ -50,8 +50,8 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 
 		UpdateSubresources<1>(commandList.Get(), vertexBufferHeap.Get(), uploadHeap.Get(), 0, 0, 1, &bufferData);
 		//copy triangle data to vertex buffer
-		UINT8* vertexDataBegin;
-		CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
+		//UINT8* vertexDataBegin;
+		//CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 		//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
 		//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
 		//vbufferUpload->Unmap(0, nullptr);
