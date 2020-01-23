@@ -68,6 +68,8 @@ private:
 	std::shared_ptr<Mesh> mesh2;
 	std::shared_ptr<Entity> entity2;
 
+	std::vector<std::shared_ptr<Entity>> entities;
+
 
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.

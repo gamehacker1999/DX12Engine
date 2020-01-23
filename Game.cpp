@@ -44,11 +44,7 @@ Game::~Game()
 // --------------------------------------------------------
 HRESULT Game::Init()
 {
-	// Helper methods for loading shaders, creating some basic
-	// geometry to draw and some simple camera matrices.
-	LoadShaders();
-	CreateMatrices();
-	CreateBasicGeometry();
+
 
 	ComPtr<ID3DBlob> vertexShaderBlob;
 	ComPtr<ID3DBlob> pixelShaderBlob;
@@ -113,6 +109,7 @@ HRESULT Game::Init()
 	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsDesc.Flags = D3D12_DSV_FLAG_NONE;
+	
 
 	//optimized clear value for depth stencil buffer
 	D3D12_CLEAR_VALUE depthClearValue = {};
@@ -138,8 +135,11 @@ HRESULT Game::Init()
 	//this describes the type of constant buffer and which register to map the data to
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
 	CD3DX12_ROOT_PARAMETER1 rootParams[1]; // specifies the descriptor table
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+	//ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+	//rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+
+	rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
+	
 
 	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
@@ -200,6 +200,10 @@ HRESULT Game::Init()
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator.Get(), pipelineState.Get(),
 		IID_PPV_ARGS(commandList.GetAddressOf())));
 
+	//memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
+	//memcpy(constantBufferBegin+sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBufferData));
+
+	
 	//create synchronization object and wait till the objects have been passed to the gpu
 	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
 	fenceValue = 1;
@@ -211,111 +215,11 @@ HRESULT Game::Init()
 		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 	}
 
-
-	//creating the vertex buffer
-	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
-	float aspectRatio = static_cast<float>(width / height);
-	/*Vertex triangleVBO[] = 
-	{
-		{ { +0.0f, +1.0f, +0.0f }, { 1.0f, 0.0f, 0.0f},{1.0,0.f} },
-		{ { +1.5f, -1.0f, +0.0f }, { 0.0f, 1.0f, 0.0f},{1.0,0.f}  },
-		{ { -1.5f, -1.0f, +0.0f }, { 0.0f, 0.0f, 1.0f},{1.0,0.f}  }
-	};
-
-	unsigned int indexListMesh1[] = { 0,1,2 };
-
-	UINT vertexBufferSize = sizeof(triangleVBO);
-
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(vertexBuffer.GetAddressOf())
-	));
-
-	ComPtr<ID3D12Resource> vbufferUpload;
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(vbufferUpload.GetAddressOf())
-	));
-	D3D12_SUBRESOURCE_DATA bufferData = {};
-	bufferData.pData = reinterpret_cast<BYTE*>(triangleVBO);
-	bufferData.RowPitch = vertexBufferSize;
-	bufferData.SlicePitch = vertexBufferSize;
-
-	UpdateSubresources<1>(commandList.Get(), vertexBuffer.Get(), vbufferUpload.Get(), 0, 0, 1,&bufferData);
-	//copy triangle data to vertex buffer
-	UINT8* vertexDataBegin;
-	//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
-	//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
-	//vbufferUpload->Unmap(0, nullptr);
-
-	///commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-		//D3D12_RESOURCE_STATE_COPY_DEST));
-	//commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
-
-	//command lists are created in record state but since there is nothing to record yet
-	//close it for the main loop
-
-	//ThrowIfFailed(commandList->Close());
-	//ID3D12CommandList* commandLists[] = { commandList.Get() };
-	//commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
-
-	//WaitForPreviousFrame();
-
-	//vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
-	//vertexBufferView.StrideInBytes = sizeof(Vertex);
-	//vertexBufferView.SizeInBytes = sizeof(triangleVBO);*/
-
-	//mesh1 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList);
-	//mesh2 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList, commandQueue, this);
-
-	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
-	mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
-	entity1 = std::make_shared<Entity>(mesh1);
-	entity2 = std::make_shared<Entity>(mesh2);
-	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
-	entity2->SetPosition(XMFLOAT3(3, 0, 1.0f));
-
-	//copying the data from upload heaps to default heaps
-	ThrowIfFailed(commandList->Close());
-	ID3D12CommandList* commandLists[] = { commandList.Get() };
-	commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
-
-	//creating the constant buffer
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),//must be a multiple of 64kb
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(constantBuffer.GetAddressOf())
-		));
-
-	//create a constant buffer view
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-	cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress(); //gpu address of the constant buffer
-	cbvDesc.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(constantBufferHeap->GetCPUDescriptorHandleForHeapStart(), 0, 0);
-	device->CreateConstantBufferView(&cbvDesc, cbvHandle);
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle2(constantBufferHeap->GetCPUDescriptorHandleForHeapStart(), 1, cbvDescriptorSize);
-	device->CreateConstantBufferView(&cbvDesc, cbvHandle2);
-
-	ZeroMemory(&constantBufferData, sizeof(constantBufferData));
-
-	//setting range to 0,0 so that the cpu cannot read from this resource
-	//can keep the constant buffer mapped for the entire application
-	ThrowIfFailed(constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
-	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
-	memcpy(constantBufferBegin + sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBuffer));
+	// Helper methods for loading shaders, creating some basic
+	// geometry to draw and some simple camera matrices.
+	LoadShaders();
+	CreateMatrices();
+	CreateBasicGeometry();
 
 	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 0.f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
 
@@ -378,62 +282,126 @@ void Game::CreateBasicGeometry()
 	XMFLOAT4 green = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
 	XMFLOAT4 blue = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
 
-	// Set up the vertices of the triangle we would like to draw
-	// - We're going to copy this array, exactly as it exists in memory
-	//    over to a DirectX-controlled data structure (the vertex buffer)
-	/*Vertex verticesMesh1[] =
+
+	/*Vertex triangleVBO[] =
 	{
-		{ XMFLOAT3(+0.0f, +1.0f, +0.0f), red },
-		{ XMFLOAT3(+1.5f, -1.0f, +0.0f), blue },
-		{ XMFLOAT3(-1.5f, -1.0f, +0.0f), green },
+		{ { +0.0f, +1.0f, +0.0f }, { 1.0f, 0.0f, 0.0f},{1.0,0.f} },
+		{ { +1.5f, -1.0f, +0.0f }, { 0.0f, 1.0f, 0.0f},{1.0,0.f}  },
+		{ { -1.5f, -1.0f, +0.0f }, { 0.0f, 0.0f, 1.0f},{1.0,0.f}  }
 	};
 
-	// Set up the indices, which tell us which vertices to use and in which order
-	// - This is somewhat redundant for just 3 vertices (it's a simple example)
-	// - Indices are technically not required if the vertices are in the buffer 
-	//    in the correct order and each one will be used exactly once
-	// - But just to see how it's done...
-	unsigned int indicesMesh1[] = { 0, 1, 2 };
+	unsigned int indexListMesh1[] = { 0,1,2 };
 
-	mesh1 = std::make_shared<Mesh>(verticesMesh1, 3, indicesMesh1, 3, device);
+	UINT vertexBufferSize = sizeof(triangleVBO);
 
-	//vertices and indices for mesh 2
-	Vertex verticesMesh2[] =
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(vertexBuffer.GetAddressOf())
+	));
+
+	ComPtr<ID3D12Resource> vbufferUpload;
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(vbufferUpload.GetAddressOf())
+	));
+	D3D12_SUBRESOURCE_DATA bufferData = {};
+	bufferData.pData = reinterpret_cast<BYTE*>(triangleVBO);
+	bufferData.RowPitch = vertexBufferSize;
+	bufferData.SlicePitch = vertexBufferSize;
+
+	UpdateSubresources<1>(commandList.Get(), vertexBuffer.Get(), vbufferUpload.Get(), 0, 0, 1,&bufferData);
+	//copy triangle data to vertex buffer
+	UINT8* vertexDataBegin;
+	//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
+	//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
+	//vbufferUpload->Unmap(0, nullptr);
+
+	///commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+		//D3D12_RESOURCE_STATE_COPY_DEST));
+	//commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*
+	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+
+	//command lists are created in record state but since there is nothing to record yet
+	//close it for the main loop
+
+	//ThrowIfFailed(commandList->Close());
+	//ID3D12CommandList* commandLists[] = { commandList.Get() };
+	//commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+
+	//WaitForPreviousFrame();
+
+	//vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+	//vertexBufferView.StrideInBytes = sizeof(Vertex);
+	//vertexBufferView.SizeInBytes = sizeof(triangleVBO);*/
+
+	//mesh1 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList);
+	//mesh2 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList, commandQueue, this);
+
+		//creating the vertex buffer
+	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
+	float aspectRatio = static_cast<float>(width / height);
+
+	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
+	mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
+	std::shared_ptr<Mesh> mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
+	entity1 = std::make_shared<Entity>(mesh1);
+	entity2 = std::make_shared<Entity>(mesh2);
+	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
+	entity2->SetPosition(XMFLOAT3(3, 0, 1.0f));
+
+	entities.emplace_back(entity1);
+	entities.emplace_back(entity2);
+	entities.emplace_back(std::make_shared<Entity>(mesh3));
+	entities[2]->SetPosition(XMFLOAT3(-1.5f, 0, 1.5f));
+
+	//copying the data from upload heaps to default heaps
+	ThrowIfFailed(commandList->Close());
+	ID3D12CommandList* commandLists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+
+	//creating the constant buffer
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),//must be a multiple of 64kb
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(constantBuffer.GetAddressOf())
+	));
+
+	//create a constant buffer view
+	/*D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+	cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress(); //gpu address of the constant buffer
+	cbvDesc.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(constantBufferHeap->GetCPUDescriptorHandleForHeapStart(), 0, 0);
+	device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+	cbvHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc2 = {};
+	cbvDesc2.BufferLocation = constantBuffer->GetGPUVirtualAddress() + (sizeof(SceneConstantBuffer) + 255) & ~255;
+	cbvDesc2.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
+	device->CreateConstantBufferView(&cbvDesc2, cbvHandle);*/
+
+	ZeroMemory(&constantBufferData, sizeof(constantBufferData));
+
+	//setting range to 0,0 so that the cpu cannot read from this resource
+	//can keep the constant buffer mapped for the entire application
+	ThrowIfFailed(constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
+	for (int i = 0; i < entities.size(); i++)
 	{
-		{XMFLOAT3(1.8f,1.0f,0.0f),red},
-		{XMFLOAT3(2.8f,1.0f,0.0f),blue},
-		{XMFLOAT3(2.8f,-1.0f,0.0f),green},
-		{XMFLOAT3(1.8f,-1.0f,0.0f),red}
-	};
+		memcpy(constantBufferBegin + (i * sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
+	}
 
-	unsigned int indicesMesh2[] =
-	{
-		3,1,2,
-		3,0,1
-	};
 
-	//creating the mesh data for the second mesh
-	mesh2 = std::make_shared<Mesh>(verticesMesh2, 4, indicesMesh2, 6, device);
 
-	//setting the vertex and index buffer for the third mesh
-	Vertex verticesMesh3[] =
-	{
-		{XMFLOAT3(-2.3f,1.0f,0.0f),blue},
-		{XMFLOAT3(-1.8f,0.0f,0.0f),green},
-		{XMFLOAT3(-1.8f,-1.0f,0.0f),red},
-		{XMFLOAT3(-2.8f,-1.0f,0.0f),green},
-		{XMFLOAT3(-2.8f,0.0f,0.0f),red}
-	};
-
-	unsigned int indicesMesh3[] =
-	{
-		0,1,4,
-		1,2,4,
-		2,3,4
-	};
-
-	//setting the data for the third mesh
-	mesh3 = std::make_shared<Mesh>(verticesMesh3, 5, indicesMesh3, 9, device);*/
 
 }
 
@@ -470,13 +438,24 @@ void Game::Update(float deltaTime, float totalTime)
 	const float translationSpeed = 0.005f;
 	const float offsetBounds = 1.25f;
 
-	//constantBufferData.offset.x += translationSpeed;
-	constantBufferData.world = entity1->GetModelMatrix();
+
 	constantBufferData.projection = mainCamera->GetProjectionMatrix();
 	constantBufferData.view = mainCamera->GetViewMatrix();
+
+	//constantBufferData.offset.x += translationSpeed;
+	/*constantBufferData.world = entity1->GetModelMatrix();
+
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 	constantBufferData.world = entity2->GetModelMatrix();
-	memcpy(constantBufferBegin + sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBufferData));
+	memcpy(constantBufferBegin + sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBufferData));*/
+
+
+	for (size_t i = 0; i < entities.size(); i++)
+	{
+		constantBufferData.world = entities[i]->GetModelMatrix();
+		memcpy(constantBufferBegin + (i * (size_t)sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
+		//std::copy(&constantBufferData, &constantBufferData + sizeof(constantBufferData), &constantBufferBegin);
+	}
 
 }
 
@@ -584,9 +563,11 @@ void Game::PopulateCommandList()
 
 	//set the descriptor table 0 as the constant buffer descriptor
 	
-	commandList->SetGraphicsRootDescriptorTable(0, constantBufferHeap->GetGPUDescriptorHandleForHeapStart());
+	//commandList->SetGraphicsRootDescriptorTable(0, constantBufferHeap->GetGPUDescriptorHandleForHeapStart());
 	//commandList->SetGraphic
 	//commandList-
+
+	commandList->SetGraphicsRootConstantBufferView(0, constantBuffer->GetGPUVirtualAddress());
 
 	//indicate that the back buffer is the render target
 	commandList->ResourceBarrier(1, 
@@ -598,27 +579,41 @@ void Game::PopulateCommandList()
 		frameIndex,rtvDescriptorSize);
 	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &CD3DX12_CPU_DESCRIPTOR_HANDLE(dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart()));
 	commandList->ClearDepthStencilView(dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+/**/
 
 
 	//record commands
 	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entity1->GetMesh()->GetVertexBuffer();
+
+	/*D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[0]->GetMesh()->GetVertexBuffer();
 	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-	auto indexBuffer = entity1->GetMesh()->GetIndexBuffer();
+	auto indexBuffer = entities[0]->GetMesh()->GetIndexBuffer();
 	commandList->IASetIndexBuffer(&indexBuffer);
-	unsigned int indexCount = entity1->GetMesh()->GetIndexCount();
+	unsigned int indexCount = entities[0]->GetMesh()->GetIndexCount();
 	//commandList->DrawInstanced(3, 1, 0, 0);
 	commandList->DrawIndexedInstanced(indexCount,1,0,0,0);
 
-	
-	CD3DX12_GPU_DESCRIPTOR_HANDLE handle(constantBufferHeap->GetGPUDescriptorHandleForHeapStart(), cbvDescriptorSize);
-	commandList->SetGraphicsRootDescriptorTable(0, handle);
+	//constantBufferData.world = entity2->GetModelMatrix();
+	//memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
+	commandList->SetGraphicsRootConstantBufferView(0, constantBuffer->GetGPUVirtualAddress()+sceneConstantBufferAlignmentSize);
+	commandList->IASetVertexBuffers(0, 1, &entities[1]->GetMesh()->GetVertexBuffer());
+	commandList->IASetIndexBuffer(&entities[1]->GetMesh()->GetIndexBuffer());
+	commandList->DrawIndexedInstanced(entities[1]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
 
-	commandList->IASetVertexBuffers(0, 1, &entity2->GetMesh()->GetVertexBuffer());
-	commandList->IASetIndexBuffer(&entity2->GetMesh()->GetIndexBuffer());
-	commandList->DrawIndexedInstanced(entity2->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+
+
+	/**/for (UINT64 i = 0; i < entities.size(); i++)
+	{
+		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
+		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
+		commandList->SetGraphicsRootConstantBufferView(0, constantBuffer->GetGPUVirtualAddress() + sceneConstantBufferAlignmentSize * i);
+		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+		commandList->IASetIndexBuffer(&indexBuffer);
+		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0); 
+
+	}
 
 	//back buffer will now be used to present
 
