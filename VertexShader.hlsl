@@ -1,9 +1,18 @@
-cbuffer SceneConstantBuffer: register(b0)
+/*cbuffer SceneConstantBuffer: register(b0)
+{
+	matrix view;
+	matrix projection;
+	matrix world;
+};*/
+
+struct SceneConstantBuffer
 {
 	matrix view;
 	matrix projection;
 	matrix world;
 };
+
+ConstantBuffer<SceneConstantBuffer> sceneData: register(b0);
 
 struct VertexShaderInput
 {
@@ -23,7 +32,7 @@ VertexToPixel main(VertexShaderInput input)
 {
 	VertexToPixel output;
 	
-	matrix worldViewProj = mul(world,mul(view, projection));
+	matrix worldViewProj = mul(sceneData.world,mul(sceneData.view, sceneData.projection));
 	output.position = mul(float4(input.position,1.0), worldViewProj);
 	output.color = float4(input.normal,1);
 	return output;

@@ -351,10 +351,10 @@ void Game::CreateBasicGeometry()
 	float aspectRatio = static_cast<float>(width / height);
 
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
-	mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
+	//mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
 	std::shared_ptr<Mesh> mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
 	entity1 = std::make_shared<Entity>(mesh1);
-	entity2 = std::make_shared<Entity>(mesh2);
+	entity2 = std::make_shared<Entity>(mesh1);
 	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
 	entity2->SetPosition(XMFLOAT3(3, 0, 1.0f));
 

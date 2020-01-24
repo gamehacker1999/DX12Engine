@@ -19,6 +19,8 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 	frameIndex = 0;
 	viewport.Height = static_cast<FLOAT>(height);
 	viewport.Width = static_cast<FLOAT>(width);
+	viewport.MinDepth = 0;
+	viewport.MaxDepth = 1.0f;
 	viewport.TopLeftX=0;
 	viewport.TopLeftY = 0;
 
