@@ -45,10 +45,6 @@ Game::~Game()
 HRESULT Game::Init()
 {
 
-
-	ComPtr<ID3DBlob> vertexShaderBlob;
-	ComPtr<ID3DBlob> pixelShaderBlob;
-
 	frameIndex = this->swapChain->GetCurrentBackBufferIndex();
 
 	HRESULT hr;
@@ -68,12 +64,15 @@ HRESULT Game::Init()
 
 		//creating a srv,uav, cbv descriptor heap
 		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-		cbvHeapDesc.NumDescriptors = 2;
+		cbvHeapDesc.NumDescriptors = 3;
 		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
-		hr = device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(constantBufferHeap.GetAddressOf()));
+		hr = device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(mainBufferHeap.GetAddressOf()));
 		if (FAILED(hr)) return hr;
+
+		mainCPUDescriptorHandle = mainBufferHeap->GetCPUDescriptorHandleForHeapStart();
+		mainGPUDescriptorHandle = mainBufferHeap->GetGPUDescriptorHandleForHeapStart();
 
 		cbvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -131,70 +130,6 @@ HRESULT Game::Init()
 
 	hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)));
 	if (FAILED(hr)) return hr;
-
-	//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
-	CD3DX12_ROOT_PARAMETER1 rootParams[1]; // specifies the descriptor table
-	//ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-	//rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
-
-	rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
-	
-
-	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
-
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr, rootSignatureFlags);
-
-	ComPtr<ID3DBlob> signature;
-	ComPtr<ID3DBlob> error;
-
-	hr = D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
-		signature.GetAddressOf(), error.GetAddressOf());
-	if (FAILED(hr)) return hr;
-
-	hr = device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
-		IID_PPV_ARGS(rootSignature.GetAddressOf()));
-
-	if (FAILED(hr)) return hr;
-
-	//load shaders
-	ThrowIfFailed(D3DReadFileToBlob(L"VertexShader.cso", vertexShaderBlob.GetAddressOf()));
-	ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", pixelShaderBlob.GetAddressOf()));
-	
-	//input vertex layout, describes the semantics
-
-	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
-	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-
-	};
-
-	//creating a pipeline state object
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
-	psoDesc.pRootSignature = rootSignature.Get();
-	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
-	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-	////psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
-	//psoDesc.DepthStencilState.StencilEnable = FALSE;
-	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
-	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	psoDesc.SampleDesc.Count = 1;
-	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
 
 	//create command list
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator.Get(), pipelineState.Get(),
@@ -278,12 +213,12 @@ void Game::CreateBasicGeometry()
 {
 	// Create some temporary variables to represent colors
 	// - Not necessary, just makes things more readable
-	XMFLOAT4 red = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
+	/*XMFLOAT4 red = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
 	XMFLOAT4 green = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
 	XMFLOAT4 blue = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
 
 
-	/*Vertex triangleVBO[] =
+	Vertex triangleVBO[] =
 	{
 		{ { +0.0f, +1.0f, +0.0f }, { 1.0f, 0.0f, 0.0f},{1.0,0.f} },
 		{ { +1.5f, -1.0f, +0.0f }, { 0.0f, 1.0f, 0.0f},{1.0,0.f}  },
@@ -346,22 +281,99 @@ void Game::CreateBasicGeometry()
 	//mesh1 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList);
 	//mesh2 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList, commandQueue, this);
 
-		//creating the vertex buffer
-	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
-	float aspectRatio = static_cast<float>(width / height);
-
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
 	//mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
 	std::shared_ptr<Mesh> mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0);
 	entity1 = std::make_shared<Entity>(mesh1);
 	entity2 = std::make_shared<Entity>(mesh1);
+
+
+
+	
 	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
 	entity2->SetPosition(XMFLOAT3(3, 0, 1.0f));
+
+	entity1->PrepareConstantBuffers(cpuHandle, device);
+	entity2->PrepareConstantBuffers(cpuHandle, device);
 
 	entities.emplace_back(entity1);
 	entities.emplace_back(entity2);
 	entities.emplace_back(std::make_shared<Entity>(mesh3));
 	entities[2]->SetPosition(XMFLOAT3(-1.5f, 0, 1.5f));
+	entities[2]->PrepareConstantBuffers(cpuHandle, device);
+
+		//this describes the type of constant buffer and which register to map the data to
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+	CD3DX12_ROOT_PARAMETER1 rootParams[2]; // specifies the descriptor table
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, entities.size(), 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC,
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND);
+	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParams[1].InitAsConstants(1, 0, 1, D3D12_SHADER_VISIBILITY_VERTEX);
+
+	//rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
+
+
+	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr, rootSignatureFlags);
+
+	ComPtr<ID3DBlob> signature;
+	ComPtr<ID3DBlob> error;
+
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+		signature.GetAddressOf(), error.GetAddressOf()));
+	//if (FAILED(hr)) return hr;
+
+	ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+		IID_PPV_ARGS(rootSignature.GetAddressOf())));
+
+	//if (FAILED(hr)) return hr;
+	ComPtr<ID3DBlob> vertexShaderBlob;
+	ComPtr<ID3DBlob> pixelShaderBlob;
+	//load shaders
+	ThrowIfFailed(D3DReadFileToBlob(L"VertexShader.cso", vertexShaderBlob.GetAddressOf()));
+	ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", pixelShaderBlob.GetAddressOf()));
+
+	//input vertex layout, describes the semantics
+
+	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+
+	};
+
+	//creating a pipeline state object
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+	psoDesc.pRootSignature = rootSignature.Get();
+	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+	////psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	//psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc.Count = 1;
+	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
+
+	//creating the vertex buffer
+	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
+	float aspectRatio = static_cast<float>(width / height);
 
 	//copying the data from upload heaps to default heaps
 	ThrowIfFailed(commandList->Close());
@@ -375,7 +387,7 @@ void Game::CreateBasicGeometry()
 		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),//must be a multiple of 64kb
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(constantBuffer.GetAddressOf())
+		IID_PPV_ARGS(constantBufferResource.GetAddressOf())
 	));
 
 	//create a constant buffer view
@@ -394,7 +406,7 @@ void Game::CreateBasicGeometry()
 
 	//setting range to 0,0 so that the cpu cannot read from this resource
 	//can keep the constant buffer mapped for the entire application
-	ThrowIfFailed(constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
+	ThrowIfFailed(constantBufferResource->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
 	for (int i = 0; i < entities.size(); i++)
 	{
 		memcpy(constantBufferBegin + (i * sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
@@ -558,7 +570,7 @@ void Game::PopulateCommandList()
 	commandList->RSSetScissorRects(1, &scissorRect);
 
 	//setting the constant buffer descriptor table
-	ID3D12DescriptorHeap* ppHeaps[] = { constantBufferHeap.Get() };
+	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.Get() };
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	//set the descriptor table 0 as the constant buffer descriptor
@@ -567,7 +579,7 @@ void Game::PopulateCommandList()
 	//commandList->SetGraphic
 	//commandList-
 
-	commandList->SetGraphicsRootConstantBufferView(0, constantBuffer->GetGPUVirtualAddress());
+	//commandList->SetGraphicsRootConstantBufferView(0, constantBufferResource->GetGPUVirtualAddress());
 
 	//indicate that the back buffer is the render target
 	commandList->ResourceBarrier(1, 
@@ -603,12 +615,16 @@ void Game::PopulateCommandList()
 	commandList->DrawIndexedInstanced(entities[1]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
 
 
-
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle(mainBufferHeap->GetGPUDescriptorHandleForHeapStart());
 	/**/for (UINT64 i = 0; i < entities.size(); i++)
 	{
+		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+		commandList->SetGraphicsRoot32BitConstant(1, i, 0);
 		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
 		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
-		commandList->SetGraphicsRootConstantBufferView(0, constantBuffer->GetGPUVirtualAddress() + sceneConstantBufferAlignmentSize * i);
+		commandList->SetGraphicsRootDescriptorTable(0, gpuCBVSRVUAVHandle);
+		gpuCBVSRVUAVHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		//commandList->SetGraphicsRootConstantBufferView(0, constantBufferResource->GetGPUVirtualAddress() + sceneConstantBufferAlignmentSize * i);
 		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
 		commandList->IASetIndexBuffer(&indexBuffer);
 		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0); 

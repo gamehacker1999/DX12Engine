@@ -170,21 +170,54 @@ std::shared_ptr<Mesh> Entity::GetMesh()
 	return material;
 }*/
 
-/*void Entity::PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection)
+/**/void Entity::PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection)
 {
 	//setting the appropriate data for the shader
-	material->GetVertexShader()->SetMatrix4x4("world", GetModelMatrix());
-	material->GetVertexShader()->SetMatrix4x4("view", view);
-	material->GetVertexShader()->SetMatrix4x4("projection", projection);
+	//material->GetVertexShader()->SetMatrix4x4("world", GetModelMatrix());
+	//material->GetVertexShader()->SetMatrix4x4("view", view);
+	//material->GetVertexShader()->SetMatrix4x4("projection", projection);
 
 	//setting the shaders as active
-	material->GetVertexShader()->SetShader();
-	material->GetPixelShader()->SetShader();
+	//material->GetVertexShader()->SetShader();
+	//material->GetPixelShader()->SetShader();
 
 	//copying data to gpu
-	material->GetVertexShader()->CopyAllBufferData();
+	//material->GetVertexShader()->CopyAllBufferData();
 	//material->GetPixelShader()->CopyAllBufferData();
-}*/
+
+	constantBufferData.world = GetModelMatrix();
+	constantBufferData.view = view;
+	constantBufferData.projection = projection;
+
+	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
+}
+
+void Entity::PrepareConstantBuffers(CD3DX12_CPU_DESCRIPTOR_HANDLE& mainDescriptorHandle,
+	ComPtr<ID3D12Device>& device)
+{
+
+	//creating the constant buffer view
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(1024*64),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(sceneConstantBufferResource.GetAddressOf())
+	));
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC sceneConstantBufferViewDesc = {};
+	sceneConstantBufferViewDesc.BufferLocation = sceneConstantBufferResource->GetGPUVirtualAddress();
+	sceneConstantBufferViewDesc.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
+	device->CreateConstantBufferView(&sceneConstantBufferViewDesc, mainDescriptorHandle);
+	mainDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+	CD3DX12_RANGE range(0, 0);
+
+	ZeroMemory(&constantBufferData, sizeof(constantBufferData));
+	ThrowIfFailed(sceneConstantBufferResource->Map(0, &range, reinterpret_cast<void**>(&constantBufferBegin)));
+	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
+}
 
 void Entity::Update(float deltaTime)
 {
