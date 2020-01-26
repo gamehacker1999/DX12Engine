@@ -49,7 +49,7 @@ HRESULT Game::Init()
 
 	HRESULT hr;
 
-	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer) + 255) & ~255;
+	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer));
 	// Create descriptor heaps.
 	{
 		// Describe and create a render target view (RTV) descriptor heap.
@@ -281,36 +281,45 @@ void Game::CreateBasicGeometry()
 	//mesh1 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList);
 	//mesh2 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList, commandQueue, this);
 
+	//creatng the constant buffer heap before creating the entity
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(SceneConstantBuffer)*3),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(cbufferUploadHeap.GetAddressOf())
+	));
+
+
+	UINT64 cbufferOffset = 0;
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
 	//mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
-	std::shared_ptr<Mesh> mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
-
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0);
+	//std::shared_ptr<Mesh> mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
+	
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0,cbvDescriptorSize);
 	entity1 = std::make_shared<Entity>(mesh1);
 	entity2 = std::make_shared<Entity>(mesh1);
+	//entity3 = std::make_shared<Entity>(mesh1);
 
-
-
-	
 	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
-	entity2->SetPosition(XMFLOAT3(3, 0, 1.0f));
+	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
+	//entity3->SetPosition(XMFLOAT3(-1, 0, 0.f));
 
 	entity1->PrepareConstantBuffers(cpuHandle, device);
 	entity2->PrepareConstantBuffers(cpuHandle, device);
+	entity3->PrepareConstantBuffers(cpuHandle, device);
 
 	entities.emplace_back(entity1);
 	entities.emplace_back(entity2);
-	entities.emplace_back(std::make_shared<Entity>(mesh3));
-	entities[2]->SetPosition(XMFLOAT3(-1.5f, 0, 1.5f));
-	entities[2]->PrepareConstantBuffers(cpuHandle, device);
+	entities.emplace_back(entity3);
 
 		//this describes the type of constant buffer and which register to map the data to
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
 	CD3DX12_ROOT_PARAMETER1 rootParams[2]; // specifies the descriptor table
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, entities.size(), 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC,
-		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND);
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, -1, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
-	rootParams[1].InitAsConstants(1, 0, 1, D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParams[1].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
 
 	//rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
 
@@ -381,14 +390,14 @@ void Game::CreateBasicGeometry()
 	commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
 
 	//creating the constant buffer
-	ThrowIfFailed(device->CreateCommittedResource(
+	/*ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),//must be a multiple of 64kb
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(constantBufferResource.GetAddressOf())
-	));
+	));*/
 
 	//create a constant buffer view
 	/*D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
@@ -402,7 +411,7 @@ void Game::CreateBasicGeometry()
 	cbvDesc2.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
 	device->CreateConstantBufferView(&cbvDesc2, cbvHandle);*/
 
-	ZeroMemory(&constantBufferData, sizeof(constantBufferData));
+	/*ZeroMemory(&constantBufferData, sizeof(constantBufferData));
 
 	//setting range to 0,0 so that the cpu cannot read from this resource
 	//can keep the constant buffer mapped for the entire application
@@ -410,7 +419,7 @@ void Game::CreateBasicGeometry()
 	for (int i = 0; i < entities.size(); i++)
 	{
 		memcpy(constantBufferBegin + (i * sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
-	}
+	}*/
 
 
 
@@ -462,12 +471,12 @@ void Game::Update(float deltaTime, float totalTime)
 	memcpy(constantBufferBegin + sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBufferData));*/
 
 
-	for (size_t i = 0; i < entities.size(); i++)
+	/*for (size_t i = 0; i < entities.size(); i++)
 	{
 		constantBufferData.world = entities[i]->GetModelMatrix();
 		memcpy(constantBufferBegin + (i * (size_t)sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
 		//std::copy(&constantBufferData, &constantBufferData + sizeof(constantBufferData), &constantBufferBegin);
-	}
+	}*/
 
 }
 
@@ -615,7 +624,7 @@ void Game::PopulateCommandList()
 	commandList->DrawIndexedInstanced(entities[1]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
 
 
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle(mainBufferHeap->GetGPUDescriptorHandleForHeapStart());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
 	/**/for (UINT64 i = 0; i < entities.size(); i++)
 	{
 		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
@@ -623,7 +632,7 @@ void Game::PopulateCommandList()
 		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
 		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
 		commandList->SetGraphicsRootDescriptorTable(0, gpuCBVSRVUAVHandle);
-		gpuCBVSRVUAVHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		gpuCBVSRVUAVHandle.Offset(cbvDescriptorSize);
 		//commandList->SetGraphicsRootConstantBufferView(0, constantBufferResource->GetGPUVirtualAddress() + sceneConstantBufferAlignmentSize * i);
 		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
 		commandList->IASetIndexBuffer(&indexBuffer);

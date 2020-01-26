@@ -17,8 +17,8 @@ struct Index
 	uint index;
 };
 
-ConstantBuffer<SceneConstantBuffer> sceneData[]: register(b0,space0);
-ConstantBuffer<Index> entityIndex: register(b0,space1);
+ConstantBuffer<Index> entityIndex: register(b0);
+ConstantBuffer<SceneConstantBuffer> sceneData[]: register(b0, space1);
 
 struct VertexShaderInput
 {

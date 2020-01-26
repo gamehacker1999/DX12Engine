@@ -49,6 +49,7 @@ private:
 	ComPtr<ID3D12Resource> constantBufferResource;
 	CD3DX12_CPU_DESCRIPTOR_HANDLE mainCPUDescriptorHandle;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mainGPUDescriptorHandle;
+	ComPtr<ID3D12Resource> cbufferUploadHeap;
 	SceneConstantBuffer constantBufferData;
 	UINT cbvDescriptorSize;
 	UINT8* constantBufferBegin;
@@ -62,6 +63,8 @@ private:
 	std::shared_ptr<Entity> entity1;
 	std::shared_ptr<Mesh> mesh2;
 	std::shared_ptr<Entity> entity2;
+	std::shared_ptr<Entity> entity3;
+
 
 	std::vector<std::shared_ptr<Entity>> entities;
 
