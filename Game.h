@@ -30,19 +30,6 @@ public:
 	void OnMouseWheel(float wheelDelta, int x, int y);
 private:
 
-	struct SceneConstantBuffer
-	{
-		XMFLOAT4X4 view;
-		XMFLOAT4X4 projection;
-		XMFLOAT4X4 world;
-	};
-
-	struct LightData
-	{
-		DirectionalLight light1;
-		XMFLOAT3 cameraPosition;
-	};
-
 	int sceneConstantBufferAlignmentSize;
 	int lightConstantBUfferAlignmentSize;
 
@@ -60,8 +47,11 @@ private:
 	DirectX::XMFLOAT4X4 viewMatrix;
 	DirectX::XMFLOAT4X4 projectionMatrix;
 
-	ComPtr<ID3D12DescriptorHeap> constantBufferHeap;
-	ComPtr<ID3D12Resource> constantBuffer;
+	ComPtr<ID3D12DescriptorHeap> mainBufferHeap;
+	ComPtr<ID3D12Resource> constantBufferResource;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE mainCPUDescriptorHandle;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE mainGPUDescriptorHandle;
+	ComPtr<ID3D12Resource> cbufferUploadHeap;
 	SceneConstantBuffer constantBufferData;
 	UINT cbvDescriptorSize;
 	UINT8* constantBufferBegin;
@@ -80,6 +70,10 @@ private:
 	std::shared_ptr<Entity> entity1;
 	std::shared_ptr<Mesh> mesh2;
 	std::shared_ptr<Entity> entity2;
+	std::shared_ptr<Entity> entity3;
+	std::shared_ptr<Entity> entity4;
+
+
 
 	std::vector<std::shared_ptr<Entity>> entities;
 
