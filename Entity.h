@@ -6,15 +6,6 @@
 #include<memory>
 //#include "RigidBody.h"
 //#include"Material.h"
-
-struct SceneConstantBuffer
-{
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 projection;
-	XMFLOAT4X4 world;
-	XMFLOAT4X4 padding;
-};
-
 class Entity
 {
 protected:
@@ -35,10 +26,6 @@ protected:
 	//std::shared_ptr<Material> material; //material of this entity
 
 	std::string tag;
-
-	ComPtr<ID3D12Resource> sceneConstantBufferResource;
-	UINT8* constantBufferBegin;
-	SceneConstantBuffer constantBufferData;
 
 	bool isAlive;
 
@@ -81,8 +68,6 @@ public:
 	//std::shared_ptr<Material> GetMaterial();
 
 	//method that prepares the material and sends it to the gpu
-	void PrepareConstantBuffers(CD3DX12_CPU_DESCRIPTOR_HANDLE& mainDescriptorHandle,
-		ComPtr<ID3D12Device>& device);
 	void PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection);
 
 	virtual void Update(float deltaTime);
