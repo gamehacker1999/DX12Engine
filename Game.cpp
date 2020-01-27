@@ -64,7 +64,7 @@ HRESULT Game::Init()
 
 		//creating a srv,uav, cbv descriptor heap
 		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-		cbvHeapDesc.NumDescriptors = 3;
+		cbvHeapDesc.NumDescriptors = 4*2;
 		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -295,29 +295,13 @@ void Game::CreateBasicGeometry()
 	UINT64 cbufferOffset = 0;
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
 	//mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
-	//std::shared_ptr<Mesh> mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
+	std::shared_ptr<Mesh> mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
 	
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0,cbvDescriptorSize);
-	entity1 = std::make_shared<Entity>(mesh1);
-	entity2 = std::make_shared<Entity>(mesh1);
-	//entity3 = std::make_shared<Entity>(mesh1);
-
-	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
-	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
-	//entity3->SetPosition(XMFLOAT3(-1, 0, 0.f));
-
-	entity1->PrepareConstantBuffers(cpuHandle, device);
-	entity2->PrepareConstantBuffers(cpuHandle, device);
-	entity3->PrepareConstantBuffers(cpuHandle, device);
-
-	entities.emplace_back(entity1);
-	entities.emplace_back(entity2);
-	entities.emplace_back(entity3);
 
 		//this describes the type of constant buffer and which register to map the data to
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
 	CD3DX12_ROOT_PARAMETER1 rootParams[2]; // specifies the descriptor table
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, -1, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, -1, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[1].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
 
@@ -383,6 +367,30 @@ void Game::CreateBasicGeometry()
 	//creating the vertex buffer
 	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 	float aspectRatio = static_cast<float>(width / height);
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
+	entity1 = std::make_shared<Entity>(mesh1);
+	entity2 = std::make_shared<Entity>(mesh1);
+	entity3 = std::make_shared<Entity>(mesh1);
+	entity4 = std::make_shared<Entity>(mesh3);
+
+	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
+	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
+	entity3->SetPosition(XMFLOAT3(-1, 0, 1.f));
+	entity4->SetPosition(XMFLOAT3(-4, 0, 1.f));
+
+
+	entity1->PrepareConstantBuffers(cpuHandle, device);
+	entity2->PrepareConstantBuffers(cpuHandle, device);
+	entity3->PrepareConstantBuffers(cpuHandle, device);
+	entity4->PrepareConstantBuffers(cpuHandle, device);
+
+
+	entities.emplace_back(entity1);
+	entities.emplace_back(entity2);
+	entities.emplace_back(entity3);
+	entities.emplace_back(entity4);
+
 
 	//copying the data from upload heaps to default heaps
 	ThrowIfFailed(commandList->Close());

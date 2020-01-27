@@ -64,6 +64,8 @@ private:
 	std::shared_ptr<Mesh> mesh2;
 	std::shared_ptr<Entity> entity2;
 	std::shared_ptr<Entity> entity3;
+	std::shared_ptr<Entity> entity4;
+
 
 
 	std::vector<std::shared_ptr<Entity>> entities;
