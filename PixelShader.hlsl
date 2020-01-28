@@ -1,10 +1,23 @@
-#include"CommonIncludes.hlsli"
+struct DirectionalLight
+{
+	float4 ambientColor;
+	float4 diffuse;
+	float4 specularity;
+	float3 direction;
+};
 
-cbuffer LightData: register(b0)
+cbuffer LightData: register(b1)
 {
 	DirectionalLight light1;
 	float3 cameraPosition;
 };
+
+struct Index
+{
+	uint index;
+};
+
+ConstantBuffer<Index> entityIndex: register(b0);
 
 struct VertexToPixel
 {
@@ -44,13 +57,16 @@ float4 CalculateLight(DirectionalLight light, float3 normal, VertexToPixel input
 
 	//adding diffuse, ambient, and specular color
 	float4 finalLight = light.diffuse * NdotL;
-	//finalLight += specularAmount;
+	finalLight += specularAmount;
 
 	return finalLight;
 }
 
+Texture2D diffuseTex[]: register(t0);
+SamplerState basicSampler: register(s0);
+
 float4 main(VertexToPixel input) : SV_TARGET
 {
-
-	return float4(CalculateLight(light1,input.normal,input));
+	float4 texColor = diffuseTex[0].Sample(basicSampler,input.uv);
+	return float4(CalculateLight(light1,input.normal,input))*texColor;
 }

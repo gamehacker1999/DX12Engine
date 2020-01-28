@@ -51,7 +51,7 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 		UpdateSubresources<1>(commandList.Get(), vertexBufferHeap.Get(), uploadHeap.Get(), 0, 0, 1, &bufferData);
 		//copy triangle data to vertex buffer
 		//UINT8* vertexDataBegin;
-		//CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
+		CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 		//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
 		//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
 		//vbufferUpload->Unmap(0, nullptr);
@@ -109,7 +109,7 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 
 		UpdateSubresources<1>(commandList.Get(), indexBufferHeap.Get(), uploadIndexHeap.Get(), 0, 0, 1, &bufferData);
 		//copy triangle data to vertex buffer
-		UINT8* vertexDataBegin;
+		//UINT8* vertexDataBegin;
 		CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 		//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
 		//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
@@ -132,4 +132,36 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 
 		return indexBufferView;
 	}
+}
+
+void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, ComPtr<ID3D12CommandQueue>& commandQueue, TEXTURE_TYPES type)
+{
+
+	if (type == TEXTURE_TYPE_DDS)
+	{
+		ResourceUploadBatch resourceUpload(device.Get());
+		resourceUpload.Begin();
+
+		ThrowIfFailed(CreateDDSTextureFromFile(device.Get(), resourceUpload, textureName.c_str(), tex.GetAddressOf(), true));
+
+		auto uploadResourceFinish = resourceUpload.End(commandQueue.Get());
+
+		uploadResourceFinish.wait();
+	}
+
+	else
+	{
+		//loading texture from filename
+		ResourceUploadBatch resourceUpload(device.Get());
+
+		resourceUpload.Begin();
+
+		ThrowIfFailed(CreateWICTextureFromFile(device.Get(), resourceUpload, textureName.c_str(), tex.GetAddressOf(), true));
+
+		auto uploadedResourceFinish = resourceUpload.End(commandQueue.Get());
+
+		uploadedResourceFinish.wait();
+	}
+
+
 }
