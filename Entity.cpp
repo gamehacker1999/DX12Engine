@@ -191,11 +191,11 @@ void Entity::PrepareConstantBuffers(CD3DX12_CPU_DESCRIPTOR_HANDLE& mainDescripto
 		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(SceneConstantBuffer)),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(sceneConstantBufferResource.GetAddressOf())
+		IID_PPV_ARGS(sceneConstantBufferResource.resource.GetAddressOf())
 	));
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC sceneConstantBufferViewDesc = {};
-	sceneConstantBufferViewDesc.BufferLocation = sceneConstantBufferResource->GetGPUVirtualAddress();
+	sceneConstantBufferViewDesc.BufferLocation = sceneConstantBufferResource.resource->GetGPUVirtualAddress();
 	sceneConstantBufferViewDesc.SizeInBytes = sizeof(SceneConstantBuffer);
 	device->CreateConstantBufferView(&sceneConstantBufferViewDesc, mainDescriptorHandle);
 	mainDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
@@ -203,7 +203,7 @@ void Entity::PrepareConstantBuffers(CD3DX12_CPU_DESCRIPTOR_HANDLE& mainDescripto
 	CD3DX12_RANGE range(0, 0);
 
 	ZeroMemory(&constantBufferData, sizeof(constantBufferData));
-	ThrowIfFailed(sceneConstantBufferResource->Map(0, &range, reinterpret_cast<void**>(&constantBufferBegin)));
+	ThrowIfFailed(sceneConstantBufferResource.resource->Map(0, &range, reinterpret_cast<void**>(&constantBufferBegin)));
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 }
 

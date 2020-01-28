@@ -39,7 +39,8 @@ protected:
 
 	std::string tag;
 
-	ComPtr<ID3D12Resource> sceneConstantBufferResource;
+	//ComPtr<ID3D12Resource> sceneConstantBufferResource;
+	ManagedResource sceneConstantBufferResource;
 	UINT8* constantBufferBegin;
 	SceneConstantBuffer constantBufferData;
 	bool isAlive;

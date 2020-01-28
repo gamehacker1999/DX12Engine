@@ -50,6 +50,14 @@ inline void ThrowIfFailed(HRESULT hr)
 	}
 }
 
+struct ManagedResource
+{
+	ComPtr<ID3D12Resource> resource;
+	UINT64 heapOffset;
+	D3D12_RESOURCE_STATES currentState;
+};
+
+
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue,ComPtr<ID3D12Fence> fence, UINT64 fenceValue,HANDLE fenceEvent);
 
 using namespace Microsoft::WRL;
