@@ -155,6 +155,7 @@
     <ClInclude Include="CommonStructs.h" />
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="d3dx12Residency.h" />
+    <ClInclude Include="DescriptorHeapWrapper.h" />
     <ClInclude Include="DX12Engine.h" />
     <ClInclude Include="DX12Helper.h" />
     <ClInclude Include="DXCore.h" />
@@ -172,6 +173,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="DescriptorHeapWrapper.cpp" />
     <ClCompile Include="DX12Engine.cpp" />
     <ClCompile Include="DX12Helper.cpp" />
     <ClCompile Include="DXCore.cpp" />

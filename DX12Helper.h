@@ -50,11 +50,21 @@ inline void ThrowIfFailed(HRESULT hr)
 	}
 }
 
+typedef enum RESOURCE_TYPE
+{
+	RESOURCE_TYPE_CBV,
+	RESOURCE_TYPE_SRV,
+	RESOURCE_TYPE_RTV,
+	RESOURCE_TYPE_DSV,
+	RESOURCE_TYPE_UAV
+} RESOURCE_TYPE;
+
 struct ManagedResource
 {
 	ComPtr<ID3D12Resource> resource;
 	UINT64 heapOffset;
 	D3D12_RESOURCE_STATES currentState;
+	RESOURCE_TYPE resourceType;
 };
 
 

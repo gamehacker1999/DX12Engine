@@ -65,7 +65,7 @@ HRESULT Game::Init()
 		rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
 		//creating a srv,uav, cbv descriptor heap
-		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
+		/*D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
 		cbvHeapDesc.NumDescriptors = 4+1+1;
 		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
@@ -76,7 +76,9 @@ HRESULT Game::Init()
 		mainCPUDescriptorHandle = mainBufferHeap->GetCPUDescriptorHandleForHeapStart();
 		mainGPUDescriptorHandle = mainBufferHeap->GetGPUDescriptorHandleForHeapStart();
 
-		cbvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		cbvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);*/
+
+		ThrowIfFailed(mainBufferHeap.Create(device, 4 + 1 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 		//creating the depth stencil heap
 		D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
@@ -326,8 +328,8 @@ void Game::CreateBasicGeometry()
 	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 	float aspectRatio = static_cast<float>(width / height);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
-	material1 = std::make_shared<Material>(L"../../Assets/Textures/Brick.jpg", device, commandQueue,cpuHandle);
+	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
+	material1 = std::make_shared<Material>(L"../../Assets/Textures/Brick.jpg", device, commandQueue,mainBufferHeap);
 	entity1 = std::make_shared<Entity>(mesh1,material1);
 	entity2 = std::make_shared<Entity>(mesh1,material1);
 	entity3 = std::make_shared<Entity>(mesh1,material1);
@@ -340,10 +342,10 @@ void Game::CreateBasicGeometry()
 	entity4->SetPosition(XMFLOAT3(-4, 0, 1.f));
 
 
-	entity1->PrepareConstantBuffers(cpuHandle, device);
-	entity2->PrepareConstantBuffers(cpuHandle, device);
-	entity3->PrepareConstantBuffers(cpuHandle, device);
-	entity4->PrepareConstantBuffers(cpuHandle, device);
+	entity1->PrepareConstantBuffers(mainBufferHeap, device);
+	entity2->PrepareConstantBuffers(mainBufferHeap, device);
+	entity3->PrepareConstantBuffers(mainBufferHeap, device);
+	entity4->PrepareConstantBuffers(mainBufferHeap, device);
 
 
 	entities.emplace_back(entity1);

@@ -3,6 +3,7 @@
 #include"DX12Helper.h"
 #include"Vertex.h"
 #include<string>
+#include"DescriptorHeapWrapper.h"
 #include"Lights.h"
 #include"Material.h"
 #include<memory>
@@ -84,7 +85,7 @@ public:
 	//std::shared_ptr<Material> GetMaterial();
 
 	//method that prepares the material and sends it to the gpu
-	void PrepareConstantBuffers(CD3DX12_CPU_DESCRIPTOR_HANDLE& mainDescriptorHandle,
+	void PrepareConstantBuffers(DescriptorHeapWrapper mainBufferHeap,
 		ComPtr<ID3D12Device>& device);
 	void PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection);
 

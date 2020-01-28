@@ -4,6 +4,7 @@
 #include"Mesh.h"
 #include"Entity.h"
 #include"Lights.h"
+#include"DescriptorHeapWrapper.h"
 #include"CommonStructs.h"
 #include"Material.h"
 #include"Skybox.h"
@@ -57,7 +58,8 @@ private:
 	DirectX::XMFLOAT4X4 viewMatrix;
 	DirectX::XMFLOAT4X4 projectionMatrix;
 
-	ComPtr<ID3D12DescriptorHeap> mainBufferHeap;
+	//ComPtr<ID3D12DescriptorHeap> mainBufferHeap;
+	DescriptorHeapWrapper mainBufferHeap;
 	ComPtr<ID3D12Resource> constantBufferResource;
 	CD3DX12_CPU_DESCRIPTOR_HANDLE mainCPUDescriptorHandle;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mainGPUDescriptorHandle;

@@ -180,19 +180,21 @@ std::shared_ptr<Mesh> Entity::GetMesh()
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 }
 
-void Entity::PrepareConstantBuffers(CD3DX12_CPU_DESCRIPTOR_HANDLE& mainDescriptorHandle,
+void Entity::PrepareConstantBuffers(DescriptorHeapWrapper mainBufferHeap,
 	ComPtr<ID3D12Device>& device)
 {
 
 	//creating the constant buffer view
-	ThrowIfFailed(device->CreateCommittedResource(
+	/*ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(SceneConstantBuffer)),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(sceneConstantBufferResource.resource.GetAddressOf())
-	));
+	));*/
+
+	mainBufferHeap.CreateDescriptor(sceneConstantBufferResource,RESOURCE_TYPE_CBV,device);
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC sceneConstantBufferViewDesc = {};
 	sceneConstantBufferViewDesc.BufferLocation = sceneConstantBufferResource.resource->GetGPUVirtualAddress();

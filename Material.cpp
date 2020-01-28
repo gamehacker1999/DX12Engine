@@ -1,7 +1,7 @@
 #include "Material.h"
 #include<DirectXHelpers.h>
 
-Material::Material(std::wstring diffuse, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue, CD3DX12_CPU_DESCRIPTOR_HANDLE& srvHandle)
+Material::Material(std::wstring diffuse, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue, DescriptorHeapWrapper mainBufferHeap)
 {
 	LoadTexture(device, diffuseTexture, diffuse, commandQueue,TEXTURE_TYPE_DEAULT);
 	CreateShaderResourceView(device.Get(), diffuseTexture.Get(), srvHandle);
