@@ -3,7 +3,18 @@
 #include "Camera.h"
 #include"Mesh.h"
 #include"Entity.h"
+#include"Lights.h"
+#include"CommonStructs.h"
+#include"Material.h"
+#include"Skybox.h"
+
 #include <DirectXMath.h>
+
+struct LightData
+{
+	DirectionalLight light1;
+	XMFLOAT3 cameraPosition;
+};
 
 class Game
 	: public DXCore
@@ -35,6 +46,7 @@ private:
 	void LoadShaders();
 	void CreateMatrices();
 	void CreateBasicGeometry();
+	void CreateEnvironment();
 
 	//app resources
 	ComPtr<ID3D12Resource> vertexBuffer;
@@ -54,6 +66,10 @@ private:
 	UINT cbvDescriptorSize;
 	UINT8* constantBufferBegin;
 
+	ComPtr<ID3D12Resource> lightConstantBufferResource;
+	UINT8* lightCbufferBegin;
+	LightData lightData;
+
 	ComPtr<ID3D12Resource> depthStencilBuffer;
 	ComPtr<ID3D12DescriptorHeap> dsDescriptorHeap;
 
@@ -62,13 +78,21 @@ private:
 	std::shared_ptr<Mesh> mesh1;
 	std::shared_ptr<Entity> entity1;
 	std::shared_ptr<Mesh> mesh2;
+	std::shared_ptr<Mesh> mesh3;
 	std::shared_ptr<Entity> entity2;
 	std::shared_ptr<Entity> entity3;
 	std::shared_ptr<Entity> entity4;
+	std::shared_ptr<Entity> entity5;
+	std::shared_ptr<Material> material1;
 
 
 
 	std::vector<std::shared_ptr<Entity>> entities;
+
+	//environment variables
+	ComPtr<ID3D12RootSignature> skyboxRootSignature;
+	ComPtr<ID3D12PipelineState> skyboxPSO;
+	std::shared_ptr<Skybox> skybox;
 
 
 	// Keeps track of the old mouse position.  Useful for 

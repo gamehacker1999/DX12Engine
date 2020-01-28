@@ -1,5 +1,7 @@
 #pragma once
+#include"ResourceUploadBatch.h"
 #include <WICTextureLoader.h>
+#include<DDSTextureLoader.h>
 #include<d3d12.h>
 #include<DirectXMath.h>
 #include"Vertex.h"
@@ -15,6 +17,12 @@
 using namespace Microsoft::WRL;
 
 class Game;
+
+typedef enum TEXTURE_TYPES
+{
+	TEXTURE_TYPE_DDS,
+	TEXTURE_TYPE_DEAULT	
+}TEXTURE_TYPES;
 
 inline std::string HrToString(HRESULT hr)
 {
@@ -51,3 +59,5 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 
 D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIndices, ComPtr<ID3D12Device> device,
 	ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource>& indexBufferHeap, ComPtr<ID3D12Resource>& uploadIndexHeap);
+
+void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, ComPtr<ID3D12CommandQueue>& commandQueue,TEXTURE_TYPES type=TEXTURE_TYPE_DEAULT);

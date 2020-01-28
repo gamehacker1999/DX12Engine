@@ -133,3 +133,35 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 		return indexBufferView;
 	}
 }
+
+void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, ComPtr<ID3D12CommandQueue>& commandQueue, TEXTURE_TYPES type)
+{
+
+	if (type == TEXTURE_TYPE_DDS)
+	{
+		ResourceUploadBatch resourceUpload(device.Get());
+		resourceUpload.Begin();
+
+		ThrowIfFailed(CreateDDSTextureFromFile(device.Get(), resourceUpload, textureName.c_str(), tex.GetAddressOf(), true));
+
+		auto uploadResourceFinish = resourceUpload.End(commandQueue.Get());
+
+		uploadResourceFinish.wait();
+	}
+
+	else
+	{
+		//loading texture from filename
+		ResourceUploadBatch resourceUpload(device.Get());
+
+		resourceUpload.Begin();
+
+		ThrowIfFailed(CreateWICTextureFromFile(device.Get(), resourceUpload, textureName.c_str(), tex.GetAddressOf(), true));
+
+		auto uploadedResourceFinish = resourceUpload.End(commandQueue.Get());
+
+		uploadedResourceFinish.wait();
+	}
+
+
+}

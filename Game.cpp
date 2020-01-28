@@ -29,6 +29,8 @@ Game::Game(HINSTANCE hInstance)
 	printf("Console window created successfully.  Feel free to printf() here.\n");
 #endif
 	constantBufferBegin = nullptr;
+	lightCbufferBegin = 0;
+
 }
 
 Game::~Game()
@@ -64,7 +66,7 @@ HRESULT Game::Init()
 
 		//creating a srv,uav, cbv descriptor heap
 		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-		cbvHeapDesc.NumDescriptors = 4*2;
+		cbvHeapDesc.NumDescriptors = 4+1+1;
 		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -155,6 +157,7 @@ HRESULT Game::Init()
 	LoadShaders();
 	CreateMatrices();
 	CreateBasicGeometry();
+	CreateEnvironment();
 
 	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 0.f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
 
@@ -211,75 +214,6 @@ void Game::CreateMatrices()
 // --------------------------------------------------------
 void Game::CreateBasicGeometry()
 {
-	// Create some temporary variables to represent colors
-	// - Not necessary, just makes things more readable
-	/*XMFLOAT4 red = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-	XMFLOAT4 green = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
-	XMFLOAT4 blue = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
-
-
-	Vertex triangleVBO[] =
-	{
-		{ { +0.0f, +1.0f, +0.0f }, { 1.0f, 0.0f, 0.0f},{1.0,0.f} },
-		{ { +1.5f, -1.0f, +0.0f }, { 0.0f, 1.0f, 0.0f},{1.0,0.f}  },
-		{ { -1.5f, -1.0f, +0.0f }, { 0.0f, 0.0f, 1.0f},{1.0,0.f}  }
-	};
-
-	unsigned int indexListMesh1[] = { 0,1,2 };
-
-	UINT vertexBufferSize = sizeof(triangleVBO);
-
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(vertexBuffer.GetAddressOf())
-	));
-
-	ComPtr<ID3D12Resource> vbufferUpload;
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(vbufferUpload.GetAddressOf())
-	));
-	D3D12_SUBRESOURCE_DATA bufferData = {};
-	bufferData.pData = reinterpret_cast<BYTE*>(triangleVBO);
-	bufferData.RowPitch = vertexBufferSize;
-	bufferData.SlicePitch = vertexBufferSize;
-
-	UpdateSubresources<1>(commandList.Get(), vertexBuffer.Get(), vbufferUpload.Get(), 0, 0, 1,&bufferData);
-	//copy triangle data to vertex buffer
-	UINT8* vertexDataBegin;
-	//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
-	//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
-	//vbufferUpload->Unmap(0, nullptr);
-
-	///commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-		//D3D12_RESOURCE_STATE_COPY_DEST));
-	//commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
-
-	//command lists are created in record state but since there is nothing to record yet
-	//close it for the main loop
-
-	//ThrowIfFailed(commandList->Close());
-	//ID3D12CommandList* commandLists[] = { commandList.Get() };
-	//commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
-
-	//WaitForPreviousFrame();
-
-	//vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
-	//vertexBufferView.StrideInBytes = sizeof(Vertex);
-	//vertexBufferView.SizeInBytes = sizeof(triangleVBO);*/
-
-	//mesh1 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList);
-	//mesh2 = std::make_shared<Mesh>(triangleVBO, 3, indexListMesh1, _countof(indexListMesh1), device, commandList, commandQueue, this);
 
 	//creatng the constant buffer heap before creating the entity
 	ThrowIfFailed(device->CreateCommittedResource(
@@ -291,19 +225,44 @@ void Game::CreateBasicGeometry()
 		IID_PPV_ARGS(cbufferUploadHeap.GetAddressOf())
 	));
 
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(1024*64),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(lightConstantBufferResource.GetAddressOf())
+	));
+
+	ZeroMemory(&lightData, sizeof(lightData));
+
+	lightData.light1.diffuse = XMFLOAT4(1, 0, 0, 1);
+	lightData.light1.direction = XMFLOAT3(0, 0, 1);
+	lightData.light1.ambientColor = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.f);
+	lightData.light1.specularity = XMFLOAT4(1, 0, 0, 1);
+
+	lightConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCbufferBegin));
+	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
+
 
 	UINT64 cbufferOffset = 0;
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
-	//mesh2 = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
-	std::shared_ptr<Mesh> mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
+	mesh2 = std::make_shared<Mesh>("../../Assets/Models/cube.obj", device, commandList);
+	mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
 	
 
 		//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
-	CD3DX12_ROOT_PARAMETER1 rootParams[2]; // specifies the descriptor table
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, -1, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+	CD3DX12_ROOT_PARAMETER1 rootParams[4]; // specifies the descriptor table
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
-	rootParams[1].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParams[1].InitAsConstants(1, 0, 0,D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParams[2].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParams[3].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+	
+	CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+	staticSamplers[0].Init(0);
 
 	//rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
 
@@ -312,11 +271,10 @@ void Game::CreateBasicGeometry()
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr, rootSignatureFlags);
+	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, _countof(staticSamplers), staticSamplers, rootSignatureFlags);
 
 	ComPtr<ID3DBlob> signature;
 	ComPtr<ID3DBlob> error;
@@ -369,10 +327,12 @@ void Game::CreateBasicGeometry()
 	float aspectRatio = static_cast<float>(width / height);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
-	entity1 = std::make_shared<Entity>(mesh1);
-	entity2 = std::make_shared<Entity>(mesh1);
-	entity3 = std::make_shared<Entity>(mesh1);
-	entity4 = std::make_shared<Entity>(mesh3);
+	material1 = std::make_shared<Material>(L"../../Assets/Textures/Brick.jpg", device, commandQueue,cpuHandle);
+	entity1 = std::make_shared<Entity>(mesh1,material1);
+	entity2 = std::make_shared<Entity>(mesh1,material1);
+	entity3 = std::make_shared<Entity>(mesh1,material1);
+	entity4 = std::make_shared<Entity>(mesh3,material1);
+	
 
 	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
 	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
@@ -434,6 +394,82 @@ void Game::CreateBasicGeometry()
 
 }
 
+void Game::CreateEnvironment()
+{
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+	CD3DX12_ROOT_PARAMETER1 rootParams[2]; // specifies the descriptor table
+	rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParams[1].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+
+	CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+	staticSamplers[0].Init(0);
+
+	//rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
+
+	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, _countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+	ComPtr<ID3DBlob> signature;
+	ComPtr<ID3DBlob> error;
+
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+		signature.GetAddressOf(), error.GetAddressOf()));
+	//if (FAILED(hr)) return hr;
+
+	ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+		IID_PPV_ARGS(skyboxRootSignature.GetAddressOf())));
+
+	//if (FAILED(hr)) return hr;
+	ComPtr<ID3DBlob> vertexShaderBlob;
+	ComPtr<ID3DBlob> pixelShaderBlob;
+	//load shaders
+	ThrowIfFailed(D3DReadFileToBlob(L"CubeMapVS.cso", vertexShaderBlob.GetAddressOf()));
+	ThrowIfFailed(D3DReadFileToBlob(L"CubeMapPS.cso", pixelShaderBlob.GetAddressOf()));
+
+	//input vertex layout, describes the semantics
+
+	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+
+	};
+
+	//creating a pipeline state object
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+	psoDesc.pRootSignature = skyboxRootSignature.Get();
+	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+	////psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	//psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
+	psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc.Count = 1;
+	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(skyboxPSO.GetAddressOf())));
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
+	//creating the skybox
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, srvHandle);
+}
+
 
 // --------------------------------------------------------
 // Handle resizing DirectX "stuff" to match the new window size.
@@ -471,6 +507,9 @@ void Game::Update(float deltaTime, float totalTime)
 	constantBufferData.projection = mainCamera->GetProjectionMatrix();
 	constantBufferData.view = mainCamera->GetViewMatrix();
 
+	lightData.cameraPosition = mainCamera->GetPosition();
+	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
+
 	//constantBufferData.offset.x += translationSpeed;
 	/*constantBufferData.world = entity1->GetModelMatrix();
 
@@ -496,74 +535,6 @@ void Game::Draw(float deltaTime, float totalTime)
 	// Background color (Cornflower Blue in this case) for clearing
 	const float color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
 
-	// Clear the render target and depth buffer (erases what's on the screen)
-	//  - Do this ONCE PER FRAME
-	//  - At the beginning of Draw (before drawing *anything*)
-	/*context->ClearRenderTargetView(backBufferRTV, color);
-	context->ClearDepthStencilView(
-		depthStencilView,
-		D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
-		1.0f,
-		0);
-
-	// Send data to shader variables
-	//  - Do this ONCE PER OBJECT you're drawing
-	//  - This is actually a complex process of copying data to a local buffer
-	//    and then copying that entire buffer to the GPU.  
-	//  - The "SimpleShader" class handles all of that for you.
-	vertexShader->SetMatrix4x4("world", worldMatrix);
-	vertexShader->SetMatrix4x4("view", viewMatrix);
-	vertexShader->SetMatrix4x4("projection", projectionMatrix);
-
-	// Once you've set all of the data you care to change for
-	// the next draw call, you need to actually send it to the GPU
-	//  - If you skip this, the "SetMatrix" calls above won't make it to the GPU!
-	vertexShader->CopyAllBufferData();
-
-	// Set the vertex and pixel shaders to use for the next Draw() command
-	//  - These don't technically need to be set every frame...YET
-	//  - Once you start applying different shaders to different objects,
-	//    you'll need to swap the current shaders before each draw
-	vertexShader->SetShader();
-	pixelShader->SetShader();
-
-	//drawing the three meshes to the scene
-	UINT stride = sizeof(Vertex);
-	UINT offset = 0;
-
-	//first mesh
-
-	//setting the vertex and index buffer
-	auto tempVertexBuffer = mesh1->GetVertexBuffer();
-	context->IASetVertexBuffers(0, 1, &tempVertexBuffer, &stride, &offset);
-	auto tempIndexBuffer = mesh1->GetIndexBuffer();
-	context->IASetIndexBuffer(mesh1->GetIndexBuffer(), DXGI_FORMAT_R32_UINT, 0);
-
-	//drawing the first mesh
-	context->DrawIndexed(mesh1->GetIndexCount(), 0, 0);
-
-	//drawing the second mesh
-
-	//setting the index and vertex buffer
-	tempVertexBuffer = mesh2->GetVertexBuffer();
-	context->IASetVertexBuffers(0, 1, &tempVertexBuffer, &stride, &offset);
-	context->IASetIndexBuffer(mesh2->GetIndexBuffer(), DXGI_FORMAT_R32_UINT, 0);
-	context->DrawIndexed(mesh2->GetIndexCount(), 0, 0);
-
-	//drawing the third mesh
-	tempVertexBuffer = mesh3->GetVertexBuffer();
-	context->IASetVertexBuffers(0, 1, &tempVertexBuffer, &stride, &offset);
-	context->IASetIndexBuffer(mesh3->GetIndexBuffer(), DXGI_FORMAT_R32_UINT, 0);
-	context->DrawIndexed(mesh3->GetIndexCount(), 0, 0);
-
-	// Present the back buffer to the user
-	//  - Puts the final frame we're drawing into the window so the user can see it
-	//  - Do this exactly ONCE PER FRAME (always at the very end of the frame)
-	swapChain->Present(0, 0);
-
-	// Due to the usage of a more sophisticated swap chain effect,
-	// the render target must be re-bound after every call to Present()
-	context->OMSetRenderTargets(1, &backBufferRTV, depthStencilView);*/
 	PopulateCommandList();
 
 	//execute the commanf list
@@ -633,20 +604,36 @@ void Game::PopulateCommandList()
 
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
-	/**/for (UINT64 i = 0; i < entities.size(); i++)
+	commandList->SetGraphicsRootDescriptorTable(3, gpuCBVSRVUAVHandle);
+	gpuCBVSRVUAVHandle.Offset(cbvDescriptorSize);
+	commandList->SetGraphicsRootDescriptorTable(0, gpuCBVSRVUAVHandle);
+
+	/**/for (UINT i = 0; i < entities.size(); i++)
 	{
 		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
 		commandList->SetGraphicsRoot32BitConstant(1, i, 0);
 		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
 		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
-		commandList->SetGraphicsRootDescriptorTable(0, gpuCBVSRVUAVHandle);
-		gpuCBVSRVUAVHandle.Offset(cbvDescriptorSize);
+		commandList->SetGraphicsRootConstantBufferView(2, lightConstantBufferResource->GetGPUVirtualAddress());
+		//gpuCBVSRVUAVHandle.Offset(cbvDescriptorSize);
 		//commandList->SetGraphicsRootConstantBufferView(0, constantBufferResource->GetGPUVirtualAddress() + sceneConstantBufferAlignmentSize * i);
 		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
 		commandList->IASetIndexBuffer(&indexBuffer);
 		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0); 
 
 	}
+
+	//drawing the skybox
+	gpuCBVSRVUAVHandle.Offset((INT)entities.size() * cbvDescriptorSize);
+
+	skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
+	commandList->SetPipelineState(skybox->GetPipelineState().Get());
+	commandList->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
+	commandList->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
+	commandList->SetGraphicsRootDescriptorTable(1, gpuCBVSRVUAVHandle);
+	commandList->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
+	commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
+	commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 
 	//back buffer will now be used to present
 

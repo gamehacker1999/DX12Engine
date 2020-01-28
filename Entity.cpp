@@ -1,9 +1,9 @@
 #include "Entity.h"
 
-Entity::Entity(std::shared_ptr<Mesh> mesh/*, std::shared_ptr<Material> material*/)
+Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& material)
 {
 	this->mesh = mesh;
-	//this->material = material;
+	this->material = material;
 
 	XMStoreFloat4x4(&modelMatrix, XMMatrixIdentity()); //setting model matrix as identity
 
@@ -210,7 +210,7 @@ void Entity::PrepareConstantBuffers(CD3DX12_CPU_DESCRIPTOR_HANDLE& mainDescripto
 	sceneConstantBufferViewDesc.BufferLocation = sceneConstantBufferResource->GetGPUVirtualAddress();
 	sceneConstantBufferViewDesc.SizeInBytes = sizeof(SceneConstantBuffer);
 	device->CreateConstantBufferView(&sceneConstantBufferViewDesc, mainDescriptorHandle);
-	mainDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)*2);
+	mainDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 	CD3DX12_RANGE range(0, 0);
 
