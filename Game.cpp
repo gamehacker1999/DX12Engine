@@ -560,7 +560,7 @@ void Game::PopulateCommandList()
 	commandList->RSSetScissorRects(1, &scissorRect);
 
 	//setting the constant buffer descriptor table
-	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.Get() };
+	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.GetHeap().Get() };
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	//set the descriptor table 0 as the constant buffer descriptor

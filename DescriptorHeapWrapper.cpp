@@ -34,6 +34,7 @@ ComPtr<ID3D12DescriptorHeap>& DescriptorHeapWrapper::GetHeap()
 CD3DX12_CPU_DESCRIPTOR_HANDLE DescriptorHeapWrapper::GetCPUHandle(UINT index)
 {
 	CD3DX12_CPU_DESCRIPTOR_HANDLE offsettedDescHandle(cpuHandle, index, handleIncrementSize);
+
 	return offsettedDescHandle;
 }
 
@@ -55,6 +56,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 			nullptr,
 			IID_PPV_ARGS(resource.resource.GetAddressOf())
 		));
+
 
 		resource.resourceType = resourceType;
 		resource.currentState = D3D12_RESOURCE_STATE_GENERIC_READ;

@@ -199,8 +199,9 @@ void Entity::PrepareConstantBuffers(DescriptorHeapWrapper mainBufferHeap,
 	D3D12_CONSTANT_BUFFER_VIEW_DESC sceneConstantBufferViewDesc = {};
 	sceneConstantBufferViewDesc.BufferLocation = sceneConstantBufferResource.resource->GetGPUVirtualAddress();
 	sceneConstantBufferViewDesc.SizeInBytes = sizeof(SceneConstantBuffer);
-	device->CreateConstantBufferView(&sceneConstantBufferViewDesc, mainDescriptorHandle);
-	mainDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	device->CreateConstantBufferView(&sceneConstantBufferViewDesc,
+		mainBufferHeap.GetCPUHandle(sceneConstantBufferResource.heapOffset));
+	//mainDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 	CD3DX12_RANGE range(0, 0);
 

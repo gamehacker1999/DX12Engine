@@ -6,7 +6,8 @@
 using namespace DirectX;
 class Material
 {
-	ComPtr<ID3D12Resource> diffuseTexture;
+	//ComPtr<ID3D12Resource> diffuseTexture;
+	ManagedResource diffuseTexture;
 	D3D12_SHADER_RESOURCE_VIEW_DESC diffuseSRV;
 
 public:
