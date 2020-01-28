@@ -170,19 +170,19 @@ std::shared_ptr<Mesh> Entity::GetMesh()
 	return material;
 }*/
 
-/**/void Entity::PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection)
+/*void Entity::PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection)
 {
 	//setting the appropriate data for the shader
-	//material->GetVertexShader()->SetMatrix4x4("world", GetModelMatrix());
-	//material->GetVertexShader()->SetMatrix4x4("view", view);
-	//material->GetVertexShader()->SetMatrix4x4("projection", projection);
+	material->GetVertexShader()->SetMatrix4x4("world", GetModelMatrix());
+	material->GetVertexShader()->SetMatrix4x4("view", view);
+	material->GetVertexShader()->SetMatrix4x4("projection", projection);
 
 	//setting the shaders as active
-	//material->GetVertexShader()->SetShader();
-	//material->GetPixelShader()->SetShader();
+	material->GetVertexShader()->SetShader();
+	material->GetPixelShader()->SetShader();
 
 	//copying data to gpu
-	//material->GetVertexShader()->CopyAllBufferData();
+	material->GetVertexShader()->CopyAllBufferData();
 	//material->GetPixelShader()->CopyAllBufferData();
 
 	constantBufferData.world = GetModelMatrix();

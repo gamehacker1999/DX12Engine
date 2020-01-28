@@ -83,8 +83,6 @@ public:
 	//std::shared_ptr<Material> GetMaterial();
 
 	//method that prepares the material and sends it to the gpu
-	void PrepareConstantBuffers(CD3DX12_CPU_DESCRIPTOR_HANDLE& mainDescriptorHandle,
-		ComPtr<ID3D12Device>& device);
 	void PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection);
 
 	virtual void Update(float deltaTime);
