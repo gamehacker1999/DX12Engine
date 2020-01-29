@@ -469,7 +469,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, srvHandle);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
 }
 
 

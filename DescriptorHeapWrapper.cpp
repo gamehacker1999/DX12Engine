@@ -44,7 +44,8 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE DescriptorHeapWrapper::GetGPUHandle(UINT index)
 	return offsettedDescHandle;
 }
 
-void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,ComPtr<ID3D12Device>& device)
+void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,
+	ComPtr<ID3D12Device>& device, size_t cbufferSize)
 {
 	if (resourceType == RESOURCE_TYPE_CBV)
 	{
@@ -57,6 +58,11 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 			IID_PPV_ARGS(resource.resource.GetAddressOf())
 		));
 
+		D3D12_CONSTANT_BUFFER_VIEW_DESC sceneConstantBufferViewDesc = {};
+		sceneConstantBufferViewDesc.BufferLocation = resource.resource->GetGPUVirtualAddress();
+		sceneConstantBufferViewDesc.SizeInBytes = sizeof(cbufferSize);
+		device->CreateConstantBufferView(&sceneConstantBufferViewDesc,
+			GetCPUHandle(lastResourceIndex));
 
 		resource.resourceType = resourceType;
 		resource.currentState = D3D12_RESOURCE_STATE_GENERIC_READ;
@@ -66,12 +72,15 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 
 }
 
-void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResource& resource, RESOURCE_TYPE resourceType, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue> commandQueue)
+void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResource& resource, 
+	RESOURCE_TYPE resourceType, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue> commandQueue,
+	TEXTURE_TYPES type)
 {
 	if (resourceType == RESOURCE_TYPE_SRV)
 	{
-		LoadTexture(device, resource.resource, resName, commandQueue);
-		CreateShaderResourceView(device.Get(), resource.resource.Get(), this->cpuHandle, false);
+		bool isCube = (type == TEXTURE_TYPE_DDS) ? true : false;
+		LoadTexture(device, resource.resource, resName, commandQueue,type);
+		CreateShaderResourceView(device.Get(), resource.resource.Get(), GetCPUHandle(lastResourceIndex), isCube);
 
 		resource.resourceType = resourceType;
 		resource.currentState = D3D12_RESOURCE_STATE_GENERIC_READ;

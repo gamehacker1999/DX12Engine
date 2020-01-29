@@ -21,7 +21,10 @@ public:
 	ComPtr<ID3D12DescriptorHeap>& GetHeap();
 	CD3DX12_CPU_DESCRIPTOR_HANDLE GetCPUHandle(UINT index);
 	CD3DX12_GPU_DESCRIPTOR_HANDLE GetGPUHandle(UINT index);
-	void CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType, ComPtr<ID3D12Device>& device);
-	void CreateDescriptor(std::wstring resName, ManagedResource& resource, RESOURCE_TYPE resourceType, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue> commandQueue);
+	void CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType, 
+		ComPtr<ID3D12Device>& device,size_t cbufferSize);
+	void CreateDescriptor(std::wstring resName, ManagedResource& resource,
+		RESOURCE_TYPE resourceType, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue> commandQueue,
+		TEXTURE_TYPES type);
 };
 
