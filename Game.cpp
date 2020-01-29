@@ -133,6 +133,9 @@ HRESULT Game::Init()
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator.Get(), pipelineState.Get(),
 		IID_PPV_ARGS(commandList.GetAddressOf())));
 
+	//creating the skybox bundle
+	ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(bundleAllocator.GetAddressOf())));
+
 	//memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 	//memcpy(constantBufferBegin+sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBufferData));
 
@@ -472,6 +475,20 @@ void Game::CreateEnvironment()
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
 	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
+
+	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
+
+	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.GetHeap().Get() };
+	skyboxBundle->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	skyboxBundle->SetPipelineState(skybox->GetPipelineState().Get());
+	skyboxBundle->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
+	skyboxBundle->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
+	skyboxBundle->SetGraphicsRootDescriptorTable(1, mainBufferHeap.GetGPUHandle(skybox->GetSkyboxTexture().heapOffset));
+	skyboxBundle->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
+	skyboxBundle->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
+	skyboxBundle->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+	ThrowIfFailed(skyboxBundle->Close());
+
 }
 
 
@@ -586,13 +603,15 @@ void Game::PopulateCommandList()
 	//gpuCBVSRVUAVHandle.Offset((INT)entities.size() * cbvDescriptorSize);
 
 	skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
-	commandList->SetPipelineState(skybox->GetPipelineState().Get());
+	/*commandList->SetPipelineState(skybox->GetPipelineState().Get());
 	commandList->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
 	commandList->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
 	commandList->SetGraphicsRootDescriptorTable(1, mainBufferHeap.GetGPUHandle(skybox->GetSkyboxTexture().heapOffset));
 	commandList->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
 	commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
-	commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+	commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
+
+	commandList->ExecuteBundle(skyboxBundle.Get());
 
 	//back buffer will now be used to present
 
