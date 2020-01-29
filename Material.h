@@ -11,7 +11,9 @@ class Material
 	ManagedResource normalTexture;
 	ManagedResource roughnessTexture;
 	ManagedResource metallnessTexture;
+	UINT materialOffset;
 	UINT materialIndex;
+	UINT diffuseTextureIndex;
 	UINT numTextures;
 	D3D12_SHADER_RESOURCE_VIEW_DESC diffuseSRV;
 
@@ -19,8 +21,7 @@ public:
 	Material(ComPtr<ID3D12Device>& device,ComPtr<ID3D12CommandQueue>& commandQueue,DescriptorHeapWrapper& mainBufferHeap,
 		std::wstring diffuse, std::wstring normal = L"default", std::wstring roughness = L"default", std::wstring metallnes = L"default");
 
-	UINT GetMatIndex();
-	UINT GetNumMaterials();
 	UINT GetMaterialOffset();
+	UINT GetDiffuseTextureOffset();
 };
 

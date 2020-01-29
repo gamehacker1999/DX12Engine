@@ -10,13 +10,15 @@ Material::Material(ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& com
 	/*LoadTexture(device, diffuseTexture.resource, diffuse, commandQueue,TEXTURE_TYPE_DEAULT);
 	CreateShaderResourceView(device.Get(), diffuseTexture.resource.Get(), srvHandle);*/
 	mainBufferHeap.CreateDescriptor(diffuse,diffuseTexture,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DEAULT);
-
-	materialIndex = diffuseTexture.heapOffset;
+	diffuseTextureIndex = diffuseTexture.heapOffset;
+	materialOffset = diffuseTexture.heapOffset;
+	//materialIndex = index;
 	numTextures++;
 
 	if (normal != L"default")
 	{
 		mainBufferHeap.CreateDescriptor(normal, normalTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
+		materialOffset = normalTexture.heapOffset;
 		numTextures++;
 	}
 
@@ -24,17 +26,12 @@ Material::Material(ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& com
 	
 }
 
-UINT Material::GetMatIndex()
-{
-	return materialIndex;
-}
-
-UINT Material::GetNumMaterials()
-{
-	return numTextures;
-}
-
 UINT Material::GetMaterialOffset()
 {
-	return numTextures * (materialIndex+1);
+	return materialOffset+1;
+}
+
+UINT Material::GetDiffuseTextureOffset()
+{
+	return diffuseTextureIndex;
 }

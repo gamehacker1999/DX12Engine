@@ -68,7 +68,7 @@ HRESULT Game::Init()
 
 		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
-		ThrowIfFailed(mainBufferHeap.Create(device, 4 + 2 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		ThrowIfFailed(mainBufferHeap.Create(device, 4 + 4 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 		//creating the depth stencil heap
 		/*D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
@@ -325,10 +325,15 @@ void Game::CreateBasicGeometry()
 	float aspectRatio = static_cast<float>(width / height);
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
-	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, L"../../Assets/Textures/LayeredDiffuse.png",L"../../Assets/Textures/LayeredNormal.png");
+	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, L"../../Assets/Textures/LayeredDiffuse.png", L"../../Assets/Textures/LayeredNormal.png");
+	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, L"../../Assets/Textures/RocksDiffuse.jpg",L"../../Assets/Textures/RocksNormal.jpg");
+
+	materials.emplace_back(material1);
+	materials.emplace_back(material2);
+
 	entity1 = std::make_shared<Entity>(mesh1,material1);
 	entity2 = std::make_shared<Entity>(mesh1,material1);
-	entity3 = std::make_shared<Entity>(mesh1,material1);
+	entity3 = std::make_shared<Entity>(mesh1,material2);
 	entity4 = std::make_shared<Entity>(mesh3,material1);
 	
 
@@ -559,7 +564,7 @@ void Game::PopulateCommandList()
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = mainBufferHeap.GetGPUHandle(0);//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
 	commandList->SetGraphicsRootDescriptorTable(3, gpuCBVSRVUAVHandle);
-	gpuCBVSRVUAVHandle.Offset(mainBufferHeap.GetDescriptorIncrementSize()*material1->GetMaterialOffset());
+	gpuCBVSRVUAVHandle.Offset(mainBufferHeap.GetDescriptorIncrementSize()*materials[materials.size()-1]->GetMaterialOffset());
 	commandList->SetGraphicsRootDescriptorTable(0, gpuCBVSRVUAVHandle);
 
 	/**/for (UINT i = 0; i < entities.size(); i++)

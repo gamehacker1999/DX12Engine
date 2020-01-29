@@ -167,7 +167,7 @@ std::shared_ptr<Mesh> Entity::GetMesh()
 
 UINT Entity::GetMaterialIndex()
 {
-	return this->material->GetMatIndex();
+	return this->material->GetDiffuseTextureOffset();
 }
 
 /*std::shared_ptr<Material> Entity::GetMaterial()

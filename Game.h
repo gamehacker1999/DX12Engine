@@ -88,10 +88,10 @@ private:
 	std::shared_ptr<Entity> entity4;
 	std::shared_ptr<Entity> entity5;
 	std::shared_ptr<Material> material1;
-
-
+	std::shared_ptr<Material> material2;
 
 	std::vector<std::shared_ptr<Entity>> entities;
+	std::vector<std::shared_ptr<Material>> materials;
 
 	//environment variables
 	ComPtr<ID3D12RootSignature> skyboxRootSignature;
