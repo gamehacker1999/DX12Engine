@@ -72,8 +72,10 @@ private:
 	UINT8* lightCbufferBegin;
 	LightData lightData;
 
-	ComPtr<ID3D12Resource> depthStencilBuffer;
-	ComPtr<ID3D12DescriptorHeap> dsDescriptorHeap;
+	//ComPtr<ID3D12Resource> depthStencilBuffer;
+	ManagedResource depthStencilBuffer;
+	//ComPtr<ID3D12DescriptorHeap> dsDescriptorHeap;
+	DescriptorHeapWrapper dsDescriptorHeap;
 
 	std::shared_ptr<Camera> mainCamera;
 

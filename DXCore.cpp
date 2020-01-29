@@ -12,7 +12,7 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 	this->titleBarText = titleBarText;
 	this->width = windowWidth;
 	this->height = windowHeight;
-	this->titleBarStats = titleBarStats;
+	this->titleBarStats = debugStats;
 
 	fpsFrameCount = 0;
 	fpsTimeElapsed = 0;
@@ -105,7 +105,7 @@ LRESULT DXCore::ProcessMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 	}
 
 	// Let Windows handle any messages we're not touching
-	return DefWindowProc(hWnd, uMsg, wParam, lParam);
+	return DefWindowProcA(hWnd, uMsg, wParam, lParam);
 }
 
 HRESULT DXCore::InitWindow()
@@ -153,7 +153,7 @@ HRESULT DXCore::InitWindow()
 	// Actually ask Windows to create the window itself
 	// using our settings so far.  This will return the
 	// handle of the window, which we'll keep around for later
-	hWnd = CreateWindow(
+	hWnd = CreateWindowW(
 		wndClass.lpszClassName,
 		(LPWSTR)titleBarText.c_str(),
 		WS_OVERLAPPEDWINDOW,
@@ -280,7 +280,7 @@ HRESULT DXCore::Run()
 			// Translate and dispatch the message
 			// to our custom WindowProc function
 			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+			DispatchMessageW(&msg);
 		}
 		else
 		{
@@ -393,7 +393,7 @@ void DXCore::UpdateTitleBarStats()
 	}*/
 
 	// Actually update the title bar and reset fps data
-	SetWindowTextA(hWnd, output.str().c_str());
+	SetWindowTextW(hWnd, (LPCWSTR)output.str().c_str());
 	fpsFrameCount = 0;
 	fpsTimeElapsed += 1.0f;
 }

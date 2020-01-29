@@ -31,11 +31,12 @@ class Skybox
 public:
 	Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& skyboxPSO,
 		ComPtr<ID3D12RootSignature> skyboxRoot, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue,
-		DescriptorHeapWrapper mainBufferHeap);
+		DescriptorHeapWrapper& mainBufferHeap);
 
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();
 	ComPtr<ID3D12Resource>& GetConstantBuffer();
+	ManagedResource& GetSkyboxTexture();
 	std::shared_ptr<Mesh>& GetMesh();
 
 	void PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition);

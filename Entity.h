@@ -81,11 +81,12 @@ public:
 	bool GetAliveState();
 
 	std::shared_ptr<Mesh> GetMesh();
+	UINT GetMaterialIndex();
 
 	//std::shared_ptr<Material> GetMaterial();
 
 	//method that prepares the material and sends it to the gpu
-	void PrepareConstantBuffers(DescriptorHeapWrapper mainBufferHeap,
+	void PrepareConstantBuffers(DescriptorHeapWrapper& mainBufferHeap,
 		ComPtr<ID3D12Device>& device);
 	void PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection);
 

@@ -4,6 +4,7 @@
 #include <windowsx.h>
 #include <d3d12.h>
 #include<d3dcompiler.h>
+#include"DescriptorHeapWrapper.h"
 #include<dxgi1_6.h>
 #include<exception>
 #include <string>
@@ -75,11 +76,13 @@ protected:
 	D3D12_VIEWPORT viewport;
 	D3D12_RECT scissorRect;
 	ComPtr<IDXGISwapChain3> swapChain;
-	ComPtr<ID3D12Resource> renderTargets[2];
+	//ComPtr<ID3D12Resource> renderTargets[2];
+	ManagedResource renderTargets[frameCount];
 	ComPtr<ID3D12CommandAllocator> commandAllocator;
 	ComPtr<ID3D12CommandQueue> commandQueue;
 	ComPtr<ID3D12RootSignature> rootSignature;
-	ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
+	//ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
+	DescriptorHeapWrapper rtvDescriptorHeap;
 	ComPtr<ID3D12PipelineState> pipelineState;
 	ComPtr<ID3D12GraphicsCommandList> commandList;
 	UINT rtvDescriptorSize;	

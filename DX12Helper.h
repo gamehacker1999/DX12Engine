@@ -62,7 +62,7 @@ typedef enum RESOURCE_TYPE
 struct ManagedResource
 {
 	ComPtr<ID3D12Resource> resource;
-	UINT64 heapOffset;
+	UINT heapOffset;
 	D3D12_RESOURCE_STATES currentState;
 	RESOURCE_TYPE resourceType;
 };

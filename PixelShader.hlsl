@@ -24,6 +24,7 @@ struct VertexToPixel
 	float4 position: SV_POSITION;
 	float4 color: COLOR;
 	float3 normal:  NORMAL;
+	float3 tangent: TANGENT;
 	float3 worldPosition: POSITION;
 	float2 uv: TEXCOORD;
 
@@ -62,11 +63,28 @@ float4 CalculateLight(DirectionalLight light, float3 normal, VertexToPixel input
 	return finalLight;
 }
 
-Texture2D diffuseTex[]: register(t0);
+Texture2D material[]: register(t0);
 SamplerState basicSampler: register(s0);
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
-	float4 texColor = diffuseTex[0].Sample(basicSampler,input.uv);
-	return float4(CalculateLight(light1,input.normal,input))*texColor;
+
+	uint index = entityIndex.index;
+
+	float4 texColor = material[index].Sample(basicSampler,input.uv);
+
+	float3 normal = material[index + 1].Sample(basicSampler, input.uv).xyz;
+
+	float3 unpackedNormal = normal * 2.0 - 1.0f;
+
+	float3 N = normalize(input.normal);
+	float3 T = input.tangent - dot(input.tangent, N) * N;
+	T = normalize(T);
+	float3 B = normalize(cross(T, N));
+
+	float3x3 TBN = float3x3(T, B, N);
+
+	float3 finalNormal = mul(unpackedNormal, TBN);
+
+	return float4(CalculateLight(light1,finalNormal,input))*texColor;
 }

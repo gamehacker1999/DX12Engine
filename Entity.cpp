@@ -165,6 +165,11 @@ std::shared_ptr<Mesh> Entity::GetMesh()
 	return mesh;
 }
 
+UINT Entity::GetMaterialIndex()
+{
+	return this->material->GetMatIndex();
+}
+
 /*std::shared_ptr<Material> Entity::GetMaterial()
 {
 	return material;
@@ -180,7 +185,7 @@ std::shared_ptr<Mesh> Entity::GetMesh()
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 }
 
-void Entity::PrepareConstantBuffers(DescriptorHeapWrapper mainBufferHeap,
+void Entity::PrepareConstantBuffers(DescriptorHeapWrapper& mainBufferHeap,
 	ComPtr<ID3D12Device>& device)
 {
 

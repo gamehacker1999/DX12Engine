@@ -51,64 +51,56 @@ HRESULT Game::Init()
 
 	HRESULT hr;
 
+	
+
 	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer));
 	// Create descriptor heaps.
 	{
 		// Describe and create a render target view (RTV) descriptor heap.
-		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+		/*D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
 		rtvHeapDesc.NumDescriptors = frameCount;
 		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 		hr = (device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvDescriptorHeap)));
 		if (FAILED(hr)) return hr;
 
-		rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);*/
 
-		//creating a srv,uav, cbv descriptor heap
-		/*D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-		cbvHeapDesc.NumDescriptors = 4+1+1;
-		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
-		hr = device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(mainBufferHeap.GetAddressOf()));
-		if (FAILED(hr)) return hr;
-
-		mainCPUDescriptorHandle = mainBufferHeap->GetCPUDescriptorHandleForHeapStart();
-		mainGPUDescriptorHandle = mainBufferHeap->GetGPUDescriptorHandleForHeapStart();
-
-		cbvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);*/
-
-		ThrowIfFailed(mainBufferHeap.Create(device, 4 + 1 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		ThrowIfFailed(mainBufferHeap.Create(device, 4 + 2 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 		//creating the depth stencil heap
-		D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
+		/*D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
 		dsHeapDesc.NumDescriptors = 1;
 		dsHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 		dsHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
 		hr = device->CreateDescriptorHeap(&dsHeapDesc, IID_PPV_ARGS(dsDescriptorHeap.GetAddressOf()));
-		if (FAILED(hr)) return hr;
+		if (FAILED(hr)) return hr;*/
+
+		ThrowIfFailed(dsDescriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 
 
 	}
 
 	// Create frame resources.
-	{
-		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	/**/{
+		//CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart());
 
 		// Create a RTV for each frame.
 		for (UINT n = 0; n < frameCount; n++)
 		{
-			hr = (this->swapChain->GetBuffer(n, IID_PPV_ARGS(&renderTargets[n])));
+			hr = (this->swapChain->GetBuffer(n, IID_PPV_ARGS(&renderTargets[n].resource)));
 			if (FAILED(hr)) return hr;
-			device->CreateRenderTargetView(renderTargets[n].Get(), nullptr, rtvHandle);
-			rtvHandle.Offset(1, rtvDescriptorSize);
+			device->CreateRenderTargetView(renderTargets[n].resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(n));
+			//rtvHandle.Offset(1, rtvDescriptorSize);
 		}
 
 	}
 
 	//creating depth stencil view
-	D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
+	/*D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
 	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsDesc.Flags = D3D12_DSV_FLAG_NONE;
@@ -127,10 +119,12 @@ HRESULT Game::Init()
 		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, width, height, 1,1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
 		&depthClearValue,
-		IID_PPV_ARGS(depthStencilBuffer.GetAddressOf())
+		IID_PPV_ARGS(depthStencilBuffer.resource.GetAddressOf())
 	));
 
-	device->CreateDepthStencilView(depthStencilBuffer.Get(), &dsDesc, dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	device->CreateDepthStencilView(depthStencilBuffer.Get(), &dsDesc, dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart());*/
+
+	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer, RESOURCE_TYPE_DSV, device, 0, width, height);
 
 	hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)));
 	if (FAILED(hr)) return hr;
@@ -238,7 +232,7 @@ void Game::CreateBasicGeometry()
 
 	ZeroMemory(&lightData, sizeof(lightData));
 
-	lightData.light1.diffuse = XMFLOAT4(1, 0, 0, 1);
+	lightData.light1.diffuse = XMFLOAT4(1, 1, 1, 1);
 	lightData.light1.direction = XMFLOAT3(0, 0, 1);
 	lightData.light1.ambientColor = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.f);
 	lightData.light1.specularity = XMFLOAT4(1, 0, 0, 1);
@@ -255,13 +249,14 @@ void Game::CreateBasicGeometry()
 
 		//this describes the type of constant buffer and which register to map the data to
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-	CD3DX12_ROOT_PARAMETER1 rootParams[4]; // specifies the descriptor table
+	CD3DX12_ROOT_PARAMETER1 rootParams[5]; // specifies the descriptor table
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[1].InitAsConstants(1, 0, 0,D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[2].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[3].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParams[4].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	
 	CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
 	staticSamplers[0].Init(0);
@@ -301,7 +296,8 @@ void Game::CreateBasicGeometry()
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
 	};
 
@@ -329,7 +325,7 @@ void Game::CreateBasicGeometry()
 	float aspectRatio = static_cast<float>(width / height);
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
-	material1 = std::make_shared<Material>(L"../../Assets/Textures/Brick.jpg", device, commandQueue,mainBufferHeap);
+	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, L"../../Assets/Textures/LayeredDiffuse.png",L"../../Assets/Textures/LayeredNormal.png");
 	entity1 = std::make_shared<Entity>(mesh1,material1);
 	entity2 = std::make_shared<Entity>(mesh1,material1);
 	entity3 = std::make_shared<Entity>(mesh1,material1);
@@ -441,7 +437,8 @@ void Game::CreateEnvironment()
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
 	};
 
@@ -502,30 +499,8 @@ void Game::Update(float deltaTime, float totalTime)
 
 	mainCamera->Update(deltaTime);
 
-	const float translationSpeed = 0.005f;
-	const float offsetBounds = 1.25f;
-
-
-	constantBufferData.projection = mainCamera->GetProjectionMatrix();
-	constantBufferData.view = mainCamera->GetViewMatrix();
-
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
-
-	//constantBufferData.offset.x += translationSpeed;
-	/*constantBufferData.world = entity1->GetModelMatrix();
-
-	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
-	constantBufferData.world = entity2->GetModelMatrix();
-	memcpy(constantBufferBegin + sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBufferData));*/
-
-
-	/*for (size_t i = 0; i < entities.size(); i++)
-	{
-		constantBufferData.world = entities[i]->GetModelMatrix();
-		memcpy(constantBufferBegin + (i * (size_t)sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
-		//std::copy(&constantBufferData, &constantBufferData + sizeof(constantBufferData), &constantBufferBegin);
-	}*/
 
 }
 
@@ -563,24 +538,16 @@ void Game::PopulateCommandList()
 	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.GetHeap().Get() };
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	//set the descriptor table 0 as the constant buffer descriptor
-	
-	//commandList->SetGraphicsRootDescriptorTable(0, constantBufferHeap->GetGPUDescriptorHandleForHeapStart());
-	//commandList->SetGraphic
-	//commandList-
-
-	//commandList->SetGraphicsRootConstantBufferView(0, constantBufferResource->GetGPUVirtualAddress());
-
 	//indicate that the back buffer is the render target
 	commandList->ResourceBarrier(1, 
-		&CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(),
+		&CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_PRESENT,
 		D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-		frameIndex,rtvDescriptorSize);
-	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &CD3DX12_CPU_DESCRIPTOR_HANDLE(dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart()));
-	commandList->ClearDepthStencilView(dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);//(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart(),
+		//frameIndex,rtvDescriptorSize);
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
+	commandList->ClearDepthStencilView(dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 /**/
 
 
@@ -589,36 +556,21 @@ void Game::PopulateCommandList()
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	/*D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[0]->GetMesh()->GetVertexBuffer();
-	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-	auto indexBuffer = entities[0]->GetMesh()->GetIndexBuffer();
-	commandList->IASetIndexBuffer(&indexBuffer);
-	unsigned int indexCount = entities[0]->GetMesh()->GetIndexCount();
-	//commandList->DrawInstanced(3, 1, 0, 0);
-	commandList->DrawIndexedInstanced(indexCount,1,0,0,0);
 
-	//constantBufferData.world = entity2->GetModelMatrix();
-	//memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
-	commandList->SetGraphicsRootConstantBufferView(0, constantBuffer->GetGPUVirtualAddress()+sceneConstantBufferAlignmentSize);
-	commandList->IASetVertexBuffers(0, 1, &entities[1]->GetMesh()->GetVertexBuffer());
-	commandList->IASetIndexBuffer(&entities[1]->GetMesh()->GetIndexBuffer());
-	commandList->DrawIndexedInstanced(entities[1]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
-
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = mainBufferHeap.GetGPUHandle(0);//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
 	commandList->SetGraphicsRootDescriptorTable(3, gpuCBVSRVUAVHandle);
-	gpuCBVSRVUAVHandle.Offset(cbvDescriptorSize);
+	gpuCBVSRVUAVHandle.Offset(mainBufferHeap.GetDescriptorIncrementSize()*material1->GetMaterialOffset());
 	commandList->SetGraphicsRootDescriptorTable(0, gpuCBVSRVUAVHandle);
 
 	/**/for (UINT i = 0; i < entities.size(); i++)
 	{
 		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
 		commandList->SetGraphicsRoot32BitConstant(1, i, 0);
+		commandList->SetGraphicsRoot32BitConstant(4, entities[i]->GetMaterialIndex(), 0);
 		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
 		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
 		commandList->SetGraphicsRootConstantBufferView(2, lightConstantBufferResource->GetGPUVirtualAddress());
-		//gpuCBVSRVUAVHandle.Offset(cbvDescriptorSize);
-		//commandList->SetGraphicsRootConstantBufferView(0, constantBufferResource->GetGPUVirtualAddress() + sceneConstantBufferAlignmentSize * i);
+
 		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
 		commandList->IASetIndexBuffer(&indexBuffer);
 		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0); 
@@ -626,13 +578,13 @@ void Game::PopulateCommandList()
 	}
 
 	//drawing the skybox
-	gpuCBVSRVUAVHandle.Offset((INT)entities.size() * cbvDescriptorSize);
+	//gpuCBVSRVUAVHandle.Offset((INT)entities.size() * cbvDescriptorSize);
 
 	skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
 	commandList->SetPipelineState(skybox->GetPipelineState().Get());
 	commandList->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
 	commandList->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
-	commandList->SetGraphicsRootDescriptorTable(1, gpuCBVSRVUAVHandle);
+	commandList->SetGraphicsRootDescriptorTable(1, mainBufferHeap.GetGPUHandle(skybox->GetSkyboxTexture().heapOffset));
 	commandList->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
 	commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
 	commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
@@ -640,7 +592,7 @@ void Game::PopulateCommandList()
 	//back buffer will now be used to present
 
 	// Indicate that the back buffer will now be used to present.
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), 
+	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(), 
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 	commandList->Close();

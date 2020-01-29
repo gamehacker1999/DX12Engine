@@ -44,15 +44,20 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE DescriptorHeapWrapper::GetGPUHandle(UINT index)
 	return offsettedDescHandle;
 }
 
+UINT DescriptorHeapWrapper::GetDescriptorIncrementSize()
+{
+	return handleIncrementSize;
+}
+
 void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,
-	ComPtr<ID3D12Device>& device, size_t cbufferSize)
+	ComPtr<ID3D12Device>& device, size_t cbufferSize, UINT width, UINT height)
 {
 	if (resourceType == RESOURCE_TYPE_CBV)
 	{
 		ThrowIfFailed(device->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(sizeof(1024*64)),
+			&CD3DX12_RESOURCE_DESC::Buffer(cbufferSize),
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
 			IID_PPV_ARGS(resource.resource.GetAddressOf())
@@ -60,15 +65,49 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 
 		D3D12_CONSTANT_BUFFER_VIEW_DESC sceneConstantBufferViewDesc = {};
 		sceneConstantBufferViewDesc.BufferLocation = resource.resource->GetGPUVirtualAddress();
-		sceneConstantBufferViewDesc.SizeInBytes = sizeof(cbufferSize);
+		sceneConstantBufferViewDesc.SizeInBytes = (UINT)cbufferSize;
 		device->CreateConstantBufferView(&sceneConstantBufferViewDesc,
 			GetCPUHandle(lastResourceIndex));
 
 		resource.resourceType = resourceType;
 		resource.currentState = D3D12_RESOURCE_STATE_GENERIC_READ;
 		resource.heapOffset = lastResourceIndex;
-		lastResourceIndex++;
+		
 	}
+
+	else if (resourceType == RESOURCE_TYPE_DSV)
+	{
+
+		D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
+		dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
+		dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+		dsDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+
+		//optimized clear value for depth stencil buffer
+		D3D12_CLEAR_VALUE depthClearValue = {};
+		depthClearValue.DepthStencil.Depth = 1.0f;
+		depthClearValue.DepthStencil.Stencil = 0;
+		depthClearValue.Format = dsDesc.Format;
+
+		//creating the default resource heap for the depth stencil
+		ThrowIfFailed(device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
+			D3D12_RESOURCE_STATE_DEPTH_WRITE,
+			&depthClearValue,
+			IID_PPV_ARGS(resource.resource.GetAddressOf())
+		));
+
+		device->CreateDepthStencilView(resource.resource.Get(), &dsDesc, GetCPUHandle(lastResourceIndex));
+
+		resource.resourceType = resourceType;
+		resource.currentState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+		resource.heapOffset = lastResourceIndex;
+	}
+
+	lastResourceIndex++;
 
 }
 

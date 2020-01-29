@@ -31,6 +31,43 @@ Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12Graph
 
 void Mesh::CalculateTangents(std::vector<Vertex>& vertices, std::vector<XMFLOAT3>& position, std::vector<XMFLOAT2>& uvs, unsigned int vertCount)
 {
+	//compute the tangents and bitangents for each triangle
+	for (size_t i = 0; i < vertCount; i += 3)
+	{
+		//getting the position, normal, and uv data for vertex
+		XMFLOAT3 vert1 = vertices[i].Position;
+		XMFLOAT3 vert2 = vertices[i + 1].Position;
+		XMFLOAT3 vert3 = vertices[i + 2].Position;
+
+		XMFLOAT2 uv1 = vertices[i].UV;
+		XMFLOAT2 uv2 = vertices[i + 1].UV;
+		XMFLOAT2 uv3 = vertices[i + 2].UV;
+
+		//finding the two edges of the triangles
+		auto tempEdge = XMLoadFloat3(&vert2) - XMLoadFloat3(&vert1);
+		XMFLOAT3 edge1;
+		XMStoreFloat3(&edge1, tempEdge);
+		tempEdge = XMLoadFloat3(&vert3) - XMLoadFloat3(&vert1);
+		XMFLOAT3 edge2;
+		XMStoreFloat3(&edge2, tempEdge);
+
+		//finding the difference in UVs
+		XMFLOAT2 deltaUV1;
+		XMStoreFloat2(&deltaUV1, XMLoadFloat2(&uv2) - XMLoadFloat2(&uv1));
+		XMFLOAT2 deltaUV2;
+		XMStoreFloat2(&deltaUV2, XMLoadFloat2(&uv3) - XMLoadFloat2(&uv1));
+
+		//calculate the inverse of the delta uv matrix
+		float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
+		//calculating the tangent of the triangle
+		XMFLOAT3 tangent;
+		XMStoreFloat3(&tangent, (XMLoadFloat3(&edge1) * deltaUV2.y - XMLoadFloat3(&edge2) * deltaUV1.y) * r);
+
+		vertices[i].Tangent = tangent;
+		vertices[i + 1].Tangent = tangent;
+		vertices[i + 2].Tangent = tangent;
+
+	}
 }
 
 Mesh::~Mesh()
@@ -227,7 +264,7 @@ void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID
 
 		}
 
-		//CalculateTangents(vertices, positions, uvs, vertCount);
+		CalculateTangents(vertices, positions, uvs, vertCount);
 		points = positions;
 
 		this->numIndices = vertCount;
