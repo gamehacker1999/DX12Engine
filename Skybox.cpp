@@ -3,11 +3,14 @@
 
 Skybox::Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& skyboxPSO,
 	ComPtr<ID3D12RootSignature> skyboxRoot, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue,
-	CD3DX12_CPU_DESCRIPTOR_HANDLE& cbvSRVDescriptorHandle)
+	DescriptorHeapWrapper mainBufferHeap)
 {
-	LoadTexture(device, skyboxTexResource, skyboxTex, commandQueue, TEXTURE_TYPE_DDS);
+	/*LoadTexture(device, skyboxTexResource, skyboxTex, commandQueue, TEXTURE_TYPE_DDS);
 	CreateShaderResourceView(device.Get(), skyboxTexResource.Get(), cbvSRVDescriptorHandle, true);
-	cbvSRVDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	cbvSRVDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));*/
+
+	mainBufferHeap.CreateDescriptor(skyboxTex, skyboxTexResource, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DDS);
+
 	this->skyBoxPSO = skyboxPSO;
 	this->skyboxRootSignature = skyboxRoot;
 	this->skyboxMesh = mesh;

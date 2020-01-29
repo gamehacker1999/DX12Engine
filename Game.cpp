@@ -469,7 +469,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, srvHandle);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
 }
 
 
@@ -560,7 +560,7 @@ void Game::PopulateCommandList()
 	commandList->RSSetScissorRects(1, &scissorRect);
 
 	//setting the constant buffer descriptor table
-	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.Get() };
+	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.GetHeap().Get() };
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	//set the descriptor table 0 as the constant buffer descriptor
