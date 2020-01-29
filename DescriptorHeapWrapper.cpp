@@ -72,7 +72,7 @@ void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResour
 		CreateShaderResourceView(device.Get(), resource.resource.Get(), this->cpuHandle, false);
 
 		resource.resourceType = resourceType;
-		resource.currentState = D3D12_RESOURCE_STATE_GENERIC_READ;
+		resource.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		resource.heapOffset = lastResourceIndex;
 		lastResourceIndex++;
 	}
