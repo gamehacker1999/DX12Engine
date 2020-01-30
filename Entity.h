@@ -82,6 +82,8 @@ public:
 
 	std::shared_ptr<Mesh> GetMesh();
 	UINT GetMaterialIndex();
+	ComPtr<ID3D12PipelineState>& GetPipelineState();
+	ComPtr<ID3D12RootSignature>& GetRootSignature();
 
 	//std::shared_ptr<Material> GetMaterial();
 

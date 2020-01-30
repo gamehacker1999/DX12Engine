@@ -11,6 +11,8 @@ class Material
 	ManagedResource normalTexture;
 	ManagedResource roughnessTexture;
 	ManagedResource metallnessTexture;
+	ComPtr<ID3D12RootSignature> rootSignature;
+	ComPtr<ID3D12PipelineState> pipelineState;
 	UINT materialOffset;
 	UINT materialIndex;
 	UINT diffuseTextureIndex;
@@ -18,9 +20,13 @@ class Material
 	D3D12_SHADER_RESOURCE_VIEW_DESC diffuseSRV;
 
 public:
-	Material(ComPtr<ID3D12Device>& device,ComPtr<ID3D12CommandQueue>& commandQueue,DescriptorHeapWrapper& mainBufferHeap,
-		std::wstring diffuse, std::wstring normal = L"default", std::wstring roughness = L"default", std::wstring metallnes = L"default");
+	Material(ComPtr<ID3D12Device>& device,ComPtr<ID3D12CommandQueue>& commandQueue,DescriptorHeapWrapper& mainBufferHeap, 
+		ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig,
+		std::wstring diffuse, std::wstring normal = L"default", std::wstring roughness = L"default", 
+		std::wstring metallnes = L"default");
 
+	ComPtr<ID3D12RootSignature>& GetRootSignature();
+	ComPtr<ID3D12PipelineState>& GetPipelineState();
 	UINT GetMaterialOffset();
 	UINT GetDiffuseTextureOffset();
 };

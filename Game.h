@@ -101,6 +101,8 @@ private:
 	ComPtr<ID3D12PipelineState> skyboxPSO;
 	std::shared_ptr<Skybox> skybox;
 
+	//pbr pipeline state
+	ComPtr<ID3D12PipelineState> pbrPipelineState;
 
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.

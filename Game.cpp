@@ -68,7 +68,7 @@ HRESULT Game::Init()
 
 		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
-		ThrowIfFailed(mainBufferHeap.Create(device, 4 + 4 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		ThrowIfFailed(mainBufferHeap.Create(device, 4 + 6 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 		//creating the depth stencil heap
 		/*D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
@@ -174,6 +174,99 @@ HRESULT Game::Init()
 void Game::LoadShaders()
 {
 
+	//this describes the type of constant buffer and which register to map the data to
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+	CD3DX12_ROOT_PARAMETER1 rootParams[5]; // specifies the descriptor table
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParams[1].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParams[2].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParams[3].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParams[4].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+
+	CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+	staticSamplers[0].Init(0);
+
+	//rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
+
+
+	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, _countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+	ComPtr<ID3DBlob> signature;
+	ComPtr<ID3DBlob> error;
+
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+		signature.GetAddressOf(), error.GetAddressOf()));
+	//if (FAILED(hr)) return hr;
+
+	ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+		IID_PPV_ARGS(rootSignature.GetAddressOf())));
+
+	//if (FAILED(hr)) return hr;
+	ComPtr<ID3DBlob> vertexShaderBlob;
+	ComPtr<ID3DBlob> pixelShaderBlob;
+	ComPtr<ID3DBlob> pbrPixelShaderBlob;
+	//load shaders
+	ThrowIfFailed(D3DReadFileToBlob(L"VertexShader.cso", vertexShaderBlob.GetAddressOf()));
+	ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", pixelShaderBlob.GetAddressOf()));
+	ThrowIfFailed(D3DReadFileToBlob(L"PixelShaderPBR.cso", pbrPixelShaderBlob.GetAddressOf()));
+
+	//input vertex layout, describes the semantics
+
+	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+
+	};
+
+	//creating a pipeline state object
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+	psoDesc.pRootSignature = rootSignature.Get();
+	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+	////psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	//psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc.Count = 1;
+	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
+
+	//creating a pipeline state object
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDescPBR = {};
+	psoDescPBR.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+	psoDescPBR.pRootSignature = rootSignature.Get();
+	psoDescPBR.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+	psoDescPBR.PS = CD3DX12_SHADER_BYTECODE(pbrPixelShaderBlob.Get());
+	////psoPBRDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	//psoDePBRsc.DepthStencilState.StencilEnable = FALSE;
+	psoDescPBR.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDescPBR.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+	psoDescPBR.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+	psoDescPBR.SampleMask = UINT_MAX;
+	psoDescPBR.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDescPBR.NumRenderTargets = 1;
+	psoDescPBR.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDescPBR.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDescPBR.SampleDesc.Count = 1;
+	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescPBR, IID_PPV_ARGS(pbrPipelineState.GetAddressOf())));
 }
 
 
@@ -250,86 +343,16 @@ void Game::CreateBasicGeometry()
 	mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
 	
 
-		//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-	CD3DX12_ROOT_PARAMETER1 rootParams[5]; // specifies the descriptor table
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
-	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
-	rootParams[1].InitAsConstants(1, 0, 0,D3D12_SHADER_VISIBILITY_VERTEX);
-	rootParams[2].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,D3D12_SHADER_VISIBILITY_PIXEL);
-	rootParams[3].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
-	rootParams[4].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
-	
-	CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
-	staticSamplers[0].Init(0);
-
-	//rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
-
-
-	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
-
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, _countof(staticSamplers), staticSamplers, rootSignatureFlags);
-
-	ComPtr<ID3DBlob> signature;
-	ComPtr<ID3DBlob> error;
-
-	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
-		signature.GetAddressOf(), error.GetAddressOf()));
-	//if (FAILED(hr)) return hr;
-
-	ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
-		IID_PPV_ARGS(rootSignature.GetAddressOf())));
-
-	//if (FAILED(hr)) return hr;
-	ComPtr<ID3DBlob> vertexShaderBlob;
-	ComPtr<ID3DBlob> pixelShaderBlob;
-	//load shaders
-	ThrowIfFailed(D3DReadFileToBlob(L"VertexShader.cso", vertexShaderBlob.GetAddressOf()));
-	ThrowIfFailed(D3DReadFileToBlob(L"PixelShader.cso", pixelShaderBlob.GetAddressOf()));
-
-	//input vertex layout, describes the semantics
-
-	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
-	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-
-	};
-
-	//creating a pipeline state object
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
-	psoDesc.pRootSignature = rootSignature.Get();
-	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
-	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-	////psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
-	//psoDesc.DepthStencilState.StencilEnable = FALSE;
-	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
-	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	psoDesc.SampleDesc.Count = 1;
-	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
-
 	//creating the vertex buffer
 	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 	float aspectRatio = static_cast<float>(width / height);
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
-	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, L"../../Assets/Textures/LayeredDiffuse.png", L"../../Assets/Textures/LayeredNormal.png");
-	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, L"../../Assets/Textures/RocksDiffuse.jpg",L"../../Assets/Textures/RocksNormal.jpg");
+	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, pbrPipelineState,rootSignature,
+		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
+		L"../../Assets/Textures/LayeredRoughness.png",L"../../Assets/Textures/LayeredMetallic.png");
+	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pipelineState, rootSignature,
+		L"../../Assets/Textures/RocksDiffuse.jpg",L"../../Assets/Textures/RocksNormal.jpg");
 
 	materials.emplace_back(material1);
 	materials.emplace_back(material2);
@@ -588,6 +611,8 @@ void Game::PopulateCommandList()
 	{
 		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
 		commandList->SetGraphicsRoot32BitConstant(1, i, 0);
+		commandList->SetGraphicsRootSignature(entities[i]->GetRootSignature().Get());
+		commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
 		commandList->SetGraphicsRoot32BitConstant(4, entities[i]->GetMaterialIndex(), 0);
 		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
 		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();

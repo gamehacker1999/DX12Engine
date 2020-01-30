@@ -170,6 +170,16 @@ UINT Entity::GetMaterialIndex()
 	return this->material->GetDiffuseTextureOffset();
 }
 
+ComPtr<ID3D12PipelineState>& Entity::GetPipelineState()
+{
+	return material->GetPipelineState();
+}
+
+ComPtr<ID3D12RootSignature>& Entity::GetRootSignature()
+{
+	return material->GetRootSignature();
+}
+
 /*std::shared_ptr<Material> Entity::GetMaterial()
 {
 	return material;
