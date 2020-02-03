@@ -180,6 +180,11 @@ ComPtr<ID3D12RootSignature>& Entity::GetRootSignature()
 	return material->GetRootSignature();
 }
 
+DescriptorHeapWrapper& Entity::GetDescriptorHeap()
+{
+	return descriptorHeap;
+}
+
 /*std::shared_ptr<Material> Entity::GetMaterial()
 {
 	return material;
@@ -209,9 +214,13 @@ void Entity::PrepareConstantBuffers(DescriptorHeapWrapper& mainBufferHeap,
 		IID_PPV_ARGS(sceneConstantBufferResource.resource.GetAddressOf())
 	));*/
 
-	mainBufferHeap.CreateDescriptor(sceneConstantBufferResource,RESOURCE_TYPE_CBV,device,sizeof(SceneConstantBuffer));
+	//mainBufferHeap.CreateDescriptor(sceneConstantBufferResource,RESOURCE_TYPE_CBV,device,sizeof(SceneConstantBuffer));
 
 	//mainDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+	ThrowIfFailed(descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+	descriptorHeap.CreateDescriptor(sceneConstantBufferResource, RESOURCE_TYPE_CBV, device, sizeof(SceneConstantBuffer));
 
 	CD3DX12_RANGE range(0, 0);
 

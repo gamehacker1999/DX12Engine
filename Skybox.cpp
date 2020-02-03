@@ -9,7 +9,9 @@ Skybox::Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12
 	CreateShaderResourceView(device.Get(), skyboxTexResource.Get(), cbvSRVDescriptorHandle, true);
 	cbvSRVDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));*/
 
-	mainBufferHeap.CreateDescriptor(skyboxTex, skyboxTexResource, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DDS);
+	ThrowIfFailed(descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+	descriptorHeap.CreateDescriptor(skyboxTex, skyboxTexResource, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DDS);
 
 	this->skyBoxPSO = skyboxPSO;
 	this->skyboxRootSignature = skyboxRoot;
@@ -43,6 +45,11 @@ ComPtr<ID3D12PipelineState>& Skybox::GetPipelineState()
 ComPtr<ID3D12Resource>& Skybox::GetConstantBuffer()
 {
 	return constantBufferResource;
+}
+
+DescriptorHeapWrapper& Skybox::GetDescriptorHeap()
+{
+	return descriptorHeap;
 }
 
 ManagedResource& Skybox::GetSkyboxTexture()

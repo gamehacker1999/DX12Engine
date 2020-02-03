@@ -13,6 +13,7 @@ class Material
 	ManagedResource metallnessTexture;
 	ComPtr<ID3D12RootSignature> rootSignature;
 	ComPtr<ID3D12PipelineState> pipelineState;
+	DescriptorHeapWrapper descriptorHeap;
 	UINT materialOffset;
 	UINT materialIndex;
 	UINT diffuseTextureIndex;
@@ -27,6 +28,7 @@ public:
 
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();
+	DescriptorHeapWrapper& GetDescriptorHeap();
 	UINT GetMaterialOffset();
 	UINT GetDiffuseTextureOffset();
 };

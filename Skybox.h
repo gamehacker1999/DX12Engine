@@ -25,9 +25,9 @@ class Skybox
 	ComPtr<ID3D12RootSignature> skyboxRootSignature;
 	UINT8* constantBufferBegin;
 	ComPtr<ID3D12Resource> constantBufferResource;
+	DescriptorHeapWrapper descriptorHeap;
 	//ManagedResource constantBufferResource;
 	SkyboxData skyboxData;
-
 public:
 	Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& skyboxPSO,
 		ComPtr<ID3D12RootSignature> skyboxRoot, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue,
@@ -36,6 +36,8 @@ public:
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();
 	ComPtr<ID3D12Resource>& GetConstantBuffer();
+	DescriptorHeapWrapper& GetDescriptorHeap();
+
 	ManagedResource& GetSkyboxTexture();
 	std::shared_ptr<Mesh>& GetMesh();
 

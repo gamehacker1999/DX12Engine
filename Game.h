@@ -8,6 +8,7 @@
 #include"CommonStructs.h"
 #include"Material.h"
 #include"Skybox.h"
+#include"GPUHeapRingBuffer.h"
 
 #include <DirectXMath.h>
 
@@ -100,6 +101,9 @@ private:
 	ComPtr<ID3D12RootSignature> skyboxRootSignature;
 	ComPtr<ID3D12PipelineState> skyboxPSO;
 	std::shared_ptr<Skybox> skybox;
+
+	//ring buffer
+	std::shared_ptr<GPUHeapRingBuffer> gpuHeapRingBuffer;
 
 	//pbr pipeline state
 	ComPtr<ID3D12PipelineState> pbrPipelineState;

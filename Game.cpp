@@ -68,7 +68,7 @@ HRESULT Game::Init()
 
 		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
-		ThrowIfFailed(mainBufferHeap.Create(device, 4 + 6 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		//ThrowIfFailed(mainBufferHeap.Create(device, 4 + 6 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 		//creating the depth stencil heap
 		/*D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
@@ -157,6 +157,15 @@ HRESULT Game::Init()
 	CreateMatrices();
 	CreateBasicGeometry();
 	CreateEnvironment();
+
+	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>(device);
+
+	for (size_t i = 0; i < materials.size(); i++)
+	{
+		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, materials[i]->GetDescriptorHeap());
+	}
+
+	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
 
 	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 0.f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
 
@@ -349,7 +358,7 @@ void Game::CreateBasicGeometry()
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
 	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, pbrPipelineState,rootSignature,
-		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
+		L"../../Assets/Textures/LayeredDiffuse.png", L"../../Assets/Textures/LayeredNormal.png",
 		L"../../Assets/Textures/LayeredRoughness.png",L"../../Assets/Textures/LayeredMetallic.png");
 	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pipelineState, rootSignature,
 		L"../../Assets/Textures/RocksDiffuse.jpg",L"../../Assets/Textures/RocksNormal.jpg");

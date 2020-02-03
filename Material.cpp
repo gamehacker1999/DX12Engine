@@ -7,6 +7,8 @@ Material::Material(ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& com
 	std::wstring metallnes)
 {
 
+	ThrowIfFailed(descriptorHeap.Create(device, 4, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
 	this->rootSignature = rootSig;
 	this->pipelineState = pipelineState;
 
@@ -14,7 +16,7 @@ Material::Material(ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& com
 	numTextures = 0;
 	/*LoadTexture(device, diffuseTexture.resource, diffuse, commandQueue,TEXTURE_TYPE_DEAULT);
 	CreateShaderResourceView(device.Get(), diffuseTexture.resource.Get(), srvHandle);*/
-	mainBufferHeap.CreateDescriptor(diffuse,diffuseTexture,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DEAULT);
+	descriptorHeap.CreateDescriptor(diffuse,diffuseTexture,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DEAULT);
 	diffuseTextureIndex = diffuseTexture.heapOffset;
 	materialOffset = diffuseTexture.heapOffset;
 	//materialIndex = index;
@@ -22,21 +24,21 @@ Material::Material(ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& com
 
 	if (normal != L"default")
 	{
-		mainBufferHeap.CreateDescriptor(normal, normalTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(normal, normalTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
 		materialOffset = normalTexture.heapOffset;
 		numTextures++;
 	}
 
 	if (roughness != L"default")
 	{
-		mainBufferHeap.CreateDescriptor(roughness, roughnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(roughness, roughnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
 		materialOffset = roughnessTexture.heapOffset;
 		numTextures++;
 	}
 
 	if (metallnes != L"default")
 	{
-		mainBufferHeap.CreateDescriptor(metallnes, metallnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(metallnes, metallnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
 		materialOffset = metallnessTexture.heapOffset;
 		numTextures++;
 	}
@@ -53,6 +55,11 @@ ComPtr<ID3D12RootSignature>& Material::GetRootSignature()
 ComPtr<ID3D12PipelineState>& Material::GetPipelineState()
 {
 	return pipelineState;
+}
+
+DescriptorHeapWrapper& Material::GetDescriptorHeap()
+{
+	return descriptorHeap;
 }
 
 UINT Material::GetMaterialOffset()

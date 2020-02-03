@@ -26,6 +26,11 @@ HRESULT DescriptorHeapWrapper::Create(ComPtr<ID3D12Device>& device, UINT numDesc
 	return S_OK;
 }
 
+D3D12_DESCRIPTOR_HEAP_TYPE DescriptorHeapWrapper::GetDescriptorHeapType()
+{
+	return heapType;
+}
+
 ComPtr<ID3D12DescriptorHeap>& DescriptorHeapWrapper::GetHeap()
 {
 	return descriptorHeap;

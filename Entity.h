@@ -49,6 +49,9 @@ protected:
 	//std::shared_ptr<RigidBody> body;
 	bool useRigidBody;
 
+	//descriptor heap
+	DescriptorHeapWrapper descriptorHeap;
+
 public:
 	//constructor which accepts a mesh
 	Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& material);
@@ -84,6 +87,8 @@ public:
 	UINT GetMaterialIndex();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
+
+	DescriptorHeapWrapper& GetDescriptorHeap();
 
 	//std::shared_ptr<Material> GetMaterial();
 
