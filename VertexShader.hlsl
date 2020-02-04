@@ -18,7 +18,7 @@ struct Index
 };
 
 ConstantBuffer<Index> entityIndex: register(b0);
-ConstantBuffer<SceneConstantBuffer> sceneData[]: register(b0, space1);
+ConstantBuffer<SceneConstantBuffer> sceneData: register(b1);
 
 struct VertexShaderInput
 {
@@ -45,12 +45,12 @@ VertexToPixel main(VertexShaderInput input)
 
 	VertexToPixel output;
 
-	matrix worldViewProj = mul(sceneData[entityIndex.index].world, mul(sceneData[entityIndex.index].view, sceneData[entityIndex.index].projection));
+	matrix worldViewProj = mul(sceneData.world, mul(sceneData.view, sceneData.projection));
 	output.position = mul(float4(input.position, 1.0), worldViewProj);
-	output.normal = mul(input.normal, (float3x3)sceneData[entityIndex.index].world);
-	output.tangent = mul(input.tangent, (float3x3)sceneData[entityIndex.index].world);
+	output.normal = mul(input.normal, (float3x3)sceneData.world);
+	output.tangent = mul(input.tangent, (float3x3)sceneData.world);
 	output.uv = input.uv;
 	output.color = float4(input.normal, 1);
-	output.worldPosition = mul(float4(input.position, 1.0f), sceneData[entityIndex.index].world).xyz;
+	output.worldPosition = mul(float4(input.position, 1.0f), sceneData.world).xyz;
 	return output;
 }

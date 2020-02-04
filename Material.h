@@ -15,7 +15,6 @@ class Material
 	ComPtr<ID3D12PipelineState> pipelineState;
 	DescriptorHeapWrapper descriptorHeap;
 	UINT materialOffset;
-	UINT materialIndex;
 	UINT diffuseTextureIndex;
 	UINT numTextures;
 	D3D12_SHADER_RESOURCE_VIEW_DESC diffuseSRV;
@@ -31,5 +30,7 @@ public:
 	DescriptorHeapWrapper& GetDescriptorHeap();
 	UINT GetMaterialOffset();
 	UINT GetDiffuseTextureOffset();
+
+	UINT materialIndex;
 };
 

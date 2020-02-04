@@ -186,7 +186,7 @@ void Game::LoadShaders()
 	//this describes the type of constant buffer and which register to map the data to
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
 	CD3DX12_ROOT_PARAMETER1 rootParams[5]; // specifies the descriptor table
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[1].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
@@ -366,6 +366,7 @@ void Game::CreateBasicGeometry()
 	materials.emplace_back(material1);
 	materials.emplace_back(material2);
 
+
 	entity1 = std::make_shared<Entity>(mesh1,material1);
 	entity2 = std::make_shared<Entity>(mesh1,material1);
 	entity3 = std::make_shared<Entity>(mesh1,material2);
@@ -510,7 +511,7 @@ void Game::CreateEnvironment()
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 
-	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.GetHeap().Get() };
+	/*ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.GetHeap().Get() };
 	skyboxBundle->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 	skyboxBundle->SetPipelineState(skybox->GetPipelineState().Get());
 	skyboxBundle->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
@@ -519,7 +520,7 @@ void Game::CreateEnvironment()
 	skyboxBundle->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
 	skyboxBundle->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
 	skyboxBundle->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-	ThrowIfFailed(skyboxBundle->Close());
+	ThrowIfFailed(skyboxBundle->Close());*/
 
 }
 
@@ -611,14 +612,15 @@ void Game::PopulateCommandList()
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = mainBufferHeap.GetGPUHandle(0);//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetBeginningStaticResourceOffset();//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
 	commandList->SetGraphicsRootDescriptorTable(3, gpuCBVSRVUAVHandle);
-	gpuCBVSRVUAVHandle.Offset(mainBufferHeap.GetDescriptorIncrementSize()*materials[materials.size()-1]->GetMaterialOffset());
-	commandList->SetGraphicsRootDescriptorTable(0, gpuCBVSRVUAVHandle);
+	//gpuCBVSRVUAVHandle.Offset(gpuHeapRingBuffer->GetBeginningStaticResourceOffset());
+	commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetStaticDescriptorOffset());
 
 	/**/for (UINT i = 0; i < entities.size(); i++)
 	{
 		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+		gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
 		commandList->SetGraphicsRoot32BitConstant(1, i, 0);
 		commandList->SetGraphicsRootSignature(entities[i]->GetRootSignature().Get());
 		commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
@@ -636,7 +638,7 @@ void Game::PopulateCommandList()
 	//drawing the skybox
 	//gpuCBVSRVUAVHandle.Offset((INT)entities.size() * cbvDescriptorSize);
 
-	skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
+	//skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
 	/*commandList->SetPipelineState(skybox->GetPipelineState().Get());
 	commandList->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
 	commandList->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
@@ -645,7 +647,7 @@ void Game::PopulateCommandList()
 	commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
 	commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
 
-	commandList->ExecuteBundle(skyboxBundle.Get());
+	//commandList->ExecuteBundle(skyboxBundle.Get());
 
 	//back buffer will now be used to present
 
