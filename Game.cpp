@@ -31,6 +31,8 @@ Game::Game(HINSTANCE hInstance)
 	constantBufferBegin = nullptr;
 	lightCbufferBegin = 0;
 
+	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
+
 }
 
 Game::~Game()
@@ -95,6 +97,9 @@ HRESULT Game::Init()
 			if (FAILED(hr)) return hr;
 			device->CreateRenderTargetView(renderTargets[n].resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(n));
 			//rtvHandle.Offset(1, rtvDescriptorSize);
+
+			hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocators[n])));
+			if (FAILED(hr)) return hr;
 		}
 
 	}
@@ -126,11 +131,10 @@ HRESULT Game::Init()
 
 	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer, RESOURCE_TYPE_DSV, device, 0, width, height);
 
-	hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)));
-	if (FAILED(hr)) return hr;
+
 
 	//create command list
-	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator.Get(), pipelineState.Get(),
+	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[frameIndex].Get(), pipelineState.Get(),
 		IID_PPV_ARGS(commandList.GetAddressOf())));
 
 	//creating the skybox bundle
@@ -142,7 +146,7 @@ HRESULT Game::Init()
 	
 	//create synchronization object and wait till the objects have been passed to the gpu
 	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
-	fenceValue = 1;
+	fenceValues[frameIndex]++;
 	//fence event handle for synchronization
 	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 
@@ -595,13 +599,13 @@ void Game::Draw(float deltaTime, float totalTime)
 	//present the frame
 	ThrowIfFailed(swapChain->Present(1, 0));
 
-	WaitForPreviousFrame();
+	MoveToNextFrame();
 }
 
 void Game::PopulateCommandList()
 {
-	ThrowIfFailed(commandAllocator->Reset());
-	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), pipelineState.Get()));
+	ThrowIfFailed(commandAllocators[frameIndex]->Reset());
+	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 
 	//set necessary state
 	commandList->SetGraphicsRootSignature(rootSignature.Get());
@@ -682,19 +686,38 @@ void Game::PopulateCommandList()
 void Game::WaitForPreviousFrame()
 {
 	//signal and increment the fence
-	const UINT64 pfence = fenceValue;
-	ThrowIfFailed(commandQueue->Signal(fence.Get(),pfence));
-	fenceValue++;
+	//const UINT64 pfence = fenceValue;
+	ThrowIfFailed(commandQueue->Signal(fence.Get(),fenceValues[frameIndex]));
+	//fenceValue++;
 
 	//wait until the previous frame is finished
-	if (fence->GetCompletedValue() < pfence)
-	{
-		ThrowIfFailed(fence->SetEventOnCompletion(pfence, fenceEvent));
-		WaitForSingleObject(fenceEvent, INFINITE);
-	}
+	//if (fence->GetCompletedValue() < pfence)
+	//{
+		ThrowIfFailed(fence->SetEventOnCompletion(fenceValues[frameIndex], fenceEvent));
+		WaitForSingleObjectEx(fenceEvent, INFINITE,false);
+	//}
 	
 	//WaitToFlushGPU(commandQueue,fence,fenceValue,fenceEvent);
+	//frameIndex = swapChain->GetCurrentBackBufferIndex();
+	fenceValues[frameIndex]++;
+}
+
+void Game::MoveToNextFrame()
+{
+	const UINT64 currentFenceValues = fenceValues[frameIndex];
+	ThrowIfFailed(commandQueue->Signal(fence.Get(), currentFenceValues));
+
 	frameIndex = swapChain->GetCurrentBackBufferIndex();
+
+	//if the frame is not ready to be rendered yet then wait for it to be ready
+	if (fence->GetCompletedValue() < fenceValues[frameIndex])
+	{
+		ThrowIfFailed(fence->SetEventOnCompletion(fenceValues[frameIndex], fenceEvent));
+		WaitForSingleObjectEx(fenceEvent, INFINITE, false);
+	}
+
+	//set the fence value of the next frame
+	fenceValues[frameIndex] = currentFenceValues + 1;
 }
 
 

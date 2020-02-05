@@ -34,6 +34,7 @@ public:
 	void Draw(float deltaTime, float totalTime);
 	void PopulateCommandList();
 	void WaitForPreviousFrame();
+	void MoveToNextFrame();
 
 	// Overridden mouse input helper methods
 	void OnMouseDown(WPARAM buttonState, int x, int y);

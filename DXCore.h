@@ -52,6 +52,7 @@ public:
 	virtual void Draw(float deltaTime, float totalTime) = 0;
 	virtual void PopulateCommandList() =0;
 	virtual void WaitForPreviousFrame()=0;
+	virtual void MoveToNextFrame() = 0;
 
 	// Convenience methods for handling mouse input, since we
 	// can easily grab mouse input from OS-level messages
@@ -70,7 +71,7 @@ protected:
 	unsigned int width;
 	unsigned int height;
 
-	static const int frameCount = 2;
+	static const int frameCount = 3;
 	//pipeline objects
 	ComPtr<ID3D12Device> device;
 	D3D12_VIEWPORT viewport;
@@ -78,7 +79,7 @@ protected:
 	ComPtr<IDXGISwapChain3> swapChain;
 	//ComPtr<ID3D12Resource> renderTargets[2];
 	ManagedResource renderTargets[frameCount];
-	ComPtr<ID3D12CommandAllocator> commandAllocator;
+	ComPtr<ID3D12CommandAllocator> commandAllocators[frameCount];
 	ComPtr<ID3D12CommandQueue> commandQueue;
 	ComPtr<ID3D12RootSignature> rootSignature;
 	//ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
@@ -91,7 +92,7 @@ protected:
 	UINT frameIndex;
 	HANDLE fenceEvent;
 	ComPtr<ID3D12Fence> fence;
-	UINT64 fenceValue;
+	UINT64 fenceValues[frameCount];
 
 	void CreateConsoleWindow(int bufferLines, int bufferColumns, int windowLines, int windowColumns);
 
