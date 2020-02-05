@@ -221,6 +221,11 @@ void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device>& device)
 
 	descriptorHeap.CreateDescriptor(sceneConstantBufferResource, RESOURCE_TYPE_CBV, device, sizeof(SceneConstantBuffer));
 
+	managedCBV.Initialize(sceneConstantBufferResource.resource.Get(), sizeof(SceneConstantBuffer));
+
+	//residencyManager.BeginTrackingObject(&managedCBV);
+	//residencySet->Insert(&managedCBV);
+
 	CD3DX12_RANGE range(0, 0);
 
 	ZeroMemory(&constantBufferData, sizeof(constantBufferData));

@@ -77,6 +77,7 @@ protected:
 	D3D12_VIEWPORT viewport;
 	D3D12_RECT scissorRect;
 	ComPtr<IDXGISwapChain3> swapChain;
+	ComPtr<IDXGIAdapter3> adapter;
 	//ComPtr<ID3D12Resource> renderTargets[2];
 	ManagedResource renderTargets[frameCount];
 	ComPtr<ID3D12CommandAllocator> commandAllocators[frameCount];

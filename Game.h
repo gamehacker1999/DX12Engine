@@ -109,6 +109,10 @@ private:
 	//pbr pipeline state
 	ComPtr<ID3D12PipelineState> pbrPipelineState;
 
+	//managing the residency
+	D3DX12Residency::ResidencyManager residencyManager;
+	D3DX12Residency::ResidencySet residencySet;
+
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.
 	POINT prevMousePos;

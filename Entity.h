@@ -38,6 +38,8 @@ protected:
 
 	std::shared_ptr<Material> material; //material of this entity
 
+	D3DX12Residency::ManagedObject managedCBV;
+
 	std::string tag;
 
 	//ComPtr<ID3D12Resource> sceneConstantBufferResource;

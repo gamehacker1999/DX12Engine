@@ -40,6 +40,9 @@ Game::~Game()
 	WaitForPreviousFrame();
 
 	CloseHandle(fenceEvent);
+	//residencyManager.Destroy();
+	
+	//residencyManager->DestroyResidencySet(residencySet.get());
 }
 
 // --------------------------------------------------------
@@ -53,7 +56,11 @@ HRESULT Game::Init()
 
 	HRESULT hr;
 
-	
+	//residencyManager = std::make_shared<D3DX12Residency::ResidencyManager>();
+	//residencyManager.Initialize(device.Get(), 0, adapter.Get(), frameCount);
+	//residencySet = std::shared_ptr<D3DX12Residency::ResidencySet>(residencyManager.CreateResidencySet());
+
+	//residencySet->Open();
 
 	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer));
 	// Create descriptor heaps.
@@ -82,7 +89,6 @@ HRESULT Game::Init()
 		if (FAILED(hr)) return hr;*/
 
 		ThrowIfFailed(dsDescriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
-
 
 	}
 
@@ -190,6 +196,7 @@ HRESULT Game::Init()
 
 	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
 
+	//residencySet->Close();
 
 	WaitForPreviousFrame();
 
@@ -594,8 +601,9 @@ void Game::Draw(float deltaTime, float totalTime)
 
 	//execute the commanf list
 	ID3D12CommandList* pcommandLists[] = { commandList.Get() };
+	D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
 	commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
-
+	//residencyManager.ExecuteCommandLists(commandQueue.Get(), pcommandLists, ppSets, 1);
 	//present the frame
 	ThrowIfFailed(swapChain->Present(1, 0));
 
@@ -607,6 +615,8 @@ void Game::PopulateCommandList()
 	ThrowIfFailed(commandAllocators[frameIndex]->Reset());
 	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 
+	//residencySet->Open();
+
 	//set necessary state
 	commandList->SetGraphicsRootSignature(rootSignature.Get());
 	commandList->RSSetViewports(1, &viewport);
@@ -614,6 +624,7 @@ void Game::PopulateCommandList()
 
 	//setting the constant buffer descriptor table
 	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get()};
+
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	//indicate that the back buffer is the render target
@@ -681,6 +692,7 @@ void Game::PopulateCommandList()
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 	commandList->Close();
+	//residencySet->Close();
 }
 
 void Game::WaitForPreviousFrame()

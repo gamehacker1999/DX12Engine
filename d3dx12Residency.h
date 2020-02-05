@@ -8,12 +8,12 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-
-#pragma once
+#include"DX12Helper.h"
 #include<Windows.h>
+#include<new>
 #include<d3d12.h>
 #include<dxgi1_6.h>
-#include<new>
+#pragma once
 namespace D3DX12Residency
 {
     __declspec(selectany) INT64 g_ResidencyManagerUniqueID = 0;

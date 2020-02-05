@@ -203,14 +203,15 @@ HRESULT DXCore::InitDirectX()
 
 	{
 		ComPtr<IDXGIAdapter1> hardwareAdapter;
-		//GetHardwareAdapter(factory.Get(), &hardwareAdapter);
+		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
 
 		hr = D3D12CreateDevice(
-			0,
+			hardwareAdapter.Get(),
 			D3D_FEATURE_LEVEL_11_0,
 			IID_PPV_ARGS(&device)
 		);
 
+		ThrowIfFailed(hardwareAdapter.As(&adapter));
 		if (FAILED(hr)) return hr;
 	}
 
