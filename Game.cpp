@@ -163,9 +163,24 @@ HRESULT Game::Init()
 	for (size_t i = 0; i < materials.size(); i++)
 	{
 		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, materials[i]->GetDescriptorHeap());
+		materials[i]->materialIndex = (UINT)i*4;
 	}
 
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
+	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources()-1;
+
+	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get() };
+	//skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
+	skyboxBundle->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	skyboxBundle->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	/**/skyboxBundle->SetPipelineState(skybox->GetPipelineState().Get());
+	skyboxBundle->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
+	skyboxBundle->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
+	skyboxBundle->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->skyboxTextureIndex));
+	skyboxBundle->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
+	skyboxBundle->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
+	skyboxBundle->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+	skyboxBundle->Close();
 
 	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 0.f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
 
@@ -186,7 +201,7 @@ void Game::LoadShaders()
 	//this describes the type of constant buffer and which register to map the data to
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
 	CD3DX12_ROOT_PARAMETER1 rootParams[5]; // specifies the descriptor table
-	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[1].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
@@ -379,16 +394,20 @@ void Game::CreateBasicGeometry()
 	entity4->SetPosition(XMFLOAT3(-4, 0, 1.f));
 
 
-	entity1->PrepareConstantBuffers(mainBufferHeap, device);
-	entity2->PrepareConstantBuffers(mainBufferHeap, device);
-	entity3->PrepareConstantBuffers(mainBufferHeap, device);
-	entity4->PrepareConstantBuffers(mainBufferHeap, device);
+	entity1->PrepareConstantBuffers(device);
+	entity2->PrepareConstantBuffers(device);
+	entity3->PrepareConstantBuffers(device);
+	entity4->PrepareConstantBuffers(device);
 
 
 	entities.emplace_back(entity1);
 	entities.emplace_back(entity2);
 	entities.emplace_back(entity3);
 	entities.emplace_back(entity4);
+	entities.emplace_back(std::make_shared<Entity>(mesh3, material2));
+
+	entities[entities.size() - 1]->SetPosition(XMFLOAT3(0, 2, 0));
+	entities[entities.size() - 1]->PrepareConstantBuffers(device);
 
 
 	//copying the data from upload heaps to default heaps
@@ -590,7 +609,7 @@ void Game::PopulateCommandList()
 	commandList->RSSetScissorRects(1, &scissorRect);
 
 	//setting the constant buffer descriptor table
-	ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.GetHeap().Get() };
+	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get()};
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	//indicate that the back buffer is the render target
@@ -615,12 +634,14 @@ void Game::PopulateCommandList()
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetBeginningStaticResourceOffset();//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
 	commandList->SetGraphicsRootDescriptorTable(3, gpuCBVSRVUAVHandle);
 	//gpuCBVSRVUAVHandle.Offset(gpuHeapRingBuffer->GetBeginningStaticResourceOffset());
-	commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetStaticDescriptorOffset());
+	gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetStaticDescriptorOffset();
+	//commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetStaticDescriptorOffset());
 
 	/**/for (UINT i = 0; i < entities.size(); i++)
 	{
 		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
 		gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
+		commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetDynamicResourceOffset());
 		commandList->SetGraphicsRoot32BitConstant(1, i, 0);
 		commandList->SetGraphicsRootSignature(entities[i]->GetRootSignature().Get());
 		commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
@@ -638,16 +659,16 @@ void Game::PopulateCommandList()
 	//drawing the skybox
 	//gpuCBVSRVUAVHandle.Offset((INT)entities.size() * cbvDescriptorSize);
 
-	//skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
+	skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
 	/*commandList->SetPipelineState(skybox->GetPipelineState().Get());
 	commandList->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
 	commandList->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
-	commandList->SetGraphicsRootDescriptorTable(1, mainBufferHeap.GetGPUHandle(skybox->GetSkyboxTexture().heapOffset));
+	commandList->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->skyboxTextureIndex));
 	commandList->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
 	commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
 	commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
 
-	//commandList->ExecuteBundle(skyboxBundle.Get());
+	commandList->ExecuteBundle(skyboxBundle.Get());
 
 	//back buffer will now be used to present
 

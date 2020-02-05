@@ -2,12 +2,12 @@
 
 GPUHeapRingBuffer::GPUHeapRingBuffer(ComPtr<ID3D12Device>& device)
 {
-	maxDesc = 1000000;
+	maxDesc = 10000;
 	//creating the descriptor heap that will be used like a ring buffer
 	ThrowIfFailed(descriptorHeap.Create(device, maxDesc, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	head = 10000;
-	tail = 10000;
-	locationLastStaticResource = 9999;
+	head = 1000;
+	tail = 1000;
+	locationLastStaticResource = 999;
 	numStaticResources = 0;
 }
 
@@ -40,7 +40,7 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE GPUHeapRingBuffer::GetStaticDescriptorOffset()
 
 CD3DX12_GPU_DESCRIPTOR_HANDLE GPUHeapRingBuffer::GetDynamicResourceOffset()
 {
-	auto handle = descriptorHeap.GetGPUHandle(head+1);
+	auto handle = descriptorHeap.GetGPUHandle((head));
 
 	head++;
 	if (head >= maxDesc) head = locationLastStaticResource+1;
@@ -51,6 +51,16 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE GPUHeapRingBuffer::GetDynamicResourceOffset()
 CD3DX12_GPU_DESCRIPTOR_HANDLE GPUHeapRingBuffer::GetBeginningStaticResourceOffset()
 {
 	return descriptorHeap.GetGPUHandle(0);
+}
+
+DescriptorHeapWrapper& GPUHeapRingBuffer::GetDescriptorHeap()
+{
+	return descriptorHeap;
+}
+
+UINT GPUHeapRingBuffer::GetNumStaticResources()
+{
+	return numStaticResources;
 }
 
 void GPUHeapRingBuffer::EndRender()

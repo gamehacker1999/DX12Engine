@@ -28,6 +28,9 @@ class Skybox
 	DescriptorHeapWrapper descriptorHeap;
 	//ManagedResource constantBufferResource;
 	SkyboxData skyboxData;
+
+	//skybox index in the ring buffer
+	
 public:
 	Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& skyboxPSO,
 		ComPtr<ID3D12RootSignature> skyboxRoot, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue,
@@ -42,5 +45,7 @@ public:
 	std::shared_ptr<Mesh>& GetMesh();
 
 	void PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition);
+
+	UINT skyboxTextureIndex;
 };
 

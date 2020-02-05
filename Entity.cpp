@@ -167,7 +167,7 @@ std::shared_ptr<Mesh> Entity::GetMesh()
 
 UINT Entity::GetMaterialIndex()
 {
-	return this->material->GetDiffuseTextureOffset();
+	return this->material->materialIndex;
 }
 
 ComPtr<ID3D12PipelineState>& Entity::GetPipelineState()
@@ -200,8 +200,7 @@ DescriptorHeapWrapper& Entity::GetDescriptorHeap()
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 }
 
-void Entity::PrepareConstantBuffers(DescriptorHeapWrapper& mainBufferHeap,
-	ComPtr<ID3D12Device>& device)
+void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device>& device)
 {
 
 	//creating the constant buffer view

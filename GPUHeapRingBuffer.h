@@ -27,6 +27,10 @@ public:
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE GetBeginningStaticResourceOffset();
 
+	DescriptorHeapWrapper& GetDescriptorHeap();
+
+	UINT GetNumStaticResources();
+
 	void EndRender();
 };
 
