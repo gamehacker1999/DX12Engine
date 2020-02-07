@@ -802,6 +802,8 @@ namespace D3DX12Residency
                     Internal::RemoveHeadList(&QueueFencesListHead);
                     delete(pObject);
                 }
+
+                delete[] AsyncWorkQueue;
             }
 
             void BeginTrackingObject(ManagedObject* pObject)
@@ -978,6 +980,7 @@ namespace D3DX12Residency
                 if (Count > 1 && TotalSizeNeeded > LocalMemory.Budget + NonLocalMemory.Budget)
                 {
                     delete(pMasterSet);
+                    pMasterSet = nullptr;
 
                     // Recursively try to find a small enough set to fit in memory
                     const UINT32 Half = Count / 2;
@@ -1019,6 +1022,9 @@ namespace D3DX12Residency
                         hr = SignalFence(Queue, QueueFence);
                     }
                 }
+
+                //if (pMasterSet!=nullptr) delete(pMasterSet);
+
                 return hr;
             }
 

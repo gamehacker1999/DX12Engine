@@ -200,7 +200,8 @@ DescriptorHeapWrapper& Entity::GetDescriptorHeap()
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 }
 
-void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device>& device)
+void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device>& device, D3DX12Residency::ResidencyManager resManager,
+	std::shared_ptr<D3DX12Residency::ResidencySet>& residencySet)
 {
 
 	//creating the constant buffer view
@@ -223,8 +224,8 @@ void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device>& device)
 
 	managedCBV.Initialize(sceneConstantBufferResource.resource.Get(), sizeof(SceneConstantBuffer));
 
-	//residencyManager.BeginTrackingObject(&managedCBV);
-	//residencySet->Insert(&managedCBV);
+	resManager.BeginTrackingObject(&managedCBV);
+	residencySet->Insert(&managedCBV);
 
 	CD3DX12_RANGE range(0, 0);
 

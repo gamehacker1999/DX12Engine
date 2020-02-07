@@ -111,7 +111,7 @@ private:
 
 	//managing the residency
 	D3DX12Residency::ResidencyManager residencyManager;
-	D3DX12Residency::ResidencySet residencySet;
+	std::shared_ptr<D3DX12Residency::ResidencySet> residencySet;
 
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.

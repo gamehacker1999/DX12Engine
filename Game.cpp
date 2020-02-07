@@ -40,9 +40,9 @@ Game::~Game()
 	WaitForPreviousFrame();
 
 	CloseHandle(fenceEvent);
-	//residencyManager.Destroy();
+	residencyManager.Destroy();
 	
-	//residencyManager->DestroyResidencySet(residencySet.get());
+	//residencyManager.DestroyResidencySet(residencySet.get());
 }
 
 // --------------------------------------------------------
@@ -57,10 +57,10 @@ HRESULT Game::Init()
 	HRESULT hr;
 
 	//residencyManager = std::make_shared<D3DX12Residency::ResidencyManager>();
-	//residencyManager.Initialize(device.Get(), 0, adapter.Get(), frameCount);
-	//residencySet = std::shared_ptr<D3DX12Residency::ResidencySet>(residencyManager.CreateResidencySet());
+	residencyManager.Initialize(device.Get(), 0, adapter.Get(), frameCount);
+	residencySet = std::shared_ptr<D3DX12Residency::ResidencySet>(residencyManager.CreateResidencySet());
 
-	//residencySet->Open();
+	residencySet->Open();
 
 	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer));
 	// Create descriptor heaps.
@@ -196,7 +196,7 @@ HRESULT Game::Init()
 
 	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
 
-	//residencySet->Close();
+	residencySet->Close();
 
 	WaitForPreviousFrame();
 
@@ -405,10 +405,10 @@ void Game::CreateBasicGeometry()
 	entity4->SetPosition(XMFLOAT3(-4, 0, 1.f));
 
 
-	entity1->PrepareConstantBuffers(device);
-	entity2->PrepareConstantBuffers(device);
-	entity3->PrepareConstantBuffers(device);
-	entity4->PrepareConstantBuffers(device);
+	entity1->PrepareConstantBuffers(device,residencyManager,residencySet);
+	entity2->PrepareConstantBuffers(device,residencyManager,residencySet);
+	entity3->PrepareConstantBuffers(device,residencyManager,residencySet);
+	entity4->PrepareConstantBuffers(device,residencyManager,residencySet);
 
 
 	entities.emplace_back(entity1);
@@ -418,7 +418,7 @@ void Game::CreateBasicGeometry()
 	entities.emplace_back(std::make_shared<Entity>(mesh3, material2));
 
 	entities[entities.size() - 1]->SetPosition(XMFLOAT3(0, 2, 0));
-	entities[entities.size() - 1]->PrepareConstantBuffers(device);
+	entities[entities.size() - 1]->PrepareConstantBuffers(device,residencyManager,residencySet);
 
 
 	//copying the data from upload heaps to default heaps
@@ -602,8 +602,8 @@ void Game::Draw(float deltaTime, float totalTime)
 	//execute the commanf list
 	ID3D12CommandList* pcommandLists[] = { commandList.Get() };
 	D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
-	commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
-	//residencyManager.ExecuteCommandLists(commandQueue.Get(), pcommandLists, ppSets, 1);
+	//commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+	residencyManager.ExecuteCommandLists(commandQueue.Get(), pcommandLists, ppSets, 1);
 	//present the frame
 	ThrowIfFailed(swapChain->Present(1, 0));
 
@@ -615,7 +615,7 @@ void Game::PopulateCommandList()
 	ThrowIfFailed(commandAllocators[frameIndex]->Reset());
 	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 
-	//residencySet->Open();
+	residencySet->Open();
 
 	//set necessary state
 	commandList->SetGraphicsRootSignature(rootSignature.Get());
@@ -692,7 +692,7 @@ void Game::PopulateCommandList()
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 	commandList->Close();
-	//residencySet->Close();
+	residencySet->Close();
 }
 
 void Game::WaitForPreviousFrame()
