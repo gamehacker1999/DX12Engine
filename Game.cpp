@@ -602,8 +602,8 @@ void Game::Draw(float deltaTime, float totalTime)
 	//execute the commanf list
 	ID3D12CommandList* pcommandLists[] = { commandList.Get() };
 	D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
-	//commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
-	residencyManager.ExecuteCommandLists(commandQueue.Get(), pcommandLists, ppSets, 1);
+	commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+	//residencyManager.ExecuteCommandLists(commandQueue.Get(), pcommandLists, ppSets, 1);
 	//present the frame
 	ThrowIfFailed(swapChain->Present(1, 0));
 
