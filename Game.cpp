@@ -30,6 +30,7 @@ Game::Game(HINSTANCE hInstance)
 #endif
 	constantBufferBegin = nullptr;
 	lightCbufferBegin = 0;
+	
 
 	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
 
@@ -168,6 +169,8 @@ HRESULT Game::Init()
 	CreateBasicGeometry();
 	CreateEnvironment();
 
+	//allocate volumes and skyboxes here
+
 	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>(device);
 
 	for (size_t i = 0; i < materials.size(); i++)
@@ -302,6 +305,12 @@ void Game::LoadShaders()
 	psoDescPBR.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	psoDescPBR.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescPBR, IID_PPV_ARGS(pbrPipelineState.GetAddressOf())));
+
+	//creatin a root signature for the volume data
+	//this describes the type of constant buffer and which register to map the data to
+	CD3DX12_DESCRIPTOR_RANGE1 rangesVolume[2];
+	CD3DX12_ROOT_PARAMETER1 rootParamsVolume[5];
+	rootParamsVolume[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
 }
 
 
@@ -370,7 +379,6 @@ void Game::CreateBasicGeometry()
 
 	lightConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCbufferBegin));
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
-
 
 	UINT64 cbufferOffset = 0;
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
@@ -586,6 +594,13 @@ void Game::Update(float deltaTime, float totalTime)
 
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
+
+	volData.cameraPosition = mainCamera->GetPosition();
+	volData.focalLength = 1.f / tan(0.25f * 3.1415926535f / 2.f);
+	XMStoreFloat4x4(&volData.model, XMMatrixIdentity());
+	volData.view = mainCamera->GetViewMatrix();
+
+	memcpy(volumeBufferBegin, &volData, sizeof(volData));
 
 }
 

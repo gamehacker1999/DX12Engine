@@ -109,9 +109,6 @@ private:
 	//pbr pipeline state
 	ComPtr<ID3D12PipelineState> pbrPipelineState;
 
-	ComPtr<ID3D12PipelineState> volumeRenderPipelineState;
-	ComPtr<ID3D12RootSignature> volumeRenderRootSignature;
-
 	//managing the residency
 	D3DX12Residency::ResidencyManager residencyManager;
 	std::shared_ptr<D3DX12Residency::ResidencySet> residencySet;

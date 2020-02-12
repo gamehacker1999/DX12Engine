@@ -146,6 +146,9 @@
     <FxCompile Include="PixelShaderPBR.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="VolumeRayMarcherPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
