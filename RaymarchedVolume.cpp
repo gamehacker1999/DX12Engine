@@ -17,14 +17,64 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 
 	volumeDataResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&volumeBufferBegin));
-	memcpy(volumeBufferBegin, &volData, sizeof(volData));
+	memcpy(volumeBufferBegin, &volumeData, sizeof(volumeData));
 
 	ThrowIfFailed(descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
-	descriptorHeap.CreateDescriptor(volumeTex, volumeDataResource, RESOURCE_TYPE_SRV, device, commandQueue,TEXTURE_TYPE_DEAULT);
+	descriptorHeap.CreateDescriptor(volumeTex, volumeTexResource, RESOURCE_TYPE_SRV, device, commandQueue,TEXTURE_TYPE_DDS);
 
 	this->volumeRenderPipelineState = volumePSO;
 	this->volumeRenderRootSignature = volumeRoot;
 	this->volumeMesh = mesh;
 
+	position = XMFLOAT3(0, 0, 0);
+
+}
+
+void RaymarchedVolume::SetPosition(XMFLOAT3 pos)
+{
+	position = pos;
+}
+
+ComPtr<ID3D12RootSignature>& RaymarchedVolume::GetRootSignature()
+{
+	return volumeRenderRootSignature;
+}
+
+ComPtr<ID3D12PipelineState>& RaymarchedVolume::GetPipelineState()
+{
+	return volumeRenderPipelineState;
+}
+
+ComPtr<ID3D12Resource>& RaymarchedVolume::GetConstantBuffer()
+{
+	return volumeDataResource;
+}
+
+DescriptorHeapWrapper& RaymarchedVolume::GetDescriptorHeap()
+{
+	return descriptorHeap;
+}
+
+ManagedResource& RaymarchedVolume::GetVolumeTexture()
+{
+	return volumeTexResource;
+}
+
+std::shared_ptr<Mesh>& RaymarchedVolume::GetMesh()
+{
+	return volumeMesh;
+}
+
+void RaymarchedVolume::PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition, float totalTime)
+{
+	XMStoreFloat4x4(&volumeData.model,XMMatrixTranspose(XMMatrixTranslationFromVector(XMLoadFloat3(&position))));
+	XMStoreFloat4x4(&volumeData.inverseModel, XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranslationFromVector(XMLoadFloat3(&position)))));
+	volumeData.view = view;
+	volumeData.proj = proj;
+	volumeData.cameraPosition = camPosition;
+	volumeData.focalLength = 1 / tan(0.25f * 3.14159f / 2);
+	volumeData.time = totalTime;
+
+	memcpy(volumeBufferBegin, &volumeData, sizeof(volumeData));
 }

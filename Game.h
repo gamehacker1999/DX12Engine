@@ -9,6 +9,7 @@
 #include"Material.h"
 #include"Skybox.h"
 #include"GPUHeapRingBuffer.h"
+#include"RaymarchedVolume.h"
 
 #include <DirectXMath.h>
 
@@ -112,6 +113,10 @@ private:
 	//managing the residency
 	D3DX12Residency::ResidencyManager residencyManager;
 	std::shared_ptr<D3DX12Residency::ResidencySet> residencySet;
+
+	ComPtr<ID3D12RootSignature> volumeRootSignature;
+	ComPtr<ID3D12PipelineState> volumePSO;
+	std::shared_ptr<RaymarchedVolume> flame;
 
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.

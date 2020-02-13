@@ -9,10 +9,13 @@
 
 struct VolumeData
 {
-	XMFLOAT4X4 view;
 	XMFLOAT4X4 model;
+	XMFLOAT4X4 inverseModel;
+	XMFLOAT4X4 view;
+	XMFLOAT4X4 proj;
 	XMFLOAT3 cameraPosition;
 	float focalLength;
+	float time;
 };
 class RaymarchedVolume
 {
@@ -24,10 +27,11 @@ class RaymarchedVolume
 	ComPtr<ID3D12RootSignature> volumeRenderRootSignature;
 	ComPtr<ID3D12Resource> volumeDataResource;
 	UINT8* volumeBufferBegin;
-	VolumeData volData;
 	DescriptorHeapWrapper descriptorHeap;
 	//ManagedResource constantBufferResource;
 	VolumeData volumeData;
+
+	XMFLOAT3 position;
 
 	//skybox index in the ring buffer
 
@@ -36,15 +40,16 @@ public:
 		ComPtr<ID3D12RootSignature> volumeRoot, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue,
 		DescriptorHeapWrapper& mainBufferHeap);
 
+	void SetPosition(XMFLOAT3 pos);
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();
 	ComPtr<ID3D12Resource>& GetConstantBuffer();
 	DescriptorHeapWrapper& GetDescriptorHeap();
 
-	ManagedResource& GetSkyboxTexture();
+	ManagedResource& GetVolumeTexture();
 	std::shared_ptr<Mesh>& GetMesh();
 
-	void PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition);
+	void PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition,float totalTime);
 
 	UINT volumeTextureIndex;
 };

@@ -97,11 +97,12 @@ protected:
 
 	void CreateConsoleWindow(int bufferLines, int bufferColumns, int windowLines, int windowColumns);
 
+	float totalTime;
+	float deltaTime;
+
 private:
 	// Timing related data
 	double perfCounterSeconds;
-	float totalTime;
-	float deltaTime;
 	__int64 startTime;
 	__int64 currentTime;
 	__int64 previousTime;

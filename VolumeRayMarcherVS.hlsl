@@ -13,16 +13,20 @@ struct VertexShaderInput
 struct VertexToPixel
 {
 	float4 position		: SV_POSITION;
-	float3 worldPos		: TEXCOORD;
+	float3 noisePos		: TEXCOORD;
+	float3 worldPos		: TEXCOORD1;
 };
 
 //cbuffer for matrix position
-cbuffer SkyboxData: register(b0)
+cbuffer VolumeData: register(b0)
 {
 	matrix world;
+	matrix inverseModel;
 	matrix view;
 	matrix projection;
 	float3 cameraPos;
+	float focalLength;
+	float time;
 }
 
 //entry point of the skybox vertex shader
@@ -30,22 +34,23 @@ VertexToPixel main(VertexShaderInput input)
 {
 	VertexToPixel output; //this specifies the data that gets passed along the render pipeline
 
-	matrix viewWithoutTranslate = view;
-	viewWithoutTranslate._41 = 0;
-	viewWithoutTranslate._42 = 0;
-	viewWithoutTranslate._43 = 0;
-
 	//view projection matrix
-	matrix viewProj = mul(viewWithoutTranslate, projection);
+	matrix worldviewProj = mul(world,mul(view, projection));
+
+	float3 worldPos = mul(float4(input.position,1.0), world).xyz;
 
 	//calculating the vertex position
 	float4 posWorld = float4(input.position, 1.0);
 
+	output.worldPos = mul(posWorld, world).xyz;
+
 	//getting the perspective devide to be equal to one
-	output.position = mul(posWorld, viewProj).xyww;
+	output.position = mul(posWorld, worldviewProj);
+
+	float ticks = fmod(time, 10.f);
 
 	//sending the world position to pixelshader
-	output.worldPos = input.position;
+	output.noisePos =posWorld.xyz;
 
 	return output;
 }

@@ -78,6 +78,9 @@
     <ClInclude Include="GPUHeapRingBuffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="RaymarchedVolume.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DX12Engine.cpp">
@@ -116,6 +119,9 @@
     <ClCompile Include="GPUHeapRingBuffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="RaymarchedVolume.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DX12Engine.rc">
@@ -147,6 +153,9 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="VolumeRayMarcherPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="VolumeRayMarcherVS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

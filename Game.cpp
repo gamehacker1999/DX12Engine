@@ -182,6 +182,10 @@ HRESULT Game::Init()
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
 	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources()-1;
 
+	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds",mesh2,volumePSO,volumeRootSignature,device,commandQueue,mainBufferHeap);
+	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, flame->GetDescriptorHeap());
+	flame->volumeTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+
 	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get() };
 	//skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
 	skyboxBundle->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -306,11 +310,63 @@ void Game::LoadShaders()
 	psoDescPBR.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescPBR, IID_PPV_ARGS(pbrPipelineState.GetAddressOf())));
 
-	//creatin a root signature for the volume data
-	//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE1 rangesVolume[2];
-	CD3DX12_ROOT_PARAMETER1 rootParamsVolume[5];
-	rootParamsVolume[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
+	CD3DX12_DESCRIPTOR_RANGE1 volumeRanges[1];
+	CD3DX12_ROOT_PARAMETER1 volumeRootParams[2];
+
+	volumeRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+
+	volumeRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_ALL);
+	volumeRootParams[1].InitAsDescriptorTable(1, &volumeRanges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+
+	ComPtr<ID3DBlob> volumeSignature;
+	ComPtr<ID3DBlob> volumeError;
+
+	CD3DX12_STATIC_SAMPLER_DESC staticSamplersVolume[1];//(0, D3D12_FILTER_ANISOTROPIC);
+	staticSamplersVolume[0].Init(0, D3D12_FILTER_ANISOTROPIC, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+	rootSignatureDesc.Init_1_1(_countof(volumeRootParams), volumeRootParams, _countof(staticSamplersVolume), staticSamplersVolume, rootSignatureFlags);
+
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc,D3D_ROOT_SIGNATURE_VERSION_1_1,volumeSignature.GetAddressOf(),volumeError.GetAddressOf()));
+
+	ThrowIfFailed(device->CreateRootSignature(0, volumeSignature->GetBufferPointer(), volumeSignature->GetBufferSize(), IID_PPV_ARGS(volumeRootSignature.GetAddressOf())));
+
+	ComPtr<ID3DBlob> rayMarchedVolumeVS;
+	ComPtr<ID3DBlob> raymarcedVolumePS;
+
+	ThrowIfFailed(D3DReadFileToBlob(L"VolumeRayMarcherPS.cso", raymarcedVolumePS.GetAddressOf()));
+	ThrowIfFailed(D3DReadFileToBlob(L"VolumeRayMarcherVS.cso", rayMarchedVolumeVS.GetAddressOf()));
+
+	//creating a pipeline state object
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDescVolume = {};
+	psoDescVolume.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+	psoDescVolume.pRootSignature = volumeRootSignature.Get();
+	psoDescVolume.VS = CD3DX12_SHADER_BYTECODE(rayMarchedVolumeVS.Get());
+	psoDescVolume.PS = CD3DX12_SHADER_BYTECODE(raymarcedVolumePS.Get());
+	////psoPBRDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+	//psoDePBRsc.DepthStencilState.StencilEnable = FALSE;
+	psoDescVolume.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDescVolume.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+	psoDescVolume.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state
+	psoDescVolume.BlendState.AlphaToCoverageEnable = false;
+	psoDescVolume.BlendState.IndependentBlendEnable = false;
+	psoDescVolume.BlendState.RenderTarget[0].BlendEnable = true;
+	psoDescVolume.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	psoDescVolume.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_COLOR;
+	psoDescVolume.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
+	psoDescVolume.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	psoDescVolume.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	psoDescVolume.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+	psoDescVolume.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	psoDescVolume.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	psoDescVolume.SampleMask = UINT_MAX;
+	psoDescVolume.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDescVolume.NumRenderTargets = 1;
+	psoDescVolume.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDescVolume.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDescVolume.SampleDesc.Count = 1;
+	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescVolume, IID_PPV_ARGS(volumePSO.GetAddressOf())));
+
+
 }
 
 
@@ -594,14 +650,6 @@ void Game::Update(float deltaTime, float totalTime)
 
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
-
-	volData.cameraPosition = mainCamera->GetPosition();
-	volData.focalLength = 1.f / tan(0.25f * 3.1415926535f / 2.f);
-	XMStoreFloat4x4(&volData.model, XMMatrixIdentity());
-	volData.view = mainCamera->GetViewMatrix();
-
-	memcpy(volumeBufferBegin, &volData, sizeof(volData));
-
 }
 
 // --------------------------------------------------------
@@ -700,6 +748,14 @@ void Game::PopulateCommandList()
 
 	commandList->ExecuteBundle(skyboxBundle.Get());
 
+	flame->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition(), totalTime);
+	commandList->SetPipelineState(flame->GetPipelineState().Get());
+	commandList->SetGraphicsRootSignature(flame->GetRootSignature().Get());
+	commandList->SetGraphicsRootConstantBufferView(0, flame->GetConstantBuffer()->GetGPUVirtualAddress());
+	commandList->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(flame->volumeTextureIndex));
+	commandList->IASetVertexBuffers(0, 1, &flame->GetMesh()->GetVertexBuffer());
+	commandList->IASetIndexBuffer(&flame->GetMesh()->GetIndexBuffer());
+	commandList->DrawIndexedInstanced(flame->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 	//back buffer will now be used to present
 
 	// Indicate that the back buffer will now be used to present.
