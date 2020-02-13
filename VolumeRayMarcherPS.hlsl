@@ -56,24 +56,22 @@ bool RayBoxIntersection(Ray ray, AABB box, out float t0, out float t1)
 float3 GetUV(float3 p)
 {
 	// float3 local = localize(p);
-	p.y *= -1;
+	//p.y *= -1;
 	float3 local = p + 0.5;
 	return local;
 }
 
 float4 SampleVolume(float3 uv, float3 p, Texture3D flame, SamplerState basicSampler,matrix world)
 {
-	float4 v = flame.Sample(basicSampler,uv).rgba*0.5;
+	float4 v = flame.Sample(basicSampler,uv).rgba*0.9;
 
 	float3 axis = mul(float4(p,0), world).xyz;
 	axis = GetUV(axis);
 	float min = step(0, axis.x) * step(0, axis.y) * step(0, axis.z);
 	float max = step(axis.x, 1) * step(axis.y, 1) * step(axis.z, 1);
 
-	return v*min*max;
+	return v;
 }
-
-
 
 //Texture3D volume: register(t0); 
 Texture3D flame: register(t0);
@@ -98,7 +96,7 @@ float4 Flame(float3 P, VertexToPixel input)
 	float2 uv;
 	uv.x = length(P.xz);
 	uv.y = P.y+Turbulence4(input.noisePos) * 1.f;
-	return flame.Sample(basicSampler, P.xyz);
+	return flame.Sample(basicSampler, uv.xxx);
 }
 
 float4 main(VertexToPixel input) : SV_TARGET
@@ -140,13 +138,15 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float stepSize = rayLength / 100.f;
 	float3 step = normalize(rayEX) * stepSize;
 
+	//float3 step = (rayStart - rayStop) / 99;
 	float maximumIntensity = 0.0;
 
 	float4 c = 0;
 
 	//float3 step = (rayStart - rayStop) / (100 - 1);
 	float3 P = rayStart;
-	for (int i = 0; i < 100; i++) 
+	P.y *= -1;
+	/**/for (int i = 0; i < 100; i++) 
 	{
 		
 			float3 uv = GetUV(P);
@@ -159,9 +159,16 @@ float4 main(VertexToPixel input) : SV_TARGET
 			c = (1.0 - c.a) * src + c;
 			P += step;
 
-			if (c.a > 0.5) break;
+			if (c.a > 0.95) break;
 	}
-	//c/=100;
+
+	/*for (int i = 0; i < 100; i++)
+	{
+		float4 s = Flame(P, input);
+		c += s.a * s + (1 - s.a) * c;
+		P += step;
+	}
+	c/=100.f;*/
 	return saturate(c);
 
 
