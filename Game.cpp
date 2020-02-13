@@ -352,7 +352,7 @@ void Game::LoadShaders()
 	psoDescVolume.BlendState.RenderTarget[0].BlendEnable = true;
 	psoDescVolume.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
 	psoDescVolume.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_COLOR;
-	psoDescVolume.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
+	//psoDescVolume.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
 	psoDescVolume.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
 	psoDescVolume.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
 	psoDescVolume.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;

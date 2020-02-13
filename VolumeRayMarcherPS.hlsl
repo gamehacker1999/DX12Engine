@@ -56,19 +56,21 @@ bool RayBoxIntersection(Ray ray, AABB box, out float t0, out float t1)
 float3 GetUV(float3 p)
 {
 	// float3 local = localize(p);
-	return (p + 0.5);
+	p.y *= -1;
+	float3 local = p + 0.5;
+	return local;
 }
 
-float SampleVolume(float3 uv, float3 p, Texture3D flame, SamplerState basicSampler,matrix world)
+float4 SampleVolume(float3 uv, float3 p, Texture3D flame, SamplerState basicSampler,matrix world)
 {
-	float v = flame.Sample(basicSampler,uv).r*0.5;
+	float4 v = flame.Sample(basicSampler,uv).rgba*0.5;
 
-	float3 axis = mul(world,float4(p,0)).xyz;
+	float3 axis = mul(float4(p,0), world).xyz;
 	axis = GetUV(axis);
 	float min = step(0, axis.x) * step(0, axis.y) * step(0, axis.z);
 	float max = step(axis.x, 1) * step(axis.y, 1) * step(axis.z, 1);
 
-	return v;
+	return v*min*max;
 }
 
 
@@ -114,13 +116,13 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float t0, t1;
 
 	Ray ray;
-	ray.origin = input.noisePos;
+	ray.origin = cameraPosition;
 	float3 dir = input.worldPos - cameraPosition;
 	ray.direction = normalize(mul(float4(dir,0),inverseModel)).xyz;
 
 	AABB boundingBox;
-	boundingBox.min = float3(0,0,0);
-	boundingBox.max = float3(1,1,1);
+	boundingBox.min = float3(-0.5,-0.5,-0.5);
+	boundingBox.max = float3(0.5,0.5,0.5);
 
 	bool hit = RayBoxIntersection(ray, boundingBox, t0, t1);
 
@@ -128,7 +130,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	if (t0 < 0) t0 = 0;
 
-	float3 rayStart = (ray.origin);
+	float3 rayStart = (ray.origin+ray.direction*t0);
 	float3 rayStop = (ray.origin + ray.direction * t1);
 
 	float3 rayEX = rayStop - rayStart;
@@ -148,8 +150,8 @@ float4 main(VertexToPixel input) : SV_TARGET
 	{
 		
 			float3 uv = GetUV(P);
-			float v = SampleVolume(uv, P,flame,basicSampler,model);
-			float4 src = float4(v, v, v, v);
+			float4 v = SampleVolume(uv, P,flame,basicSampler,model);
+			float4 src = float4(v);
 			src.a *= 0.5;
 			src.rgb *= src.a;
 
@@ -157,7 +159,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 			c = (1.0 - c.a) * src + c;
 			P += step;
 
-			//if (dst.a > _Threshold) break;
+			if (c.a > 0.5) break;
 	}
 	//c/=100;
 	return saturate(c);
