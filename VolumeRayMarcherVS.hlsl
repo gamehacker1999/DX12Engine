@@ -13,7 +13,7 @@ struct VertexShaderInput
 struct VertexToPixel
 {
 	float4 position		: SV_POSITION;
-	float3 noisePos		: TEXCOORD;
+	noperspective float3 noisePos		: TEXCOORD;
 	float3 worldPos		: TEXCOORD1;
 };
 
@@ -23,6 +23,7 @@ cbuffer VolumeData: register(b0)
 	matrix world;
 	matrix inverseModel;
 	matrix view;
+	matrix viewInv;
 	matrix projection;
 	float3 cameraPos;
 	float focalLength;
@@ -50,7 +51,7 @@ VertexToPixel main(VertexShaderInput input)
 	float ticks = fmod(time, 10.f);
 
 	//sending the world position to pixelshader
-	output.noisePos =posWorld.xyz;
+	output.noisePos = input.position;;
 
 	return output;
 }

@@ -13,7 +13,7 @@ struct AABB
 struct VertexToPixel
 {
 	float4 position		: SV_POSITION;
-	float3 noisePos		: TEXCOORD;
+	noperspective float3 noisePos		: TEXCOORD;
 	float3 worldPos		: TEXCOORD1;
 };
 
@@ -23,6 +23,7 @@ cbuffer VolumeData :register(b0)
 	matrix model;
 	matrix inverseModel;
 	matrix view;
+	matrix viewInv;
 	matrix proj;
 	float3 cameraPosition;
 	float focalLength;
@@ -56,21 +57,21 @@ bool RayBoxIntersection(Ray ray, AABB box, out float t0, out float t1)
 float3 GetUV(float3 p)
 {
 	// float3 local = localize(p);
-	//p.y *= -1;
+	p.y *= -1;
 	float3 local = p + 0.5;
 	return local;
 }
 
 float4 SampleVolume(float3 uv, float3 p, Texture3D flame, SamplerState basicSampler,matrix world)
 {
-	float4 v = flame.Sample(basicSampler,uv).rgba*0.9;
+	float4 v = flame.Sample(basicSampler,uv).rgba*1.5;
 
 	float3 axis = mul(float4(p,0), world).xyz;
 	axis = GetUV(axis);
 	float min = step(0, axis.x) * step(0, axis.y) * step(0, axis.z);
 	float max = step(axis.x, 1) * step(axis.y, 1) * step(axis.z, 1);
 
-	return v;
+	return v*min*max;
 }
 
 //Texture3D volume: register(t0); 
@@ -101,52 +102,53 @@ float4 Flame(float3 P, VertexToPixel input)
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
-
-	float3 rayDirection;
-	rayDirection.xy = input.position.xy / input.position.w;
-	rayDirection.x *= 2 - 1;
-	rayDirection.y = -rayDirection.y * 2 + 1;
-	rayDirection.z = -focalLength;
-
-	matrix modelView = mul(model, view);
-	rayDirection = mul(float4(rayDirection, 0), view).xyz;
-
 	float t0, t1;
 
 	Ray ray;
-	ray.origin = cameraPosition;
+	ray.origin = mul(float4(0,0,0,1),viewInv).xyz;
 	float3 dir = input.worldPos - cameraPosition;
-	ray.direction = normalize(mul(float4(dir,0),inverseModel)).xyz;
+	ray.direction.xy = ((input.position.xy * 2.0) - 1.0) * float2(1280, 720);
+	ray.direction.y *= -1;
+	ray.direction.z = focalLength;
+	ray.direction = mul(ray.direction, (float3x3)viewInv);
+	ray.direction = normalize(ray.direction);
+	//ray.direction = normalize(mul(float4(dir,0),inverseModel)).xyz;
 
 	AABB boundingBox;
-	boundingBox.min = float3(-0.5,-0.5,-0.5);
-	boundingBox.max = float3(0.5,0.5,0.5);
+	boundingBox.min = float3(-1,-1,-1);
+	boundingBox.max = float3(1,1,1);
 
 	bool hit = RayBoxIntersection(ray, boundingBox, t0, t1);
 
-	//if (!hit) discard;
+	if (!hit) discard;
 
 	if (t0 < 0) t0 = 0;
 
 	float3 rayStart = (ray.origin+ray.direction*t0);
 	float3 rayStop = (ray.origin + ray.direction * t1);
 
-	float3 rayEX = rayStop - rayStart;
-	float rayLength = abs(t1-t0);
-	//float3 stepVector = 0.01f * rayEX / rayLength;
-	//float3 position = rayStart;
-	float stepSize = rayLength / 100.f;
-	float3 step = normalize(rayEX) * stepSize;
-
-	//float3 step = (rayStart - rayStop) / 99;
-	float maximumIntensity = 0.0;
+	rayStart = rayStart * 0.5 + 0.5;
+	rayStop = rayStop * 0.5 + 0.5;
 
 	float4 c = 0;
 
+	float3 rayEX = rayStop - rayStart;
+	float rayLength = distance(rayStart,rayStop);
+	//float3 stepVector = 0.01f * rayEX / rayLength;
+	//float3 position = rayStart;
+	float stepSize = rayLength / 100.f;
+	//float3 step = normalize(rayEX) * 0.01;
+
+	float3 step = (rayStop- rayStart) / 99;
+	float maximumIntensity = 0.0;
+
+
+
 	//float3 step = (rayStart - rayStop) / (100 - 1);
 	float3 P = rayStart;
-	P.y *= -1;
-	/**/for (int i = 0; i < 100; i++) 
+	//P.y *= -1;
+	[loop]
+	/*for (int i = 0; i < 50; i++) 
 	{
 		
 			float3 uv = GetUV(P);
@@ -160,16 +162,17 @@ float4 main(VertexToPixel input) : SV_TARGET
 			P += step;
 
 			if (c.a > 0.95) break;
-	}
+	}*/
 
-	/*for (int i = 0; i < 100; i++)
+	/**/for (int i = 0; i < 100; i++)
 	{
-		float4 s = Flame(P, input);
-		c += s.a * s + (1 - s.a) * c;
+		float4 s = flame.Sample(basicSampler,P);
+		c = s.a * s + (1 - s.a) * c;
 		P += step;
 	}
-	c/=100.f;*/
-	return saturate(c);
+	//c/=100.f;
+	//c *= 10;
+	return c;
 
 
 }

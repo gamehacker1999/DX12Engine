@@ -3,6 +3,7 @@
 #include"DescriptorHeapWrapper.h"
 #include<WICTextureLoader.h>
 #include<DDSTextureLoader.h>
+#include<fstream>
 #include<DirectXHelpers.h>
 #include<string>
 #include"Mesh.h"
@@ -12,6 +13,7 @@ struct VolumeData
 	XMFLOAT4X4 model;
 	XMFLOAT4X4 inverseModel;
 	XMFLOAT4X4 view;
+	XMFLOAT4X4 viewInv;
 	XMFLOAT4X4 proj;
 	XMFLOAT3 cameraPosition;
 	float focalLength;
@@ -26,6 +28,8 @@ class RaymarchedVolume
 	ComPtr<ID3D12PipelineState> volumeRenderPipelineState;
 	ComPtr<ID3D12RootSignature> volumeRenderRootSignature;
 	ComPtr<ID3D12Resource> volumeDataResource;
+	ComPtr<ID3D12Resource> textureUpload;
+
 	UINT8* volumeBufferBegin;
 	DescriptorHeapWrapper descriptorHeap;
 	//ManagedResource constantBufferResource;
@@ -38,7 +42,7 @@ class RaymarchedVolume
 public:
 	RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& volumePSO,
 		ComPtr<ID3D12RootSignature> volumeRoot, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue,
-		DescriptorHeapWrapper& mainBufferHeap);
+		DescriptorHeapWrapper& mainBufferHeap,ComPtr<ID3D12GraphicsCommandList>& commandList);
 
 	void SetPosition(XMFLOAT3 pos);
 	ComPtr<ID3D12RootSignature>& GetRootSignature();

@@ -182,9 +182,11 @@ HRESULT Game::Init()
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
 	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources()-1;
 
-	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds",mesh2,volumePSO,volumeRootSignature,device,commandQueue,mainBufferHeap);
+	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds",mesh2,volumePSO,volumeRootSignature,device,commandQueue,mainBufferHeap,commandList);
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, flame->GetDescriptorHeap());
 	flame->volumeTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+
+	ThrowIfFailed(commandList->Close());
 
 	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get() };
 	//skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
@@ -202,6 +204,10 @@ HRESULT Game::Init()
 	mainCamera = std::make_shared<Camera>(XMFLOAT3(0.0f, 0.f, 0.0f), XMFLOAT3(0.0f, 0.0f, 1.0f));
 
 	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
+
+
+	ID3D12CommandList* commandLists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
 
 	residencySet->Close();
 
@@ -352,7 +358,7 @@ void Game::LoadShaders()
 	psoDescVolume.BlendState.RenderTarget[0].BlendEnable = true;
 	psoDescVolume.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
 	psoDescVolume.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_COLOR;
-	psoDescVolume.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
+	//psoDescVolume.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
 	psoDescVolume.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
 	psoDescVolume.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
 	psoDescVolume.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
@@ -486,9 +492,7 @@ void Game::CreateBasicGeometry()
 
 
 	//copying the data from upload heaps to default heaps
-	ThrowIfFailed(commandList->Close());
-	ID3D12CommandList* commandLists[] = { commandList.Get() };
-	commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+
 
 	//creating the constant buffer
 	/*ThrowIfFailed(device->CreateCommittedResource(
