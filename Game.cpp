@@ -760,7 +760,7 @@ void Game::PopulateCommandList()
 	commandList->IASetVertexBuffers(0, 1, &flame->GetMesh()->GetVertexBuffer());
 	commandList->IASetIndexBuffer(&flame->GetMesh()->GetIndexBuffer());
 	commandList->DrawIndexedInstanced(flame->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-	//back buffer will now be used to present
+	///back buffer will now be used to present
 
 	// Indicate that the back buffer will now be used to present.
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(), 
