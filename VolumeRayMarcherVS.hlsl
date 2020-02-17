@@ -10,10 +10,16 @@ struct VertexShaderInput
 	float2 uv			: TEXCOORD;		//Texture coordinates
 };
 
+struct Ray
+{
+	float3 origin;
+	float3 direction;
+};
+
 struct VertexToPixel
 {
 	float4 position		: SV_POSITION;
-	noperspective float3 noisePos		: TEXCOORD;
+	float3 noisePos		: TEXCOORD;
 	float3 worldPos		: TEXCOORD1;
 };
 

@@ -18,6 +18,8 @@ struct VertexToPixel
 };
 
 
+
+
 cbuffer VolumeData :register(b0)
 {
 	matrix model;
@@ -29,6 +31,28 @@ cbuffer VolumeData :register(b0)
 	float focalLength;
 	float time;
 };
+
+float SphereHit(float3 p)
+{
+	return distance(p, float3(0,0,0)) - 0.5;
+}
+
+float4 RaymarchHit(float3 position, float3 direction)
+{
+	for (int i = 0; i < 64; i++)
+	{
+		float distance = SphereHit(position);
+		if (distance<0.01)
+			return float4(1, 0, 0, 1);
+
+		position += direction * distance;
+	}
+
+	return float4(0, 0, 0, 0);
+}
+
+
+
 
 bool RayBoxIntersection(Ray ray, AABB box, out float t0, out float t1)
 {
@@ -57,21 +81,22 @@ bool RayBoxIntersection(Ray ray, AABB box, out float t0, out float t1)
 float3 GetUV(float3 p)
 {
 	// float3 local = localize(p);
-	p.y *= -1;
+	//p.y *= -1;
 	float3 local = p + 0.5;
 	return local;
 }
 
 float4 SampleVolume(float3 uv, float3 p, Texture3D flame, SamplerState basicSampler,matrix world)
 {
-	float4 v = flame.Sample(basicSampler,uv).rgba*1.5;
+	float4 v = flame.Sample(basicSampler,uv).rgba;
 
 	float3 axis = mul(float4(p,0), world).xyz;
 	axis = GetUV(axis);
+	axis = saturate(axis);
 	float min = step(0, axis.x) * step(0, axis.y) * step(0, axis.z);
 	float max = step(axis.x, 1) * step(axis.y, 1) * step(axis.z, 1);
 
-	return v*min*max;
+	return v;
 }
 
 //Texture3D volume: register(t0); 
@@ -104,19 +129,27 @@ float4 main(VertexToPixel input) : SV_TARGET
 {
 	float t0, t1;
 
+	/*float3 worldPosition = input.worldPos;
+
+	float3 viewDirection = normalize(input.worldPos - cameraPosition);
+
+	return RaymarchHit(worldPosition, viewDirection);
+	//if (RaymarchHit(worldPosition, viewDirection)) return float4(1, 0, 0, 1);
+	//else return float4(0, 0, 0, 0);*/
+
 	Ray ray;
-	ray.origin = mul(float4(0,0,0,1),viewInv).xyz;
+	ray.origin = input.noisePos;//mul(float4(0,0,0,1),viewInv).xyz;
 	float3 dir = input.worldPos - cameraPosition;
 	ray.direction.xy = ((input.position.xy * 2.0) - 1.0) * float2(1280, 720);
 	ray.direction.y *= -1;
 	ray.direction.z = focalLength;
 	ray.direction = mul(ray.direction, (float3x3)viewInv);
 	ray.direction = normalize(ray.direction);
-	//ray.direction = normalize(mul(float4(dir,0),inverseModel)).xyz;
+	ray.direction = normalize(mul(float4(dir,0),inverseModel)).xyz;
 
 	AABB boundingBox;
-	boundingBox.min = float3(-1,-1,-1);
-	boundingBox.max = float3(1,1,1);
+	boundingBox.min = float3(-0.5,-0.5,-0.5);
+	boundingBox.max = float3(0.5,0.5,0.5);
 
 	bool hit = RayBoxIntersection(ray, boundingBox, t0, t1);
 
@@ -124,11 +157,13 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	if (t0 < 0) t0 = 0;
 
-	float3 rayStart = (ray.origin+ray.direction*t0);
+	float3 rayStart = (ray.origin);
 	float3 rayStop = (ray.origin + ray.direction * t1);
-
-	rayStart = rayStart * 0.5 + 0.5;
-	rayStop = rayStop * 0.5 + 0.5;
+	float dist = abs(t1 - t0);
+	float stepSize = dist / 64;
+	float3 ds = normalize(rayStop - rayStart) * stepSize;
+	//rayStart = rayStart * 0.5 + 0.5;
+	//rayStop = rayStop * 0.5 + 0.5;
 
 	float4 c = 0;
 
@@ -136,10 +171,10 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float rayLength = distance(rayStart,rayStop);
 	//float3 stepVector = 0.01f * rayEX / rayLength;
 	//float3 position = rayStart;
-	float stepSize = rayLength / 100.f;
-	//float3 step = normalize(rayEX) * 0.01;
+	//float stepSize = rayLength / 100.f;
+	float3 step = normalize(rayEX) * 0.01;
 
-	float3 step = (rayStop- rayStart) / 99;
+	//float3 step = (rayStop- rayStart) / 99;
 	float maximumIntensity = 0.0;
 
 
@@ -148,10 +183,11 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 P = rayStart;
 	//P.y *= -1;
 	[loop]
-	/*for (int i = 0; i < 50; i++) 
+	/**/for (int i = 0; i < 64; i++) 
 	{
 		
 			float3 uv = GetUV(P);
+			uv = saturate(uv);
 			float4 v = SampleVolume(uv, P,flame,basicSampler,model);
 			float4 src = float4(v);
 			src.a *= 0.5;
@@ -159,20 +195,20 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 			// blend
 			c = (1.0 - c.a) * src + c;
-			P += step;
+			P += ds;
 
 			if (c.a > 0.95) break;
-	}*/
+	}
 
-	/**/for (int i = 0; i < 100; i++)
+	/*for (int i = 0; i < 100; i++)
 	{
 		float4 s = flame.Sample(basicSampler,P);
 		c = s.a * s + (1 - s.a) * c;
 		P += step;
-	}
+	}*/
 	//c/=100.f;
 	//c *= 10;
-	return c;
+	return saturate(c);
 
 
 }

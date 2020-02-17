@@ -30,16 +30,16 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 	position = XMFLOAT3(0, 0, 0);/**/
 
 
-	std::ifstream ifile;
+	/**/std::ifstream ifile;
 
-	ifile.open("../../Assets/Textures/Bucky.raw", std::ios_base::binary);
+	ifile.open("../../Assets/Textures/Head.raw", std::ios_base::binary);
 
 	if (!ifile)
 		return;
 
-	std::vector<UINT8> values(32 * 32 * 32);
+	std::vector<UINT8> values(256 * 256 * 256*2);
 
-	ifile.read((char*)&values[0], 32 * 32 * 32);
+	ifile.read((char*)&values[0], 256 * 256 * 256*2);
 
 	ifile.close();
 
@@ -47,7 +47,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 	ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R8G8B8A8_UNORM,32,32,32),
+		&CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R8G8B8A8_UNORM,256,256,256),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
 		IID_PPV_ARGS(volumeTexResource.resource.GetAddressOf())
@@ -70,8 +70,8 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 	D3D12_SUBRESOURCE_DATA textureData = {};
 	textureData.pData = &values[0];
-	textureData.RowPitch = 32;
-	textureData.SlicePitch = textureData.RowPitch * 32;
+	textureData.RowPitch = 256*2;
+	textureData.SlicePitch = textureData.RowPitch * 256;
 
 	UpdateSubresources<1>(commandList.Get(), volumeTexResource.resource.Get(), textureUpload.Get(), 0, 0, 1, &textureData);
 
