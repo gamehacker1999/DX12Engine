@@ -39,7 +39,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 	std::vector<UINT8> values(256 * 256 * 256*4);
 
-	ifile.read((char*)&values[0], 256 * 256 * 256*4);
+	ifile.read((char*)&values[0], 256 * 256 * 256);
 
 	ifile.close();
 
@@ -70,7 +70,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 	D3D12_SUBRESOURCE_DATA textureData = {};
 	textureData.pData = &values[0];
-	textureData.RowPitch = 256;
+	textureData.RowPitch = 256*2;
 	textureData.SlicePitch = textureData.RowPitch * 256*2;
 
 	UpdateSubresources<1>(commandList.Get(), volumeTexResource.resource.Get(), textureUpload.Get(), 0, 0, 1, &textureData);

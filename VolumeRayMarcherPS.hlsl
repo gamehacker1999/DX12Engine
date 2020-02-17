@@ -138,7 +138,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	//else return float4(0, 0, 0, 0);*/
 
 	Ray ray;
-	ray.origin = input.noisePos;//mul(float4(0,0,0,1),viewInv).xyz;
+	ray.origin = cameraPosition;//mul(float4(0,0,0,1),viewInv).xyz;
 	float3 dir = input.worldPos - cameraPosition;
 	ray.direction.xy = ((input.position.xy * 2.0) - 1.0) * float2(1280, 720);
 	ray.direction.y *= -1;
@@ -157,7 +157,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	if (t0 < 0) t0 = 0;
 
-	float3 rayStart = (ray.origin);
+	float3 rayStart = (ray.origin+ray.direction*t0);
 	float3 rayStop = (ray.origin + ray.direction * t1);
 	float dist = abs(t1 - t0);
 	float stepSize = dist / 64;
