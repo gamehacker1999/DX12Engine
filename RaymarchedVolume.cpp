@@ -39,7 +39,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 	std::vector<UINT8> values(256 * 256 * 256*4);
 
-	ifile.read((char*)&values[0], 256 * 256 * 256);
+	ifile.read((char*)&values[0], 256 * 256 * 256*4);
 
 	ifile.close();
 

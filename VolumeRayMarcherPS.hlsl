@@ -188,6 +188,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 		
 			float3 uv = GetUV(P);
 			uv = saturate(uv);
+			uv /= 2;
 			float4 v = SampleVolume(uv, P,flame,basicSampler,model);
 			float4 src = float4(v);
 			src.a *= 0.5;
