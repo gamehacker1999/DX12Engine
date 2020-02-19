@@ -24,12 +24,18 @@ class Mesh
 	unsigned int numIndices; //number of indices in the mesh
 	std::vector<XMFLOAT3> points;
 
+	//list of vertices and indices
+	std::vector<Vertex> vertices;
+	std::vector<unsigned int> indices;
+
 public:
 	Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList);
 	Mesh(std::string fileName, ComPtr<ID3D12Device> device,ComPtr<ID3D12GraphicsCommandList> commandList);
 	void CalculateTangents(std::vector<Vertex>& vertices, std::vector<XMFLOAT3>& position,
 		std::vector<XMFLOAT2>& uvs, unsigned int vertCount);
 	~Mesh();
+
+	std::pair<ComPtr<ID3D12Resource>, UINT> GetVertexBufferResourceAndCount();
 
 	D3D12_VERTEX_BUFFER_VIEW GetVertexBuffer();
 	D3D12_INDEX_BUFFER_VIEW GetIndexBuffer();

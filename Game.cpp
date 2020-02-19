@@ -30,7 +30,7 @@ Game::Game(HINSTANCE hInstance)
 #endif
 	constantBufferBegin = nullptr;
 	lightCbufferBegin = 0;
-	
+	raster = true;
 
 	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
 
@@ -52,6 +52,11 @@ Game::~Game()
 // --------------------------------------------------------
 HRESULT Game::Init()
 {
+	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
+	ThrowIfFailed(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,
+		&options5, sizeof(options5)));
+	if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
+		throw std::runtime_error("Raytracing not supported on device");
 
 	frameIndex = this->swapChain->GetCurrentBackBufferIndex();
 
@@ -168,6 +173,8 @@ HRESULT Game::Init()
 	CreateMatrices();
 	CreateBasicGeometry();
 	CreateEnvironment();
+	CreateAccelerationStructures();
+	CreateRayTracingPipeline();
 
 	//allocate volumes and skyboxes here
 
@@ -641,6 +648,147 @@ void Game::OnResize()
 	XMStoreFloat4x4(&projectionMatrix, XMMatrixTranspose(P)); // Transpose for HLSL!
 }
 
+AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vertexBuffers)
+{
+	nv_helpers_dx12::BottomLevelASGenerator bottomLevelAS; //bottom level as generator
+	auto vertResourceAndCount = entities[0]->GetMesh()->GetVertexBufferResourceAndCount();
+	bottomLevelAS.AddVertexBuffer(vertResourceAndCount.first.Get(), 0, vertResourceAndCount.second, sizeof(Vertex), 0, 0, true);
+
+	//allocating scratch space to store temporary information
+	UINT64 scratchInBytes = 0;
+	UINT64 resultSizeInBytes = 0;
+
+	bottomLevelAS.ComputeASBufferSizes(device.Get(), false, &scratchInBytes, &resultSizeInBytes);
+
+	//onmce the size is obtained ,then we need to create the necessary buffers
+	AccelerationStructureBuffers buffer;
+	buffer.pScratch = nv_helpers_dx12::CreateBuffer(device.Get(), scratchInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON, nv_helpers_dx12::kDefaultHeapProps);
+	buffer.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nv_helpers_dx12::kDefaultHeapProps);
+	
+	//build the acceleration structure
+	bottomLevelAS.Generate(commandList.Get(), buffer.pScratch.Get(), buffer.pResult.Get(), false, nullptr);
+
+	return buffer;
+}
+
+void Game::CreateTopLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>>& instances)
+{
+	for (int i = 0; i < instances.size(); i++)
+	{
+		topLevelAsGenerator.AddInstance(instances[i].first.Get(), XMLoadFloat4x4(&instances[i].second), static_cast<UINT>(i), 0);
+	}
+
+	UINT64 scratchSize, resultSize, instanceDescsSize;
+
+	//allocating scratch space, result space, and instance space
+	topLevelAsGenerator.ComputeASBufferSizes(device.Get(), true, &scratchSize, &resultSize, &instanceDescsSize);
+	topLevelAsBuffers.pScratch = nv_helpers_dx12::CreateBuffer(device.Get(), scratchSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nv_helpers_dx12::kDefaultHeapProps);
+	topLevelAsBuffers.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), scratchSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nv_helpers_dx12::kDefaultHeapProps);
+	// The buffer describing the instances: ID, shader binding information,
+	// matrices ... Those will be copied into the buffer by the helper through
+	// mapping, so the buffer has to be allocated on the upload heap.
+	topLevelAsBuffers.pInstanceDesc = nv_helpers_dx12::CreateBuffer(
+		device.Get(), instanceDescsSize, D3D12_RESOURCE_FLAG_NONE,
+		D3D12_RESOURCE_STATE_GENERIC_READ, nv_helpers_dx12::kUploadHeapProps);
+
+	// After all the buffers are allocated, or if only an update is required, we
+	// can build the acceleration structure. Note that in the case of the update
+	// we also pass the existing AS as the 'previous' AS, so that it can be
+	// refitted in place.
+	topLevelAsGenerator.Generate(commandList.Get(),
+		topLevelAsBuffers.pScratch.Get(),
+		topLevelAsBuffers.pResult.Get(),
+		topLevelAsBuffers.pInstanceDesc.Get());
+
+}
+
+void Game::CreateAccelerationStructures()
+{
+	//creating a bottom level AS for the first entity for now
+	AccelerationStructureBuffers bottomLevelBuffers = CreateBottomLevelAS({ entities[0]->GetMesh()->GetVertexBufferResourceAndCount() });
+
+	//create only one instance for now
+	std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>> instances;
+	instances.emplace_back(std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>(bottomLevelBuffers.pResult, entities[0]->GetModelMatrix()));
+
+	CreateTopLevelAS(instances);
+
+	bottomLevelAs = bottomLevelBuffers.pResult;
+
+}
+
+ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
+{
+	//this ray generation shader is getting and output texture and an acceleration structure
+	nv_helpers_dx12::RootSignatureGenerator rsc;
+	rsc.AddHeapRangesParameter({ {0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,0}, //ouput texture
+		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1} 
+	});
+
+	return rsc.Generate(device.Get(), true);
+}
+
+ComPtr<ID3D12RootSignature> Game::CreateMissRootSignature()
+{
+	//the miss signature only has a payload
+	nv_helpers_dx12::RootSignatureGenerator rsc;
+	return rsc.Generate(device.Get(), true);
+}
+
+ComPtr<ID3D12RootSignature> Game::CreateClosestHitRootSignature()
+{
+	//the hit signature only has a payload
+	nv_helpers_dx12::RootSignatureGenerator rsc;
+	return rsc.Generate(device.Get(), true);
+
+}
+
+void Game::CreateRayTracingPipeline()
+{
+	nv_helpers_dx12::RayTracingPipelineGenerator pipeline(device.Get());
+
+	//the raytracing pipeline contains all the shader code
+	rayGenLib = nv_helpers_dx12::CompileShaderLibrary(L"../../RayGen.hlsl");
+	missLib = nv_helpers_dx12::CompileShaderLibrary(L"../../Miss.hlsl");
+	hitLib = nv_helpers_dx12::CompileShaderLibrary(L"../../Hit.hlsl");
+
+	//add the libraies to pipeliene
+	pipeline.AddLibrary(rayGenLib.Get(), { L"RayGen" });
+	pipeline.AddLibrary(missLib.Get(), { L"Miss" });
+	pipeline.AddLibrary(hitLib.Get(), { L"ClosestHit"});
+
+	//creating the root signatures
+	rayGenRootSig = CreateRayGenRootSignature();
+	missRootSig = CreateMissRootSignature();
+	closestHitRootSignature = CreateClosestHitRootSignature();
+
+	//adding a hit group to the pipeline
+	pipeline.AddHitGroup(L"HitGroup", L"ClosestHit");
+
+	//associating the root signatures with the shaders
+	//shaders can share root signatures
+	pipeline.AddRootSignatureAssociation(rayGenRootSig.Get(), { L"RayGen" });
+	pipeline.AddRootSignatureAssociation(missRootSig.Get(), { L"Miss" });
+	pipeline.AddRootSignatureAssociation(closestHitRootSignature.Get(), { L"HitGroup" }); // the intersection, anyhit, and closest hit shaders are bundled together in a hit group
+
+	//payload size defines the maximum size of the data carried by the rays
+	pipeline.SetMaxPayloadSize(4 * sizeof(float));
+
+	//max attrrib size, for now I am using the built in triangle attribs
+	pipeline.SetMaxAttributeSize(2 * sizeof(float));
+
+	//setting the recursion depth
+	pipeline.SetMaxRecursionDepth(1);
+
+	//creating the state obj
+	rtStateObject = pipeline.Generate();
+
+	// Cast the state object into a properties object, allowing to later access
+	// the shader pointers by name
+	ThrowIfFailed(rtStateObject->QueryInterface(IID_PPV_ARGS(rtStateObjectProps.GetAddressOf())));
+}
+
+
 // --------------------------------------------------------
 // Update your game here - user input, move objects, AI, etc.
 // --------------------------------------------------------
@@ -651,6 +799,8 @@ void Game::Update(float deltaTime, float totalTime)
 		Quit();
 
 	mainCamera->Update(deltaTime);
+
+	if (GetAsyncKeyState('R') & 0x8000) raster = !raster;
 
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
@@ -679,95 +829,104 @@ void Game::Draw(float deltaTime, float totalTime)
 
 void Game::PopulateCommandList()
 {
-	ThrowIfFailed(commandAllocators[frameIndex]->Reset());
-	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 
-	residencySet->Open();
+		ThrowIfFailed(commandAllocators[frameIndex]->Reset());
+		ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 
-	//set necessary state
-	commandList->SetGraphicsRootSignature(rootSignature.Get());
-	commandList->RSSetViewports(1, &viewport);
-	commandList->RSSetScissorRects(1, &scissorRect);
+		residencySet->Open();
 
-	//setting the constant buffer descriptor table
-	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get()};
+		//set necessary state
+		commandList->SetGraphicsRootSignature(rootSignature.Get());
+		commandList->RSSetViewports(1, &viewport);
+		commandList->RSSetScissorRects(1, &scissorRect);
 
-	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+		//setting the constant buffer descriptor table
+		ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get() };
 
-	//indicate that the back buffer is the render target
-	commandList->ResourceBarrier(1, 
-		&CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
-		D3D12_RESOURCE_STATE_PRESENT,
-		D3D12_RESOURCE_STATE_RENDER_TARGET));
+		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);//(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart(),
-		//frameIndex,rtvDescriptorSize);
-	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
-	commandList->ClearDepthStencilView(dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-/**/
+		//indicate that the back buffer is the render target
+		commandList->ResourceBarrier(1,
+			&CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
+				D3D12_RESOURCE_STATE_PRESENT,
+				D3D12_RESOURCE_STATE_RENDER_TARGET));
 
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);//(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart(),
+			//frameIndex,rtvDescriptorSize);
+		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
+		commandList->ClearDepthStencilView(dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+		/**/
 
-	//record commands
-	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
-	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetBeginningStaticResourceOffset();//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
-	commandList->SetGraphicsRootDescriptorTable(3, gpuCBVSRVUAVHandle);
-	//gpuCBVSRVUAVHandle.Offset(gpuHeapRingBuffer->GetBeginningStaticResourceOffset());
-	gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetStaticDescriptorOffset();
-	//commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetStaticDescriptorOffset());
-
-	/**/for (UINT i = 0; i < entities.size(); i++)
+	if (raster)
 	{
-		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
-		gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
-		commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetDynamicResourceOffset());
-		commandList->SetGraphicsRoot32BitConstant(1, i, 0);
-		commandList->SetGraphicsRootSignature(entities[i]->GetRootSignature().Get());
-		commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
-		commandList->SetGraphicsRoot32BitConstant(4, entities[i]->GetMaterialIndex(), 0);
-		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
-		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
-		commandList->SetGraphicsRootConstantBufferView(2, lightConstantBufferResource->GetGPUVirtualAddress());
+			//record commands
+		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-		commandList->IASetIndexBuffer(&indexBuffer);
-		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0); 
 
+		CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetBeginningStaticResourceOffset();//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
+		commandList->SetGraphicsRootDescriptorTable(3, gpuCBVSRVUAVHandle);
+		//gpuCBVSRVUAVHandle.Offset(gpuHeapRingBuffer->GetBeginningStaticResourceOffset());
+		gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetStaticDescriptorOffset();
+		//commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetStaticDescriptorOffset());
+
+		/**/for (UINT i = 0; i < entities.size(); i++)
+		{
+			entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+			gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
+			commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetDynamicResourceOffset());
+			commandList->SetGraphicsRoot32BitConstant(1, i, 0);
+			commandList->SetGraphicsRootSignature(entities[i]->GetRootSignature().Get());
+			commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
+			commandList->SetGraphicsRoot32BitConstant(4, entities[i]->GetMaterialIndex(), 0);
+			D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
+			auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
+			commandList->SetGraphicsRootConstantBufferView(2, lightConstantBufferResource->GetGPUVirtualAddress());
+
+			commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+			commandList->IASetIndexBuffer(&indexBuffer);
+			commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+
+		}
+
+		//drawing the skybox
+		//gpuCBVSRVUAVHandle.Offset((INT)entities.size() * cbvDescriptorSize);
+
+		skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
+		/*commandList->SetPipelineState(skybox->GetPipelineState().Get());
+		commandList->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
+		commandList->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->skyboxTextureIndex));
+		commandList->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
+		commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
+		commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
+
+		commandList->ExecuteBundle(skyboxBundle.Get());
+
+		flame->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition(), totalTime);
+		commandList->SetPipelineState(flame->GetPipelineState().Get());
+		commandList->SetGraphicsRootSignature(flame->GetRootSignature().Get());
+		commandList->SetGraphicsRootConstantBufferView(0, flame->GetConstantBuffer()->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(flame->volumeTextureIndex));
+		commandList->IASetVertexBuffers(0, 1, &flame->GetMesh()->GetVertexBuffer());
+		commandList->IASetIndexBuffer(&flame->GetMesh()->GetIndexBuffer());
+		commandList->DrawIndexedInstanced(flame->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+		///back buffer will now be used to present
 	}
 
-	//drawing the skybox
-	//gpuCBVSRVUAVHandle.Offset((INT)entities.size() * cbvDescriptorSize);
-
-	skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
-	/*commandList->SetPipelineState(skybox->GetPipelineState().Get());
-	commandList->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
-	commandList->SetGraphicsRootConstantBufferView(0, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
-	commandList->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->skyboxTextureIndex));
-	commandList->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
-	commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
-	commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
-
-	commandList->ExecuteBundle(skyboxBundle.Get());
-
-	flame->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition(), totalTime);
-	commandList->SetPipelineState(flame->GetPipelineState().Get());
-	commandList->SetGraphicsRootSignature(flame->GetRootSignature().Get());
-	commandList->SetGraphicsRootConstantBufferView(0, flame->GetConstantBuffer()->GetGPUVirtualAddress());
-	commandList->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(flame->volumeTextureIndex));
-	commandList->IASetVertexBuffers(0, 1, &flame->GetMesh()->GetVertexBuffer());
-	commandList->IASetIndexBuffer(&flame->GetMesh()->GetIndexBuffer());
-	commandList->DrawIndexedInstanced(flame->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-	///back buffer will now be used to present
-
-	// Indicate that the back buffer will now be used to present.
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(), 
+	else
+	{
+		const float clearColor[] = { 0.6f, 0.8f, 0.4f, 1.0f };
+		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	}
+		// Indicate that the back buffer will now be used to present.
+	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 	commandList->Close();
 	residencySet->Close();
+
 }
 
 void Game::WaitForPreviousFrame()

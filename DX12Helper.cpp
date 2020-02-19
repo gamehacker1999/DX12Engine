@@ -60,7 +60,7 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 			D3D12_RESOURCE_STATE_COPY_DEST));
 		commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*/
 		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBufferHeap.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER| D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 
 		//command lists are created in record state but since there is nothing to record yet
 		//close it for the main loop

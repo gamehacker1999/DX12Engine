@@ -1,7 +1,7 @@
 #include "Material.h"
 #include<DirectXHelpers.h>
 
-Material::Material(ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue, DescriptorHeapWrapper& mainBufferHeap,
+Material::Material(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& commandQueue, DescriptorHeapWrapper& mainBufferHeap,
 	ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig,
 	std::wstring diffuse, std::wstring normal, std::wstring roughness,
 	std::wstring metallnes)

@@ -1,5 +1,5 @@
 #pragma once
-#pragma once
+
 #include <Windows.h>
 #include <windowsx.h>
 #include <d3d12.h>
@@ -12,12 +12,26 @@
 #include<memory>
 #include<wrl/client.h>
 #include"DX12Helper.h"
+#include <dxcapi.h>
+#include <vector>
+
+#include "TopLevelASGenerator.h"
+#include "BottomLevelASGenerator.h"
+#include "RaytracingPipelineGenerator.h"
+#include "RootSignatureGenerator.h"
+#include"DXRHelper.h"
 
 
 using namespace Microsoft::WRL;
 // We can include the correct library files here
 // instead of in Visual Studio settings if we want
 
+struct AccelerationStructureBuffers
+{
+	ComPtr<ID3D12Resource> pScratch;      // Scratch memory for AS builder
+	ComPtr<ID3D12Resource> pResult;       // Where the AS is
+	ComPtr<ID3D12Resource> pInstanceDesc; // Hold the matrices of the instances
+};
 
 class DXCore
 {
@@ -73,7 +87,7 @@ protected:
 
 	static const int frameCount = 3;
 	//pipeline objects
-	ComPtr<ID3D12Device> device;
+	ComPtr<ID3D12Device5> device;
 	D3D12_VIEWPORT viewport;
 	D3D12_RECT scissorRect;
 	ComPtr<IDXGISwapChain3> swapChain;
@@ -86,7 +100,7 @@ protected:
 	//ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
 	DescriptorHeapWrapper rtvDescriptorHeap;
 	ComPtr<ID3D12PipelineState> pipelineState;
-	ComPtr<ID3D12GraphicsCommandList> commandList;
+	ComPtr<ID3D12GraphicsCommandList4> commandList;
 	UINT rtvDescriptorSize;	
 
 	//synchronization objects

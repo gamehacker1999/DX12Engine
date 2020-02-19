@@ -200,7 +200,7 @@ DescriptorHeapWrapper& Entity::GetDescriptorHeap()
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 }
 
-void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device>& device, D3DX12Residency::ResidencyManager resManager,
+void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device> device, D3DX12Residency::ResidencyManager resManager,
 	std::shared_ptr<D3DX12Residency::ResidencySet>& residencySet)
 {
 

@@ -1,7 +1,7 @@
 #include "RaymarchedVolume.h"
 
 RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& volumePSO, ComPtr<ID3D12RootSignature> volumeRoot, 
-	ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue, DescriptorHeapWrapper& mainBufferHeap, ComPtr<ID3D12GraphicsCommandList>& commandList)
+	ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& commandQueue, DescriptorHeapWrapper& mainBufferHeap, ComPtr<ID3D12GraphicsCommandList> commandList)
 {
 	volumeBufferBegin = 0;
 

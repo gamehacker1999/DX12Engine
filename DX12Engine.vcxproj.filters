@@ -81,6 +81,24 @@
     <ClInclude Include="RaymarchedVolume.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="BottomLevelASGenerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DXRHelper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RaytracingPipelineGenerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ShaderBindingTableGenerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TopLevelASGenerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RootSignatureGenerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DX12Engine.cpp">
@@ -122,6 +140,21 @@
     <ClCompile Include="RaymarchedVolume.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="BottomLevelASGenerator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RaytracingPipelineGenerator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ShaderBindingTableGenerator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TopLevelASGenerator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RootSignatureGenerator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DX12Engine.rc">
@@ -161,5 +194,17 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="RayGen.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Miss.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Hit.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Common.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

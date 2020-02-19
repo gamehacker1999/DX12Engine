@@ -1,5 +1,6 @@
 #pragma once
 #include "DXCore.h"
+#include <DXRHelper.h>
 #include "Camera.h"
 #include"Mesh.h"
 #include"Entity.h"
@@ -31,6 +32,26 @@ public:
 	// will be called automatically
 	HRESULT Init();
 	void OnResize();
+
+	//------------------Raytracing Functions--------------------------
+
+	//create the acceleration structure for the buffers
+	AccelerationStructureBuffers CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>,uint32_t>> vertexBuffers);
+	//create top level acceleration structures
+	void CreateTopLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>,XMFLOAT4X4>>& instances);
+	//create both top and bottom structures
+	void CreateAccelerationStructures();
+
+	//rootgeneration functions
+	ComPtr<ID3D12RootSignature> CreateRayGenRootSignature();
+	ComPtr<ID3D12RootSignature> CreateMissRootSignature();
+	ComPtr<ID3D12RootSignature> CreateClosestHitRootSignature();
+
+	//create dxr pipeline
+	void CreateRayTracingPipeline();
+
+	//----------------------------------------------------------------
+
 	void Update(float deltaTime, float totalTime);
 	void Draw(float deltaTime, float totalTime);
 	void PopulateCommandList();
@@ -117,6 +138,31 @@ private:
 	ComPtr<ID3D12RootSignature> volumeRootSignature;
 	ComPtr<ID3D12PipelineState> volumePSO;
 	std::shared_ptr<RaymarchedVolume> flame;
+
+	//---------------------Raytracing vars-------------------
+
+	bool raster;
+	ComPtr<ID3D12Resource> bottomLevelAs; //storage for bottom level as
+	nv_helpers_dx12::TopLevelASGenerator topLevelAsGenerator;
+	AccelerationStructureBuffers topLevelAsBuffers;
+
+	//dxr root signatures
+	ComPtr<ID3D12RootSignature> rayGenRootSig;
+	ComPtr<ID3D12RootSignature> missRootSig;
+	ComPtr<ID3D12RootSignature> closestHitRootSignature;
+
+	//raytracing pipeline state
+	ComPtr<ID3D12StateObject> rtStateObject;
+
+	//pipeline state properties, for the shader table
+	ComPtr<ID3D12StateObjectProperties> rtStateObjectProps;
+
+	//dxil libs for the shaders
+	ComPtr<IDxcBlob> rayGenLib;
+	ComPtr<IDxcBlob> missLib;
+	ComPtr<IDxcBlob> hitLib;
+	
+	//-------------------------------------------------------
 
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.

@@ -5,7 +5,7 @@ DescriptorHeapWrapper::DescriptorHeapWrapper()
 	memset(this, 0, sizeof(*this));
 }
 
-HRESULT DescriptorHeapWrapper::Create(ComPtr<ID3D12Device>& device, UINT numDesc, bool isShaderVis, D3D12_DESCRIPTOR_HEAP_TYPE heapType)
+HRESULT DescriptorHeapWrapper::Create(ComPtr<ID3D12Device> device, UINT numDesc, bool isShaderVis, D3D12_DESCRIPTOR_HEAP_TYPE heapType)
 {
 	this->isShaderVisible = isShaderVis;
 	this->numDescriptor = numDesc;
@@ -55,7 +55,7 @@ UINT DescriptorHeapWrapper::GetDescriptorIncrementSize()
 }
 
 void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,
-	ComPtr<ID3D12Device>& device, size_t cbufferSize, UINT width, UINT height)
+	ComPtr<ID3D12Device> device, size_t cbufferSize, UINT width, UINT height)
 {
 	if (resourceType == RESOURCE_TYPE_CBV)
 	{

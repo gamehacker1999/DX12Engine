@@ -74,6 +74,11 @@ Mesh::~Mesh()
 {
 }
 
+std::pair<ComPtr<ID3D12Resource>, UINT> Mesh::GetVertexBufferResourceAndCount()
+{
+	return std::pair<ComPtr<ID3D12Resource>, UINT>(defaultHeap,static_cast<UINT>(vertices.size()));
+}
+
 D3D12_VERTEX_BUFFER_VIEW Mesh::GetVertexBuffer()
 {
 	return vertexBuffer;
@@ -113,11 +118,6 @@ void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID
 		std::vector<XMFLOAT2> uvs;
 		std::vector<XMFLOAT3> tangents;
 		std::vector<XMFLOAT3> bitangents;
-
-		//list of vertices and indices
-		std::vector<Vertex> vertices;
-		std::vector<unsigned int> indices;
-
 
 		//num of verts and indices
 		UINT vertCount = 0;

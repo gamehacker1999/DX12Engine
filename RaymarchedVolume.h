@@ -41,8 +41,8 @@ class RaymarchedVolume
 
 public:
 	RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& volumePSO,
-		ComPtr<ID3D12RootSignature> volumeRoot, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue>& commandQueue,
-		DescriptorHeapWrapper& mainBufferHeap,ComPtr<ID3D12GraphicsCommandList>& commandList);
+		ComPtr<ID3D12RootSignature> volumeRoot, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& commandQueue,
+		DescriptorHeapWrapper& mainBufferHeap,ComPtr<ID3D12GraphicsCommandList> commandList);
 
 	void SetPosition(XMFLOAT3 pos);
 	ComPtr<ID3D12RootSignature>& GetRootSignature();

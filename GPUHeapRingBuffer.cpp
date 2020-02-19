@@ -1,6 +1,6 @@
 #include "GPUHeapRingBuffer.h"
 
-GPUHeapRingBuffer::GPUHeapRingBuffer(ComPtr<ID3D12Device>& device)
+GPUHeapRingBuffer::GPUHeapRingBuffer(ComPtr<ID3D12Device> device)
 {
 	maxDesc = 10000;
 	//creating the descriptor heap that will be used like a ring buffer
@@ -11,7 +11,7 @@ GPUHeapRingBuffer::GPUHeapRingBuffer(ComPtr<ID3D12Device>& device)
 	numStaticResources = 0;
 }
 
-void GPUHeapRingBuffer::AllocateStaticDescriptors(ComPtr<ID3D12Device>& device, UINT numDescriptors, DescriptorHeapWrapper otherDescHeap)
+void GPUHeapRingBuffer::AllocateStaticDescriptors(ComPtr<ID3D12Device> device, UINT numDescriptors, DescriptorHeapWrapper otherDescHeap)
 {
 
 	auto cpuHandle = descriptorHeap.GetCPUHandle(numStaticResources);
@@ -20,7 +20,7 @@ void GPUHeapRingBuffer::AllocateStaticDescriptors(ComPtr<ID3D12Device>& device, 
 	device->CopyDescriptorsSimple(numDescriptors, cpuHandle, otherCPUHandle, otherDescHeap.GetDescriptorHeapType());
 }
 
-void GPUHeapRingBuffer::AddDescriptor(ComPtr<ID3D12Device>& device, UINT numDescriptors, DescriptorHeapWrapper otherDescHeap, UINT frameIndex)
+void GPUHeapRingBuffer::AddDescriptor(ComPtr<ID3D12Device> device, UINT numDescriptors, DescriptorHeapWrapper otherDescHeap, UINT frameIndex)
 {
 	auto cpuHandle = descriptorHeap.GetCPUHandle(tail);
 	auto otherCPUHandle = otherDescHeap.GetCPUHandle(frameIndex);
