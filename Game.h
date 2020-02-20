@@ -161,6 +161,7 @@ private:
 	ComPtr<ID3D12Resource> bottomLevelAs; //storage for bottom level as
 	nv_helpers_dx12::TopLevelASGenerator topLevelAsGenerator;
 	AccelerationStructureBuffers topLevelAsBuffers;
+	std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>> instances;
 
 	//dxr root signatures
 	ComPtr<ID3D12RootSignature> rayGenRootSig;

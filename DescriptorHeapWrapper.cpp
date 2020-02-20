@@ -149,4 +149,5 @@ void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComP
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.RaytracingAccelerationStructure.Location = topLevelASBuffer.pResult->GetGPUVirtualAddress();
 	device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(lastResourceIndex));
+	lastResourceIndex++;
 }

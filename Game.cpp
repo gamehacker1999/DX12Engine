@@ -29,7 +29,7 @@ Game::Game(HINSTANCE hInstance)
 	printf("Console window created successfully.  Feel free to printf() here.\n");
 #endif
 	constantBufferBegin = nullptr;
-	cameraBufferBegin = nullptr;
+	cameraBufferBegin = 0;
 	lightCbufferBegin = 0;
 	raster = true;
 
@@ -686,8 +686,8 @@ void Game::OnResize()
 AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vertexBuffers)
 {
 	nv_helpers_dx12::BottomLevelASGenerator bottomLevelAS; //bottom level as generator
-	auto vertResourceAndCount = entities[0]->GetMesh()->GetVertexBufferResourceAndCount();
-	bottomLevelAS.AddVertexBuffer(vertResourceAndCount.first.Get(), 0, vertResourceAndCount.second, sizeof(Vertex), 0, 0, true);
+	auto vertResourceAndCount = entities[3]->GetMesh()->GetVertexBufferResourceAndCount();
+	bottomLevelAS.AddVertexBuffer(vertResourceAndCount.first.Get(), 0, vertResourceAndCount.second, sizeof(Vertex), 0, 0);
 
 	//allocating scratch space to store temporary information
 	UINT64 scratchInBytes = 0;
@@ -710,15 +710,16 @@ void Game::CreateTopLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOA
 {
 	for (int i = 0; i < instances.size(); i++)
 	{
-		topLevelAsGenerator.AddInstance(instances[i].first.Get(), XMLoadFloat4x4(&instances[i].second), static_cast<UINT>(i), 0);
+		topLevelAsGenerator.AddInstance(instances[i].first.Get(), XMLoadFloat4x4(&instances[i].second), static_cast<UINT>(i), (UINT)0);
 	}
 
 	UINT64 scratchSize, resultSize, instanceDescsSize;
 
 	//allocating scratch space, result space, and instance space
 	topLevelAsGenerator.ComputeASBufferSizes(device.Get(), true, &scratchSize, &resultSize, &instanceDescsSize);
+
 	topLevelAsBuffers.pScratch = nv_helpers_dx12::CreateBuffer(device.Get(), scratchSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nv_helpers_dx12::kDefaultHeapProps);
-	topLevelAsBuffers.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), scratchSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nv_helpers_dx12::kDefaultHeapProps);
+	topLevelAsBuffers.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), resultSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nv_helpers_dx12::kDefaultHeapProps);
 	// The buffer describing the instances: ID, shader binding information,
 	// matrices ... Those will be copied into the buffer by the helper through
 	// mapping, so the buffer has to be allocated on the upload heap.
@@ -740,13 +741,18 @@ void Game::CreateTopLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOA
 void Game::CreateAccelerationStructures()
 {
 	//creating a bottom level AS for the first entity for now
-	AccelerationStructureBuffers bottomLevelBuffers = CreateBottomLevelAS({ entities[0]->GetMesh()->GetVertexBufferResourceAndCount() });
+	AccelerationStructureBuffers bottomLevelBuffers = CreateBottomLevelAS({ entities[3]->GetMesh()->GetVertexBufferResourceAndCount() });
 
 	//create only one instance for now
-	std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>> instances;
-	instances.emplace_back(std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>(bottomLevelBuffers.pResult, entities[0]->GetModelMatrix()));
 
+	//instances.emplace_back(std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>(bottomLevelBuffers.pResult, entities[3]->GetModelMatrix()));
+
+	instances = { {bottomLevelBuffers.pResult, entities[0]->GetModelMatrix()},
+			   {bottomLevelBuffers.pResult, entities[1]->GetModelMatrix()},
+			   {bottomLevelBuffers.pResult, entities[2]->GetModelMatrix()} };
 	CreateTopLevelAS(instances);
+
+	//CreateTopLevelAS(instances);
 
 	bottomLevelAs = bottomLevelBuffers.pResult;
 
@@ -757,7 +763,7 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 	//this ray generation shader is getting and output texture and an acceleration structure
 	nv_helpers_dx12::RootSignatureGenerator rsc;
 	rsc.AddHeapRangesParameter({ {0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,0}, //ouput texture
-		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1}
+		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1},{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,2}
 	});
 
 	//rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 0, 0);
@@ -803,17 +809,17 @@ void Game::CreateRaytracingDescriptorHeap()
 {
 	//creating the descriptor heap, it will contain two descriptors
 	//one for the UAV output and an SRV for the acceleration structure
-	rtDescriptorHeap.Create(device, 2, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	rtDescriptorHeap.Create(device, 3, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	rtDescriptorHeap.CreateDescriptor(rtOutPut, rtOutPut.resourceType, device);
 	//initializing the camera buffer used for raytracing
 	//ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kUploadHeapProps, D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
 		//D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(cameraData.resource.GetAddressOf())));
 
 	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(device, rtOutPut, topLevelAsBuffers);
-	//rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
+	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
 	ZeroMemory(&rtCamera, sizeof(rtCamera));
-	//ThrowIfFailed(cameraData.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&cameraBufferBegin)));
-	//memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
+	ThrowIfFailed(cameraData.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&cameraBufferBegin)));
+	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
 
 }
 
@@ -886,7 +892,7 @@ void Game::Update(float deltaTime, float totalTime)
 	XMMATRIX projTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.proj));
 	XMStoreFloat4x4(&rtCamera.iProj, XMMatrixTranspose(XMMatrixInverse(nullptr, projTranspose)));
 	//
-	//memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
+	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
 
 }
 
