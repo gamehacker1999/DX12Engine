@@ -757,7 +757,7 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 	//this ray generation shader is getting and output texture and an acceleration structure
 	nv_helpers_dx12::RootSignatureGenerator rsc;
 	rsc.AddHeapRangesParameter({ {0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,0}, //ouput texture
-		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1},{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,2}
+		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1}
 	});
 
 	//rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 0, 0);
@@ -803,17 +803,17 @@ void Game::CreateRaytracingDescriptorHeap()
 {
 	//creating the descriptor heap, it will contain two descriptors
 	//one for the UAV output and an SRV for the acceleration structure
-	rtDescriptorHeap.Create(device, 3, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	rtDescriptorHeap.Create(device, 2, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	rtDescriptorHeap.CreateDescriptor(rtOutPut, rtOutPut.resourceType, device);
 	//initializing the camera buffer used for raytracing
 	//ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kUploadHeapProps, D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
 		//D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(cameraData.resource.GetAddressOf())));
 
 	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(device, rtOutPut, topLevelAsBuffers);
-	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, 1024 * 64);
+	//rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
 	ZeroMemory(&rtCamera, sizeof(rtCamera));
-	cameraData.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&cameraBufferBegin));
-	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
+	//ThrowIfFailed(cameraData.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&cameraBufferBegin)));
+	//memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
 
 }
 
@@ -874,12 +874,19 @@ void Game::Update(float deltaTime, float totalTime)
 
 	mainCamera->Update(deltaTime);
 
-	if (GetAsyncKeyState('R') & 0x8000) raster = !raster;
+	if (GetAsyncKeyState('R')) raster = !raster;
 
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
 
-
+	rtCamera.view = mainCamera->GetViewMatrix();
+	rtCamera.proj = mainCamera->GetProjectionMatrix();
+	XMMATRIX viewTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.view));
+	XMStoreFloat4x4(&rtCamera.iView, XMMatrixTranspose(XMMatrixInverse(nullptr,viewTranspose)));
+	XMMATRIX projTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.proj));
+	XMStoreFloat4x4(&rtCamera.iProj, XMMatrixTranspose(XMMatrixInverse(nullptr, projTranspose)));
+	//
+	//memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
 
 }
 

@@ -6,17 +6,6 @@ RWTexture2D< float4 > gOutput : register(u0);
 // Raytracing acceleration structure, accessed as a SRV
 RaytracingAccelerationStructure SceneBVH : register(t0);
 
-struct RayTraceCameraData
-{
-    matrix view;
-    matrix proj;
-    matrix iView;
-    matrix iProj;
-};
-
-
-ConstantBuffer<RayTraceCameraData> cameraData: register(b0);
-
 [shader("raygeneration")] 
 void RayGen() {
   // Initialize the ray payload
@@ -33,7 +22,7 @@ void RayGen() {
   RayDesc ray;
   ray.Origin = float3(d.x, -d.y, 0);
   ray.Direction = float3(0, 0, 1);
-  ray.TMin = 0.00001;
+  ray.TMin = 0.00000;
   ray.TMax = 100000;
 
   TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
