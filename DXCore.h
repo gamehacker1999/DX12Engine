@@ -19,20 +19,13 @@
 #include "BottomLevelASGenerator.h"
 #include "RaytracingPipelineGenerator.h"
 #include "RootSignatureGenerator.h"
+#include"ShaderBindingTableGenerator.h"
 #include"DXRHelper.h"
 
 
 using namespace Microsoft::WRL;
 // We can include the correct library files here
 // instead of in Visual Studio settings if we want
-
-struct AccelerationStructureBuffers
-{
-	ComPtr<ID3D12Resource> pScratch;      // Scratch memory for AS builder
-	ComPtr<ID3D12Resource> pResult;       // Where the AS is
-	ComPtr<ID3D12Resource> pInstanceDesc; // Hold the matrices of the instances
-};
-
 class DXCore
 {
 public:

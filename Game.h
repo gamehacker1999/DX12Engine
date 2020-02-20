@@ -20,6 +20,14 @@ struct LightData
 	XMFLOAT3 cameraPosition;
 };
 
+struct RayTraceCameraData
+{
+	XMFLOAT4X4 view;
+	XMFLOAT4X4 proj;
+	XMFLOAT4X4 iView;
+	XMFLOAT4X4 iProj;
+};
+
 class Game
 	: public DXCore
 {
@@ -47,8 +55,16 @@ public:
 	ComPtr<ID3D12RootSignature> CreateMissRootSignature();
 	ComPtr<ID3D12RootSignature> CreateClosestHitRootSignature();
 
+	//creating the output texture and the descriptor heap for dxr
+	void CreateRaytracingOutputBuffer();
+	void CreateRaytracingDescriptorHeap();
+
 	//create dxr pipeline
 	void CreateRayTracingPipeline();
+
+	//SBT variables
+	nv_helpers_dx12::ShaderBindingTableGenerator sbtGenerator;
+	ComPtr<ID3D12Resource> sbtResource;
 
 	//----------------------------------------------------------------
 
@@ -161,6 +177,17 @@ private:
 	ComPtr<IDxcBlob> rayGenLib;
 	ComPtr<IDxcBlob> missLib;
 	ComPtr<IDxcBlob> hitLib;
+
+	ManagedResource rtOutPut;
+	DescriptorHeapWrapper rtDescriptorHeap;
+
+	//shader binding table
+	void CreateShaderBindingTable();
+
+	//camera
+	RayTraceCameraData rtCamera;
+	ManagedResource cameraData;
+	UINT8* cameraBufferBegin;
 	
 	//-------------------------------------------------------
 

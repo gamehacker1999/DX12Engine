@@ -28,5 +28,6 @@ public:
 	void CreateDescriptor(std::wstring resName, ManagedResource& resource,
 		RESOURCE_TYPE resourceType, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue> commandQueue,
 		TEXTURE_TYPES type);
+	void CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, ManagedResource& resource,AccelerationStructureBuffers topLevelASBuffer);
 };
 

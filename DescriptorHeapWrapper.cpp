@@ -112,6 +112,14 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 		resource.heapOffset = lastResourceIndex;
 	}
 
+	else if (resourceType == RESOURCE_TYPE_UAV)
+	{
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+		if (resource.resource->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D)
+			uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		device->CreateUnorderedAccessView(resource.resource.Get(), nullptr, &uavDesc, GetCPUHandle(lastResourceIndex));
+	}
+
 	lastResourceIndex++;
 
 }
@@ -131,4 +139,14 @@ void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResour
 		resource.heapOffset = lastResourceIndex;
 		lastResourceIndex++;
 	}
+}
+
+void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, ManagedResource& resource, AccelerationStructureBuffers topLevelASBuffer)
+{
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = { };
+	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.RaytracingAccelerationStructure.Location = topLevelASBuffer.pResult->GetGPUVirtualAddress();
+	device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(lastResourceIndex));
 }

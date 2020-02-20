@@ -29,6 +29,7 @@ Game::Game(HINSTANCE hInstance)
 	printf("Console window created successfully.  Feel free to printf() here.\n");
 #endif
 	constantBufferBegin = nullptr;
+	cameraBufferBegin = nullptr;
 	lightCbufferBegin = 0;
 	raster = true;
 
@@ -175,6 +176,9 @@ HRESULT Game::Init()
 	CreateEnvironment();
 	CreateAccelerationStructures();
 	CreateRayTracingPipeline();
+	CreateRaytracingOutputBuffer();
+	CreateRaytracingDescriptorHeap();
+	CreateShaderBindingTable();
 
 	//allocate volumes and skyboxes here
 
@@ -629,6 +633,37 @@ void Game::CreateEnvironment()
 
 }
 
+void Game::CreateShaderBindingTable()
+{
+	//shader binding tables define the raygen, miss, and hit group shaders
+	//these resources are interpreted by the shader
+	sbtGenerator.Reset();
+
+	//getting the descriptor heap handle
+	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = rtDescriptorHeap.GetHeap()->GetGPUDescriptorHandleForHeapStart();
+
+	//reinterpreting the above pointer as a void pointer
+	auto heapPointer = reinterpret_cast<void*>(gpuHandle.ptr);
+
+	//the ray generation shader needs external data therefore it needs the pointer to the heap
+	//the miss and hit group shaders don't have any data
+	sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer });
+	sbtGenerator.AddMissProgram(L"Miss", {});
+	sbtGenerator.AddHitGroup(L"HitGroup", {});
+
+	//compute the size of the SBT
+	UINT32 sbtSize = sbtGenerator.ComputeSBTSize();
+
+	//upload heap for the sbt
+	sbtResource = nv_helpers_dx12::CreateBuffer(device.Get(), sbtSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, nv_helpers_dx12::kUploadHeapProps);
+
+	if (!sbtResource)
+		throw std::logic_error("Could not create SBT resource");
+
+	//compile the sbt from the above info
+	sbtGenerator.Generate(sbtResource.Get(), rtStateObjectProps.Get());
+}
+
 
 // --------------------------------------------------------
 // Handle resizing DirectX "stuff" to match the new window size.
@@ -722,8 +757,10 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 	//this ray generation shader is getting and output texture and an acceleration structure
 	nv_helpers_dx12::RootSignatureGenerator rsc;
 	rsc.AddHeapRangesParameter({ {0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,0}, //ouput texture
-		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1} 
+		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1},{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,2}
 	});
+
+	//rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 0, 0);
 
 	return rsc.Generate(device.Get(), true);
 }
@@ -740,6 +777,43 @@ ComPtr<ID3D12RootSignature> Game::CreateClosestHitRootSignature()
 	//the hit signature only has a payload
 	nv_helpers_dx12::RootSignatureGenerator rsc;
 	return rsc.Generate(device.Get(), true);
+
+}
+
+void Game::CreateRaytracingOutputBuffer()
+{
+	//create the output texture that will be used to store texture data
+	D3D12_RESOURCE_DESC resDes = {};
+	resDes.DepthOrArraySize = 1;
+	resDes.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resDes.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	resDes.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	resDes.Width = width;
+	resDes.Height = height;
+	resDes.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resDes.MipLevels = 1;
+	resDes.SampleDesc.Count = 1;
+
+	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(rtOutPut.resource.GetAddressOf())));
+	rtOutPut.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+	rtOutPut.resourceType = RESOURCE_TYPE_UAV;
+}
+
+void Game::CreateRaytracingDescriptorHeap()
+{
+	//creating the descriptor heap, it will contain two descriptors
+	//one for the UAV output and an SRV for the acceleration structure
+	rtDescriptorHeap.Create(device, 3, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	rtDescriptorHeap.CreateDescriptor(rtOutPut, rtOutPut.resourceType, device);
+	//initializing the camera buffer used for raytracing
+	//ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kUploadHeapProps, D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+		//D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(cameraData.resource.GetAddressOf())));
+
+	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(device, rtOutPut, topLevelAsBuffers);
+	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, 1024 * 64);
+	ZeroMemory(&rtCamera, sizeof(rtCamera));
+	cameraData.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&cameraBufferBegin));
+	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
 
 }
 
@@ -804,6 +878,9 @@ void Game::Update(float deltaTime, float totalTime)
 
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
+
+
+
 }
 
 // --------------------------------------------------------
@@ -917,8 +994,69 @@ void Game::PopulateCommandList()
 
 	else
 	{
+		ID3D12DescriptorHeap* ppHeaps[] = { rtDescriptorHeap.GetHeap().Get() };
+		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			rtOutPut.resource.Get(), rtOutPut.currentState,
+			D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		rtOutPut.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+		commandList->ResourceBarrier(1, &transition);
+
+		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 		const float clearColor[] = { 0.6f, 0.8f, 0.4f, 1.0f };
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+		//creating a dispatch rays description
+		D3D12_DISPATCH_RAYS_DESC desc = {};
+		//raygeneration location
+		desc.RayGenerationShaderRecord.StartAddress = sbtResource->GetGPUVirtualAddress();
+		desc.RayGenerationShaderRecord.SizeInBytes = sbtGenerator.GetRayGenSectionSize();
+
+		//miss shaders
+		desc.MissShaderTable.StartAddress = sbtResource->GetGPUVirtualAddress() + sbtGenerator.GetRayGenSectionSize();
+		desc.MissShaderTable.SizeInBytes = sbtGenerator.GetMissSectionSize();
+		desc.MissShaderTable.StrideInBytes = sbtGenerator.GetMissEntrySize();
+
+		//hit groups
+		desc.HitGroupTable.StartAddress = sbtResource->GetGPUVirtualAddress() + sbtGenerator.GetRayGenSectionSize() + sbtGenerator.GetMissSectionSize();
+		desc.HitGroupTable.StartAddress = (desc.HitGroupTable.StartAddress + 63) & ~63;
+		desc.HitGroupTable.SizeInBytes = sbtGenerator.GetHitGroupSectionSize();
+		desc.HitGroupTable.StrideInBytes = sbtGenerator.GetHitGroupEntrySize();
+
+		//scene description
+		desc.Height = height;
+		desc.Width = width;
+		desc.Depth = 1;
+
+		commandList->SetPipelineState1(rtStateObject.Get());
+		commandList->DispatchRays(&desc);
+
+		// The raytracing output needs to be copied to the actual render target used
+		// for display. For this, we need to transition the raytracing output from a
+		// UAV to a copy source, and the render target buffer to a copy destination.
+		// We can then do the actual copy, before transitioning the render target
+		// buffer into a render target, that will be then used to display the image
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			rtOutPut.resource.Get(), rtOutPut.currentState,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		rtOutPut.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+		commandList->ResourceBarrier(1, &transition);
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_DEST);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		commandList->CopyResource(renderTargets[frameIndex].resource.Get(),
+			rtOutPut.resource.Get());
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		commandList->ResourceBarrier(1, &transition);
+
 	}
 		// Indicate that the back buffer will now be used to present.
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
