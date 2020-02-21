@@ -53,9 +53,11 @@ return rsc.Generate(m_device.Get(), true);
 #pragma once
 
 #include "d3d12.h"
-
+#include<wrl\client.h>
 #include <tuple>
 #include <vector>
+
+using namespace Microsoft::WRL;
 
 namespace nv_helpers_dx12
 {
@@ -106,8 +108,8 @@ public:
   void AddStaticSamplers(D3D12_STATIC_SAMPLER_DESC& staticSampler);
 
   /// Create the root signature from the set of parameters, in the order of the addition calls
-  ID3D12RootSignature* Generate(ID3D12Device* device, bool isLocal);
-
+ ComPtr<ID3D12RootSignature> Generate(ID3D12Device* device, bool isLocal);
+ 
 private:
   /// Heap range descriptors
   std::vector<std::vector<D3D12_DESCRIPTOR_RANGE>> m_ranges;

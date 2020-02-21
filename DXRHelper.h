@@ -27,7 +27,7 @@ namespace nv_helpers_dx12
 //--------------------------------------------------------------------------------------------------
 //
 //
-inline ID3D12Resource* CreateBuffer(ID3D12Device* m_device, uint64_t size,
+inline ComPtr<ID3D12Resource> CreateBuffer(ID3D12Device* m_device, uint64_t size,
                                     D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState,
                                     const D3D12_HEAP_PROPERTIES& heapProps)
 {
@@ -44,7 +44,7 @@ inline ID3D12Resource* CreateBuffer(ID3D12Device* m_device, uint64_t size,
   bufDesc.SampleDesc.Quality = 0;
   bufDesc.Width = size;
 
-  ID3D12Resource* pBuffer;
+  ComPtr<ID3D12Resource> pBuffer;
   ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &bufDesc,
                                                   initState, nullptr, IID_PPV_ARGS(&pBuffer)));
   return pBuffer;
@@ -67,11 +67,11 @@ static const D3D12_HEAP_PROPERTIES kDefaultHeapProps = {
 //--------------------------------------------------------------------------------------------------
 // Compile a HLSL file into a DXIL library
 //
-inline IDxcBlob* CompileShaderLibrary(LPCWSTR fileName)
+inline ComPtr<IDxcBlob> CompileShaderLibrary(LPCWSTR fileName)
 {
-  static IDxcCompiler* pCompiler = nullptr;
-  static IDxcLibrary* pLibrary = nullptr;
-  static IDxcIncludeHandler* dxcIncludeHandler;
+  static ComPtr<IDxcCompiler> pCompiler = nullptr;
+  static ComPtr<IDxcLibrary> pLibrary = nullptr;
+  static ComPtr<IDxcIncludeHandler> dxcIncludeHandler;
 
   HRESULT hr;
 
@@ -93,21 +93,21 @@ inline IDxcBlob* CompileShaderLibrary(LPCWSTR fileName)
   std::string sShader = strStream.str();
 
   // Create blob from the string
-  IDxcBlobEncoding* pTextBlob;
+ ComPtr<IDxcBlobEncoding> pTextBlob;
   ThrowIfFailed(pLibrary->CreateBlobWithEncodingFromPinned(
       (LPBYTE)sShader.c_str(), (uint32_t)sShader.size(), 0, &pTextBlob));
 
   // Compile
-  IDxcOperationResult* pResult;
-  ThrowIfFailed(pCompiler->Compile(pTextBlob, fileName, L"", L"lib_6_3", nullptr, 0, nullptr, 0,
-                                   dxcIncludeHandler, &pResult));
+  ComPtr<IDxcOperationResult> pResult;
+  ThrowIfFailed(pCompiler->Compile(pTextBlob.Get(), fileName, L"", L"lib_6_3", nullptr, 0, nullptr, 0,
+                                   dxcIncludeHandler.Get(), &pResult));
 
   // Verify the result
   HRESULT resultCode;
   ThrowIfFailed(pResult->GetStatus(&resultCode));
   if (FAILED(resultCode))
   {
-    IDxcBlobEncoding* pError;
+      ComPtr<IDxcBlobEncoding> pError;
     hr = pResult->GetErrorBuffer(&pError);
     if (FAILED(hr))
     {
@@ -126,7 +126,7 @@ inline IDxcBlob* CompileShaderLibrary(LPCWSTR fileName)
     throw std::logic_error("Failed compile shader");
   }
 
-  IDxcBlob* pBlob;
+  ComPtr < IDxcBlob> pBlob;
   ThrowIfFailed(pResult->GetResult(&pBlob));
   return pBlob;
 }
@@ -134,7 +134,7 @@ inline IDxcBlob* CompileShaderLibrary(LPCWSTR fileName)
 //--------------------------------------------------------------------------------------------------
 //
 //
-inline ID3D12DescriptorHeap* CreateDescriptorHeap(ID3D12Device* device, uint32_t count,
+inline ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeap(ID3D12Device* device, uint32_t count,
                                            D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible)
 {
   D3D12_DESCRIPTOR_HEAP_DESC desc = {};
@@ -143,7 +143,7 @@ inline ID3D12DescriptorHeap* CreateDescriptorHeap(ID3D12Device* device, uint32_t
   desc.Flags =
       shaderVisible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
-  ID3D12DescriptorHeap* pHeap;
+  ComPtr<ID3D12DescriptorHeap> pHeap;
   ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&pHeap)));
   return pHeap;
 }

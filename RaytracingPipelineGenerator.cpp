@@ -135,7 +135,7 @@ void RayTracingPipelineGenerator::SetMaxRecursionDepth(UINT maxDepth)
 //--------------------------------------------------------------------------------------------------
 //
 // Compiles the raytracing state object
-ID3D12StateObject* RayTracingPipelineGenerator::Generate()
+ComPtr<ID3D12StateObject> RayTracingPipelineGenerator::Generate()
 {
   // The pipeline is made of a set of sub-objects, representing the DXIL libraries, hit group
   // declarations, root signature associations, plus some configuration objects
@@ -270,7 +270,7 @@ ID3D12StateObject* RayTracingPipelineGenerator::Generate()
   pipelineDesc.NumSubobjects = currentIndex; // static_cast<UINT>(subobjects.size());
   pipelineDesc.pSubobjects = subobjects.data();
 
-  ID3D12StateObject* rtStateObject = nullptr;
+  ComPtr<ID3D12StateObject> rtStateObject = nullptr;
 
   // Create the state object
   HRESULT hr = m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&rtStateObject));

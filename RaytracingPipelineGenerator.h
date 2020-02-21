@@ -61,12 +61,14 @@ rtStateObject = pipeline.Generate();
 
 #pragma once
 
+#include"DX12Helper.h"
 #include "d3d12.h"
 
 #include <dxcapi.h>
 
 #include <string>
 #include <vector>
+
 
 namespace nv_helpers_dx12
 {
@@ -120,7 +122,7 @@ public:
   void SetMaxRecursionDepth(UINT maxDepth);
 
   /// Compiles the raytracing state object
-  ID3D12StateObject* Generate();
+  ComPtr<ID3D12StateObject> Generate();
 
 private:
   /// Storage for DXIL libraries and their exported symbols
