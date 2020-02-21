@@ -14,3 +14,4 @@ struct Attributes
 {
   float2 bary;
 };
+

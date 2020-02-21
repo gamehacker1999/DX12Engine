@@ -125,7 +125,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 }
 
 void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResource& resource, 
-	RESOURCE_TYPE resourceType, ComPtr<ID3D12Device>& device, ComPtr<ID3D12CommandQueue> commandQueue,
+	RESOURCE_TYPE resourceType, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue,
 	TEXTURE_TYPES type)
 {
 	if (resourceType == RESOURCE_TYPE_SRV)
@@ -143,7 +143,7 @@ void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResour
 
 void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, ManagedResource& resource, AccelerationStructureBuffers topLevelASBuffer)
 {
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = { };
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;

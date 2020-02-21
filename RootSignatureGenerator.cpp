@@ -150,6 +150,11 @@ void RootSignatureGenerator::AddRootParameter(D3D12_ROOT_PARAMETER_TYPE type,
   m_rangeLocations.push_back(~0u);
 }
 
+void RootSignatureGenerator::AddStaticSamplers(D3D12_STATIC_SAMPLER_DESC& staticSampler)
+{
+    staticSamplers.emplace_back(staticSampler);
+}
+
 //--------------------------------------------------------------------------------------------------
 //
 // Create the root signature from the set of parameters, in the order of the addition calls
@@ -168,6 +173,12 @@ ID3D12RootSignature* RootSignatureGenerator::Generate(ID3D12Device* device, bool
   D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
   rootDesc.NumParameters = static_cast<UINT>(m_parameters.size());
   rootDesc.pParameters = m_parameters.data();
+
+  if (staticSamplers.size() > 0)
+  {
+      rootDesc.NumStaticSamplers = static_cast<UINT>(staticSamplers.size());
+      rootDesc.pStaticSamplers = staticSamplers.data();
+  }
   // Set the flags of the signature. By default root signatures are global, for example for vertex
   // and pixel shaders. For raytracing shaders the root signatures are local.
   rootDesc.Flags =

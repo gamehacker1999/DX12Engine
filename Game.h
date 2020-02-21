@@ -46,7 +46,7 @@ public:
 	//create the acceleration structure for the buffers
 	AccelerationStructureBuffers CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>,uint32_t>> vertexBuffers);
 	//create top level acceleration structures
-	void CreateTopLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>,XMFLOAT4X4>>& instances);
+	void CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>,XMMATRIX>>& instances);
 	//create both top and bottom structures
 	void CreateAccelerationStructures();
 
@@ -62,9 +62,8 @@ public:
 	//create dxr pipeline
 	void CreateRayTracingPipeline();
 
-	//SBT variables
-	nv_helpers_dx12::ShaderBindingTableGenerator sbtGenerator;
-	ComPtr<ID3D12Resource> sbtResource;
+	//shader binding table
+	void CreateShaderBindingTable();
 
 	//----------------------------------------------------------------
 
@@ -161,7 +160,7 @@ private:
 	ComPtr<ID3D12Resource> bottomLevelAs; //storage for bottom level as
 	nv_helpers_dx12::TopLevelASGenerator topLevelAsGenerator;
 	AccelerationStructureBuffers topLevelAsBuffers;
-	std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>> instances;
+	std::vector<std::pair<ComPtr<ID3D12Resource>, XMMATRIX>> instances;
 
 	//dxr root signatures
 	ComPtr<ID3D12RootSignature> rayGenRootSig;
@@ -182,13 +181,18 @@ private:
 	ManagedResource rtOutPut;
 	DescriptorHeapWrapper rtDescriptorHeap;
 
-	//shader binding table
-	void CreateShaderBindingTable();
+	//SBT variables
+	nv_helpers_dx12::ShaderBindingTableGenerator sbtGenerator;
+	ComPtr<ID3D12Resource> sbtResource;
 
 	//camera
 	RayTraceCameraData rtCamera;
 	ManagedResource cameraData;
 	UINT8* cameraBufferBegin;
+
+	//skybox
+	ManagedResource skyboxTexResource;
+
 	
 	//-------------------------------------------------------
 

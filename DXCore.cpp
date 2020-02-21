@@ -184,7 +184,7 @@ HRESULT DXCore::InitWindow()
 
 HRESULT DXCore::InitDirectX()
 {
-#if defined(_DEBUG)
+
 	// Enable the D3D12 debug layer.
 	{
 
@@ -194,7 +194,7 @@ HRESULT DXCore::InitDirectX()
 			debugController->EnableDebugLayer();
 		}
 	}
-#endif
+
 
 	ComPtr<IDXGIFactory4> factory;
 	auto hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));

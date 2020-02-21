@@ -140,6 +140,16 @@ XMFLOAT4X4 Entity::GetModelMatrix()
 	return modelMatrix;
 }
 
+XMMATRIX Entity::GetRawModelMatrix()
+{
+	//getting the translation, scale, and rotation matrices
+	XMMATRIX translate = XMMatrixTranslationFromVector(XMLoadFloat3(&position));
+	XMMATRIX scaleMat = XMMatrixScalingFromVector(XMLoadFloat3(&scale));
+	XMMATRIX rotationMat = XMMatrixRotationQuaternion(XMLoadFloat4(&rotation));
+
+	return scaleMat * rotationMat * translate;
+}
+
 void Entity::SetTag(std::string tag)
 {
 	this->tag = tag;

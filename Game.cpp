@@ -175,10 +175,6 @@ HRESULT Game::Init()
 	CreateBasicGeometry();
 	CreateEnvironment();
 	CreateAccelerationStructures();
-	CreateRayTracingPipeline();
-	CreateRaytracingOutputBuffer();
-	CreateRaytracingDescriptorHeap();
-	CreateShaderBindingTable();
 
 	//allocate volumes and skyboxes here
 
@@ -223,6 +219,10 @@ HRESULT Game::Init()
 	residencySet->Close();
 
 	WaitForPreviousFrame();
+	CreateRayTracingPipeline();
+	CreateRaytracingOutputBuffer();
+	CreateRaytracingDescriptorHeap();
+	CreateShaderBindingTable();
 
 	return S_OK;
 }
@@ -445,8 +445,8 @@ void Game::CreateBasicGeometry()
 
 	ZeroMemory(&lightData, sizeof(lightData));
 
-	lightData.light1.diffuse = XMFLOAT4(1, 1, 1, 1);
-	lightData.light1.direction = XMFLOAT3(0, 0, 1);
+	lightData.light1.diffuse = XMFLOAT4(1, 0, 0, 1);
+	lightData.light1.direction = XMFLOAT3(1, 0, 0);
 	lightData.light1.ambientColor = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.f);
 	lightData.light1.specularity = XMFLOAT4(1, 0, 0, 1);
 
@@ -474,13 +474,14 @@ void Game::CreateBasicGeometry()
 	materials.emplace_back(material2);
 
 
-	entity1 = std::make_shared<Entity>(mesh1,material1);
+	entity1 = std::make_shared<Entity>(mesh2,material1);
 	entity2 = std::make_shared<Entity>(mesh1,material1);
 	entity3 = std::make_shared<Entity>(mesh1,material2);
 	entity4 = std::make_shared<Entity>(mesh3,material1);
 	
 
-	entity1->SetPosition(XMFLOAT3(0, 0, 1.5f));
+	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
+	entity1->SetScale(XMFLOAT3(10, 10, 10));
 	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
 	entity3->SetPosition(XMFLOAT3(-1, 0, 1.f));
 	entity4->SetPosition(XMFLOAT3(-4, 0, 1.f));
@@ -643,13 +644,13 @@ void Game::CreateShaderBindingTable()
 	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = rtDescriptorHeap.GetHeap()->GetGPUDescriptorHandleForHeapStart();
 
 	//reinterpreting the above pointer as a void pointer
-	auto heapPointer = reinterpret_cast<void*>(gpuHandle.ptr);
+	auto heapPointer = reinterpret_cast<UINT64*>(gpuHandle.ptr);
 
 	//the ray generation shader needs external data therefore it needs the pointer to the heap
 	//the miss and hit group shaders don't have any data
 	sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer });
-	sbtGenerator.AddMissProgram(L"Miss", {});
-	sbtGenerator.AddHitGroup(L"HitGroup", {});
+	sbtGenerator.AddMissProgram(L"Miss", {heapPointer});
+	sbtGenerator.AddHitGroup(L"HitGroup", {(void*)entities[3]->GetMesh()->GetVertexBufferResourceAndCount().first.Get()->GetGPUVirtualAddress(),(void*)lightConstantBufferResource->GetGPUVirtualAddress()});
 
 	//compute the size of the SBT
 	UINT32 sbtSize = sbtGenerator.ComputeSBTSize();
@@ -686,8 +687,11 @@ void Game::OnResize()
 AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vertexBuffers)
 {
 	nv_helpers_dx12::BottomLevelASGenerator bottomLevelAS; //bottom level as generator
-	auto vertResourceAndCount = entities[3]->GetMesh()->GetVertexBufferResourceAndCount();
-	bottomLevelAS.AddVertexBuffer(vertResourceAndCount.first.Get(), 0, vertResourceAndCount.second, sizeof(Vertex), 0, 0);
+
+	for (const auto& buffer : vertexBuffers)
+	{
+		bottomLevelAS.AddVertexBuffer(buffer.first.Get(), 0, buffer.second, sizeof(Vertex), 0, 0);
+	}
 
 	//allocating scratch space to store temporary information
 	UINT64 scratchInBytes = 0;
@@ -696,21 +700,21 @@ AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<Com
 	bottomLevelAS.ComputeASBufferSizes(device.Get(), false, &scratchInBytes, &resultSizeInBytes);
 
 	//onmce the size is obtained ,then we need to create the necessary buffers
-	AccelerationStructureBuffers buffer;
-	buffer.pScratch = nv_helpers_dx12::CreateBuffer(device.Get(), scratchInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON, nv_helpers_dx12::kDefaultHeapProps);
-	buffer.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nv_helpers_dx12::kDefaultHeapProps);
+	AccelerationStructureBuffers buffers;
+	buffers.pScratch = nv_helpers_dx12::CreateBuffer(device.Get(), scratchInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON, nv_helpers_dx12::kDefaultHeapProps);
+	buffers.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nv_helpers_dx12::kDefaultHeapProps);
 	
 	//build the acceleration structure
-	bottomLevelAS.Generate(commandList.Get(), buffer.pScratch.Get(), buffer.pResult.Get(), false, nullptr);
+	bottomLevelAS.Generate(commandList.Get(), buffers.pScratch.Get(), buffers.pResult.Get(), false, nullptr);
 
-	return buffer;
+	return buffers;
 }
 
-void Game::CreateTopLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>>& instances)
+void Game::CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>, XMMATRIX>>& instances)
 {
 	for (int i = 0; i < instances.size(); i++)
 	{
-		topLevelAsGenerator.AddInstance(instances[i].first.Get(), XMLoadFloat4x4(&instances[i].second), static_cast<UINT>(i), (UINT)0);
+		topLevelAsGenerator.AddInstance(instances[i].first.Get(), instances[i].second, static_cast<UINT>(i), (UINT)0);
 	}
 
 	UINT64 scratchSize, resultSize, instanceDescsSize;
@@ -718,8 +722,15 @@ void Game::CreateTopLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, XMFLOA
 	//allocating scratch space, result space, and instance space
 	topLevelAsGenerator.ComputeASBufferSizes(device.Get(), true, &scratchSize, &resultSize, &instanceDescsSize);
 
-	topLevelAsBuffers.pScratch = nv_helpers_dx12::CreateBuffer(device.Get(), scratchSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nv_helpers_dx12::kDefaultHeapProps);
-	topLevelAsBuffers.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), resultSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nv_helpers_dx12::kDefaultHeapProps);
+	topLevelAsBuffers.pScratch = nv_helpers_dx12::CreateBuffer(device.Get(), 
+		scratchSize, 
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 
+		nv_helpers_dx12::kDefaultHeapProps);
+
+	topLevelAsBuffers.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), resultSize, 
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, 
+		nv_helpers_dx12::kDefaultHeapProps);
+
 	// The buffer describing the instances: ID, shader binding information,
 	// matrices ... Those will be copied into the buffer by the helper through
 	// mapping, so the buffer has to be allocated on the upload heap.
@@ -742,17 +753,23 @@ void Game::CreateAccelerationStructures()
 {
 	//creating a bottom level AS for the first entity for now
 	AccelerationStructureBuffers bottomLevelBuffers = CreateBottomLevelAS({ entities[3]->GetMesh()->GetVertexBufferResourceAndCount() });
+	AccelerationStructureBuffers planeBottomLevelBuffer = CreateBottomLevelAS({ entities[0]->GetMesh()->GetVertexBufferResourceAndCount() });
 
 	//create only one instance for now
 
 	//instances.emplace_back(std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>(bottomLevelBuffers.pResult, entities[3]->GetModelMatrix()));
 
-	instances = { {bottomLevelBuffers.pResult, entities[0]->GetModelMatrix()},
-			   {bottomLevelBuffers.pResult, entities[1]->GetModelMatrix()},
-			   {bottomLevelBuffers.pResult, entities[2]->GetModelMatrix()} };
+	instances = { {bottomLevelBuffers.pResult, entities[3]->GetRawModelMatrix()},{bottomLevelBuffers.pResult, XMMatrixTranslation(-1,3,0)},{planeBottomLevelBuffer.pResult,entities[0]->GetRawModelMatrix()} };
 	CreateTopLevelAS(instances);
 
-	//CreateTopLevelAS(instances);
+	commandList->Close();
+	ID3D12CommandList* ppCommandLists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	WaitForPreviousFrame();
+
+	ThrowIfFailed(
+		commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 
 	bottomLevelAs = bottomLevelBuffers.pResult;
 
@@ -775,6 +792,10 @@ ComPtr<ID3D12RootSignature> Game::CreateMissRootSignature()
 {
 	//the miss signature only has a payload
 	nv_helpers_dx12::RootSignatureGenerator rsc;
+	rsc.AddHeapRangesParameter({ { 0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,3 } });
+	CD3DX12_STATIC_SAMPLER_DESC samplerDesc;
+	samplerDesc.Init(0);
+	rsc.AddStaticSamplers(samplerDesc);
 	return rsc.Generate(device.Get(), true);
 }
 
@@ -782,6 +803,8 @@ ComPtr<ID3D12RootSignature> Game::CreateClosestHitRootSignature()
 {
 	//the hit signature only has a payload
 	nv_helpers_dx12::RootSignatureGenerator rsc;
+	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV);
+	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV);
 	return rsc.Generate(device.Get(), true);
 
 }
@@ -809,7 +832,7 @@ void Game::CreateRaytracingDescriptorHeap()
 {
 	//creating the descriptor heap, it will contain two descriptors
 	//one for the UAV output and an SRV for the acceleration structure
-	rtDescriptorHeap.Create(device, 3, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	rtDescriptorHeap.Create(device, 4, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	rtDescriptorHeap.CreateDescriptor(rtOutPut, rtOutPut.resourceType, device);
 	//initializing the camera buffer used for raytracing
 	//ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kUploadHeapProps, D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
@@ -817,6 +840,7 @@ void Game::CreateRaytracingDescriptorHeap()
 
 	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(device, rtOutPut, topLevelAsBuffers);
 	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
+	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox1.dds",skyboxTexResource,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DDS);
 	ZeroMemory(&rtCamera, sizeof(rtCamera));
 	ThrowIfFailed(cameraData.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&cameraBufferBegin)));
 	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
@@ -1008,13 +1032,15 @@ void Game::PopulateCommandList()
 	else
 	{
 		ID3D12DescriptorHeap* ppHeaps[] = { rtDescriptorHeap.GetHeap().Get() };
+
+		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
 		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
 			rtOutPut.resource.Get(), rtOutPut.currentState,
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		rtOutPut.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 		commandList->ResourceBarrier(1, &transition);
 
-		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 		const float clearColor[] = { 0.6f, 0.8f, 0.4f, 1.0f };
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
@@ -1022,16 +1048,18 @@ void Game::PopulateCommandList()
 		D3D12_DISPATCH_RAYS_DESC desc = {};
 		//raygeneration location
 		desc.RayGenerationShaderRecord.StartAddress = sbtResource->GetGPUVirtualAddress();
+		//desc.RayGenerationShaderRecord.StartAddress = (desc.RayGenerationShaderRecord.StartAddress + 63) & ~63;
 		desc.RayGenerationShaderRecord.SizeInBytes = sbtGenerator.GetRayGenSectionSize();
 
 		//miss shaders
 		desc.MissShaderTable.StartAddress = sbtResource->GetGPUVirtualAddress() + sbtGenerator.GetRayGenSectionSize();
 		desc.MissShaderTable.SizeInBytes = sbtGenerator.GetMissSectionSize();
+		//desc.MissShaderTable.StartAddress = (desc.MissShaderTable.StartAddress + 63) & ~63;
 		desc.MissShaderTable.StrideInBytes = sbtGenerator.GetMissEntrySize();
 
 		//hit groups
 		desc.HitGroupTable.StartAddress = sbtResource->GetGPUVirtualAddress() + sbtGenerator.GetRayGenSectionSize() + sbtGenerator.GetMissSectionSize();
-		desc.HitGroupTable.StartAddress = (desc.HitGroupTable.StartAddress + 63) & ~63;
+		//desc.HitGroupTable.StartAddress = (desc.HitGroupTable.StartAddress + 63) & ~63;
 		desc.HitGroupTable.SizeInBytes = sbtGenerator.GetHitGroupSectionSize();
 		desc.HitGroupTable.StrideInBytes = sbtGenerator.GetHitGroupEntrySize();
 

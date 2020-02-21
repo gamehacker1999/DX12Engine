@@ -77,6 +77,7 @@ public:
 	XMFLOAT3 GetScale();
 	XMFLOAT4 GetRotation();
 	XMFLOAT4X4 GetModelMatrix();
+	XMMATRIX GetRawModelMatrix();
 
 	void SetTag(std::string tag);
 	std::string GetTag();

@@ -188,7 +188,7 @@ void TopLevelASGenerator::Generate(
     instanceDescs[i].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
     // Instance transform matrix
     DirectX::XMMATRIX m = XMMatrixTranspose(
-        m_instances[i].transform); // GLM is column major, the INSTANCE_DESC is row major
+        m_instances[i].transform); // 
     memcpy(instanceDescs[i].Transform, &m, sizeof(instanceDescs[i].Transform));
     // Get access to the bottom level
     instanceDescs[i].AccelerationStructure = m_instances[i].bottomLevelAS->GetGPUVirtualAddress();
