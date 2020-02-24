@@ -206,5 +206,8 @@
     <None Include="Common.hlsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="ShadowRay.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

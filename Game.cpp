@@ -650,7 +650,15 @@ void Game::CreateShaderBindingTable()
 	//the miss and hit group shaders don't have any data
 	sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer });
 	sbtGenerator.AddMissProgram(L"Miss", {heapPointer});
-	sbtGenerator.AddHitGroup(L"HitGroup", {(void*)entities[3]->GetMesh()->GetVertexBufferResourceAndCount().first.Get()->GetGPUVirtualAddress(),(void*)lightConstantBufferResource->GetGPUVirtualAddress()});
+	for (int i = 0; i < 2; i++)
+	{
+		sbtGenerator.AddHitGroup(L"HitGroup", { (void*)entities[3]->GetMesh()->GetVertexBufferResourceAndCount().first.Get()->GetGPUVirtualAddress(),(void*)lightConstantBufferResource->GetGPUVirtualAddress() });
+		sbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
+	}
+	sbtGenerator.AddHitGroup(L"PlaneHitGroup", {heapPointer});
+
+	sbtGenerator.AddMissProgram(L"ShadowMiss", {});
+	sbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
 
 	//compute the size of the SBT
 	UINT32 sbtSize = sbtGenerator.ComputeSBTSize();
@@ -714,7 +722,7 @@ void Game::CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>, 
 {
 	for (int i = 0; i < instances.size(); i++)
 	{
-		topLevelAsGenerator.AddInstance(instances[i].first.Get(), instances[i].second, static_cast<UINT>(i), (UINT)0);
+		topLevelAsGenerator.AddInstance(instances[i].first.Get(), instances[i].second, static_cast<UINT>(i), static_cast<UINT>(i*2));
 	}
 
 	UINT64 scratchSize, resultSize, instanceDescsSize;
@@ -805,6 +813,7 @@ ComPtr<ID3D12RootSignature> Game::CreateClosestHitRootSignature()
 	nv_helpers_dx12::RootSignatureGenerator rsc;
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV);
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV);
+	rsc.AddHeapRangesParameter({ {1,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1} });
 	return rsc.Generate(device.Get(), true);
 
 }
@@ -856,24 +865,32 @@ void Game::CreateRayTracingPipeline()
 	missLib = nv_helpers_dx12::CompileShaderLibrary(L"../../Miss.hlsl");
 	hitLib = nv_helpers_dx12::CompileShaderLibrary(L"../../Hit.hlsl");
 
+
 	//add the libraies to pipeliene
 	pipeline.AddLibrary(rayGenLib.Get(), { L"RayGen" });
 	pipeline.AddLibrary(missLib.Get(), { L"Miss" });
-	pipeline.AddLibrary(hitLib.Get(), { L"ClosestHit"});
+	pipeline.AddLibrary(hitLib.Get(), { L"ClosestHit",L"PlaneClosestHit"});
 
 	//creating the root signatures
 	rayGenRootSig = CreateRayGenRootSignature();
 	missRootSig = CreateMissRootSignature();
 	closestHitRootSignature = CreateClosestHitRootSignature();
 
+	shadowRayLib = nv_helpers_dx12::CompileShaderLibrary(L"../../ShadowRay.hlsl");
+	pipeline.AddLibrary(shadowRayLib.Get(), { L"ShadowClosestHit",L"ShadowMiss" });
+	shadowRootSig = CreateClosestHitRootSignature();
+
 	//adding a hit group to the pipeline
 	pipeline.AddHitGroup(L"HitGroup", L"ClosestHit");
+	pipeline.AddHitGroup(L"PlaneHitGroup", L"PlaneClosestHit");
+	pipeline.AddHitGroup(L"ShadowHitGroup", L"ShadowClosestHit");
 
 	//associating the root signatures with the shaders
 	//shaders can share root signatures
 	pipeline.AddRootSignatureAssociation(rayGenRootSig.Get(), { L"RayGen" });
-	pipeline.AddRootSignatureAssociation(missRootSig.Get(), { L"Miss" });
-	pipeline.AddRootSignatureAssociation(closestHitRootSignature.Get(), { L"HitGroup" }); // the intersection, anyhit, and closest hit shaders are bundled together in a hit group
+	pipeline.AddRootSignatureAssociation(missRootSig.Get(), { L"Miss",L"ShadowMiss" });
+	pipeline.AddRootSignatureAssociation(closestHitRootSignature.Get(), { L"HitGroup" ,L"PlaneHitGroup",L"ShadowHitGroup"}); // the intersection, anyhit, and closest hit shaders are bundled together in a hit group
+	//pipeline.AddRootSignatureAssociation(shadowRootSig.Get(), { L"ShadowHitGroup" });
 
 	//payload size defines the maximum size of the data carried by the rays
 	pipeline.SetMaxPayloadSize(4 * sizeof(float));
@@ -882,7 +899,7 @@ void Game::CreateRayTracingPipeline()
 	pipeline.SetMaxAttributeSize(2 * sizeof(float));
 
 	//setting the recursion depth
-	pipeline.SetMaxRecursionDepth(1);
+	pipeline.SetMaxRecursionDepth(2);
 
 	//creating the state obj
 	rtStateObject = pipeline.Generate();

@@ -34,10 +34,10 @@ void RayGen() {
   ray.Origin = mul(float4(0, 0, 0, 1), cameraData.iView);
   float4 target = mul(float4(d.x, -d.y, 1, 1), cameraData.iProj);
   ray.Direction = mul(float4(target.xyz, 0), cameraData.iView);
-  ray.TMin = 0.00001;
+  ray.TMin = 0.01;
   ray.TMax = 100000;
 
-  TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
+  TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, payload);
 
   gOutput[launchIndex] = float4(payload.colorAndDistance.rgb, 1.f);
 }

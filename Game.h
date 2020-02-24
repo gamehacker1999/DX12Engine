@@ -193,6 +193,9 @@ private:
 	//skybox
 	ManagedResource skyboxTexResource;
 
+	//shadow ray variables
+	ComPtr<IDxcBlob> shadowRayLib;
+	ComPtr<ID3D12RootSignature> shadowRootSig;
 	
 	//-------------------------------------------------------
 
