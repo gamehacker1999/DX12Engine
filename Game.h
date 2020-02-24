@@ -179,6 +179,10 @@ private:
 	ComPtr<IDxcBlob> hitLib;
 
 	ManagedResource rtOutPut;
+	//gbuffers resources
+	ManagedResource rtPosition;
+	ManagedResource rtNormals;
+	ManagedResource rtDiffuse;
 	DescriptorHeapWrapper rtDescriptorHeap;
 
 	//SBT variables

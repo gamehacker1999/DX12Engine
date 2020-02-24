@@ -767,7 +767,7 @@ void Game::CreateAccelerationStructures()
 
 	//instances.emplace_back(std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>(bottomLevelBuffers.pResult, entities[3]->GetModelMatrix()));
 
-	instances = { {bottomLevelBuffers.pResult, entities[3]->GetRawModelMatrix()},{bottomLevelBuffers.pResult, XMMatrixTranslation(-1,3,0)},{planeBottomLevelBuffer.pResult,entities[0]->GetRawModelMatrix()} };
+	instances = { {bottomLevelBuffers.pResult, entities[3]->GetRawModelMatrix()},{bottomLevelBuffers.pResult, XMMatrixTranslation(-1,3,20)},{planeBottomLevelBuffer.pResult,entities[0]->GetRawModelMatrix()} };
 	CreateTopLevelAS(instances);
 
 	commandList->Close();
