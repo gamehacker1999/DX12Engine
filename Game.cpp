@@ -835,6 +835,18 @@ void Game::CreateRaytracingOutputBuffer()
 	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(rtOutPut.resource.GetAddressOf())));
 	rtOutPut.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 	rtOutPut.resourceType = RESOURCE_TYPE_UAV;
+
+	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes,D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtNormals.resource.GetAddressOf())));
+	rtNormals.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+	rtNormals.resourceType = RESOURCE_TYPE_UAV;
+
+	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtDiffuse.resource.GetAddressOf())));
+	rtDiffuse.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+	rtDiffuse.resourceType = RESOURCE_TYPE_UAV;
+
+	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtPosition.resource.GetAddressOf())));
+	rtPosition.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+	rtPosition.resourceType = RESOURCE_TYPE_UAV;
 }
 
 void Game::CreateRaytracingDescriptorHeap()

@@ -91,6 +91,7 @@ private:
 
 	//ID3D11Buffer* particleBuffer;
 	ManagedResource particleBuffer;
+	ManagedResource particleUploadBuffer;
 	ManagedResource particleData;
 
 	// Update Methods

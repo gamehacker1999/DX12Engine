@@ -53,6 +53,8 @@ Emitter::Emitter(int maxParticles, int particlesPerSecond, float lifetime,
 	}
 
 	indexBuffer = CreateIBView(indices, 6 * maxParticles, device, commandList, defaultIndexHeap, uploadIndexHeap);
+
+
 }
 
 Emitter::~Emitter()
