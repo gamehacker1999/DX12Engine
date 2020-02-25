@@ -141,7 +141,38 @@ void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResour
 	}
 }
 
-void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, ManagedResource& resource, AccelerationStructureBuffers topLevelASBuffer)
+void DescriptorHeapWrapper::CreateStructuredBuffer(ManagedResource& resource, ComPtr<ID3D12Device> device, 
+	UINT numElements, UINT stride, UINT bufferSize)
+{
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(resource.resource.GetAddressOf())
+	));
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC structureBufferDesc = {};
+	structureBufferDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	structureBufferDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+	structureBufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+	structureBufferDesc.Buffer.FirstElement = 0;
+	structureBufferDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+	structureBufferDesc.Buffer.NumElements = numElements;
+	structureBufferDesc.Buffer.StructureByteStride = stride;
+
+	device->CreateShaderResourceView(resource.resource.Get(), &structureBufferDesc, GetCPUHandle(lastResourceIndex));
+
+	resource.resourceType = RESOURCE_TYPE_SRV;
+	resource.currentState = D3D12_RESOURCE_STATE_GENERIC_READ;
+	resource.heapOffset = lastResourceIndex;
+
+	lastResourceIndex++;
+}
+
+void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, 
+	ManagedResource& resource, AccelerationStructureBuffers topLevelASBuffer)
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 	srvDesc.Format = DXGI_FORMAT_UNKNOWN;

@@ -56,8 +56,8 @@ HRESULT Game::Init()
 	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
 	ThrowIfFailed(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,
 		&options5, sizeof(options5)));
-	if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
-		throw std::runtime_error("Raytracing not supported on device");
+	//if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
+		//throw std::runtime_error("Raytracing not supported on device");
 
 	frameIndex = this->swapChain->GetCurrentBackBufferIndex();
 
@@ -346,7 +346,7 @@ void Game::LoadShaders()
 	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc,D3D_ROOT_SIGNATURE_VERSION_1_1,volumeSignature.GetAddressOf(),volumeError.GetAddressOf()));
 
 	ThrowIfFailed(device->CreateRootSignature(0, volumeSignature->GetBufferPointer(), volumeSignature->GetBufferSize(), IID_PPV_ARGS(volumeRootSignature.GetAddressOf())));
-
+	
 	ComPtr<ID3DBlob> rayMarchedVolumeVS;
 	ComPtr<ID3DBlob> raymarcedVolumePS;
 

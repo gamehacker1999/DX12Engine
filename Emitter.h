@@ -1,8 +1,29 @@
 #pragma once
 #include "DX12Helper.h"
+#include "DescriptorHeapWrapper.h"
 #include"Particles.h"
 using namespace DirectX;
 //class to have particle emitters
+
+struct ParticleExternalData
+{
+	XMFLOAT4X4 view;
+	XMFLOAT4X4 projection;
+
+	int startIndex;
+
+	XMFLOAT3 acceleration;
+
+	XMFLOAT4 startColor;
+	XMFLOAT4 endColor;
+
+	float startSize;
+	float endSize;
+
+	float lifetime;
+	float currentTime;
+};
+
 class Emitter
 {
 public:
@@ -22,9 +43,10 @@ public:
 		XMFLOAT3 emitterAcceleration,
 		ComPtr<ID3D12Device> device,
 		ComPtr<ID3D12GraphicsCommandList> commandList,
+		ComPtr<ID3D12CommandQueue> commandQueue,
 		ComPtr<ID3D12PipelineState> particlePipeline,
 		ComPtr<ID3D12RootSignature> particleRoot,
-		ManagedResource texture
+		std::wstring textureName
 	);
 	~Emitter();
 
@@ -92,7 +114,16 @@ private:
 	//ID3D11Buffer* particleBuffer;
 	ManagedResource particleBuffer;
 	ManagedResource particleUploadBuffer;
+	UINT8* particleDataBegin;
 	ManagedResource particleData;
+
+	//constant buffer data
+	ParticleExternalData externData;
+	UINT8* externDataBegin;
+	ComPtr<ID3D12Resource> externalDataResource;
+
+	//descriptor heap
+	DescriptorHeapWrapper descriptorHeap;
 
 	// Update Methods
 	void UpdateSingleParticle(float dt, int index, float currentTime);
