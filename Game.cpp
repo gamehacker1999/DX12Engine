@@ -383,7 +383,68 @@ void Game::LoadShaders()
 	psoDescVolume.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescVolume, IID_PPV_ARGS(volumePSO.GetAddressOf())));
 
+	//creating particle root sig and pso
+	CD3DX12_DESCRIPTOR_RANGE1 particleDescriptorRange[2];
+	CD3DX12_ROOT_PARAMETER1 particleRootParams[3];
 
+	particleDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+
+	particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+	particleRootParams[1].InitAsDescriptorTable(1, &particleDescriptorRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
+	particleRootParams[2].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_VERTEX);
+
+	ComPtr<ID3DBlob> particleSignature;
+	ComPtr<ID3DBlob> particleError;
+
+	CD3DX12_STATIC_SAMPLER_DESC staticSamplersParticle[1];//(0, D3D12_FILTER_ANISOTROPIC);
+	staticSamplersParticle[0].Init(0);
+
+	rootSignatureDesc.Init_1_1(_countof(particleRootParams), particleRootParams, 
+		_countof(staticSamplersParticle), staticSamplersParticle, rootSignatureFlags);
+
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, 
+		particleSignature.GetAddressOf(), particleError.GetAddressOf()));
+
+	ThrowIfFailed(device->CreateRootSignature(0, particleSignature->GetBufferPointer(), particleSignature->GetBufferSize(), 
+		IID_PPV_ARGS(particleRootSig.GetAddressOf())));
+
+	ComPtr<ID3DBlob> particleVS;
+	ComPtr<ID3DBlob> particlePS;
+
+	ThrowIfFailed(D3DReadFileToBlob(L"ParticlePS.cso", particlePS.GetAddressOf()));
+	ThrowIfFailed(D3DReadFileToBlob(L"ParticleVS.cso", particleVS.GetAddressOf()));
+
+	//creating a pipeline state object
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDescParticle = {};
+	//psoDescParticle.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+	psoDescParticle.pRootSignature = particleRootSig.Get();
+	psoDescParticle.VS = CD3DX12_SHADER_BYTECODE(particleVS.Get());
+	psoDescParticle.PS = CD3DX12_SHADER_BYTECODE(particlePS.Get());
+	//psoDescParticle.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDescParticle.DepthStencilState.DepthEnable = true;
+	psoDescParticle.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	psoDescParticle.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	psoDescParticle.DepthStencilState.DepthEnable = true;
+	psoDescParticle.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+	psoDescParticle.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state
+	psoDescParticle.BlendState.AlphaToCoverageEnable = false;
+	psoDescParticle.BlendState.IndependentBlendEnable = false;
+	psoDescParticle.BlendState.RenderTarget[0].BlendEnable = true;
+	psoDescParticle.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	psoDescParticle.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	psoDescParticle.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	psoDescParticle.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	psoDescParticle.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+	psoDescParticle.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	psoDescParticle.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	psoDescParticle.SampleMask = UINT_MAX;
+	psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_UNDEFINED;
+	psoDescParticle.NumRenderTargets = 1;
+	psoDescParticle.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDescParticle.SampleDesc.Count = 1;
+	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescParticle, IID_PPV_ARGS(particlesPSO.GetAddressOf())));
 }
 
 
@@ -620,6 +681,7 @@ void Game::CreateEnvironment()
 	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
+
 
 	/*ID3D12DescriptorHeap* ppHeaps[] = { mainBufferHeap.GetHeap().Get() };
 	skyboxBundle->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);

@@ -203,6 +203,10 @@ private:
 	
 	//-------------------------------------------------------
 
+	//particle data
+	ComPtr<ID3D12PipelineState> particlesPSO;
+	ComPtr<ID3D12RootSignature> particleRootSig;
+
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.
 	POINT prevMousePos;
