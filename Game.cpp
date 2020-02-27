@@ -56,8 +56,8 @@ HRESULT Game::Init()
 	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
 	ThrowIfFailed(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,
 		&options5, sizeof(options5)));
-	//if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
-		//throw std::runtime_error("Raytracing not supported on device");
+	if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
+		throw std::runtime_error("Raytracing not supported on device");
 
 	frameIndex = this->swapChain->GetCurrentBackBufferIndex();
 
@@ -439,7 +439,7 @@ void Game::LoadShaders()
 	psoDescParticle.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
 	psoDescParticle.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	psoDescParticle.SampleMask = UINT_MAX;
-	psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_UNDEFINED;
+	psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
 	psoDescParticle.NumRenderTargets = 1;
 	psoDescParticle.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -678,7 +678,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox3.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 
@@ -717,7 +717,7 @@ void Game::CreateShaderBindingTable()
 		sbtGenerator.AddHitGroup(L"HitGroup", { (void*)entities[3]->GetMesh()->GetVertexBufferResourceAndCount().first.Get()->GetGPUVirtualAddress(),(void*)lightConstantBufferResource->GetGPUVirtualAddress() });
 		sbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
 	}
-	sbtGenerator.AddHitGroup(L"PlaneHitGroup", {heapPointer});
+	sbtGenerator.AddHitGroup(L"PlaneHitGroup", { (void*)entities[0]->GetMesh()->GetVertexBufferResourceAndCount().first.Get()->GetGPUVirtualAddress(),heapPointer});
 
 	sbtGenerator.AddMissProgram(L"ShadowMiss", {});
 	sbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
@@ -782,10 +782,13 @@ AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<Com
 
 void Game::CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>, XMMATRIX>>& instances)
 {
-	for (int i = 0; i < instances.size(); i++)
+	for (int i = 0; i < instances.size()-1; i++)
 	{
-		topLevelAsGenerator.AddInstance(instances[i].first.Get(), instances[i].second, static_cast<UINT>(i), static_cast<UINT>(i*2));
+		topLevelAsGenerator.AddInstance(instances[i].first.Get(), instances[i].second, static_cast<UINT>(i), static_cast<UINT>(i*2),D3D12_RAYTRACING_INSTANCE_FLAG_NONE,0xFF);
 	}
+
+	topLevelAsGenerator.AddInstance(instances[2].first.Get(), instances[2].second, static_cast<UINT>(2), static_cast<UINT>(2 * 2), D3D12_RAYTRACING_INSTANCE_FLAG_NONE, 0x02);
+
 
 	UINT64 scratchSize, resultSize, instanceDescsSize;
 
@@ -923,7 +926,7 @@ void Game::CreateRaytracingDescriptorHeap()
 
 	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(device, rtOutPut, topLevelAsBuffers);
 	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
-	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox1.dds",skyboxTexResource,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DDS);
+	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox3.dds",skyboxTexResource,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DDS);
 	ZeroMemory(&rtCamera, sizeof(rtCamera));
 	ThrowIfFailed(cameraData.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&cameraBufferBegin)));
 	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
@@ -970,7 +973,7 @@ void Game::CreateRayTracingPipeline()
 	pipeline.SetMaxPayloadSize(4 * sizeof(float));
 
 	//max attrrib size, for now I am using the built in triangle attribs
-	pipeline.SetMaxAttributeSize(2 * sizeof(float));
+	pipeline.SetMaxAttributeSize(4 * sizeof(float));
 
 	//setting the recursion depth
 	pipeline.SetMaxRecursionDepth(2);

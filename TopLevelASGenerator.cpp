@@ -62,19 +62,21 @@ namespace nv_helpers_dx12
 // of the hit group indicating which shaders are executed upon hitting any
 // geometry within the instance
 void TopLevelASGenerator::AddInstance(
-    ID3D12Resource* bottomLevelAS,      // Bottom-level acceleration structure containing the
-                                        // actual geometric data of the instance
-    const DirectX::XMMATRIX& transform, // Transform matrix to apply to the instance, allowing the
-                                        // same bottom-level AS to be used at several world-space
-                                        // positions
-    UINT instanceID,                    // Instance ID, which can be used in the shaders to
-                                        // identify this specific instance
-    UINT hitGroupIndex                  // Hit group index, corresponding the the index of the
-                                        // hit group in the Shader Binding Table that will be
-                                        // invocated upon hitting the geometry
+    ID3D12Resource* bottomLevelAS, /// Bottom-level acceleration structure containing the
+                                              /// actual geometric data of the instance
+    const DirectX::XMMATRIX& transform, /// Transform matrix to apply to the instance,
+                                        /// allowing the same bottom-level AS to be used
+                                        /// at several world-space positions
+    UINT instanceID,   /// Instance ID, which can be used in the shaders to
+                       /// identify this specific instance
+    UINT hitGroupIndex, /// Hit group index, corresponding the the index of the
+                       /// hit group in the Shader Binding Table that will be
+                       /// invocated upon hitting the geometry
+    D3D12_RAYTRACING_INSTANCE_FLAGS flag, //instance flag
+    UINT instanceMask //instance mask
 )
 {
-  m_instances.emplace_back(Instance(bottomLevelAS, transform, instanceID, hitGroupIndex));
+  m_instances.emplace_back(Instance(bottomLevelAS, transform, instanceID, hitGroupIndex,flag,instanceMask));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -185,7 +187,7 @@ void TopLevelASGenerator::Generate(
     instanceDescs[i].InstanceContributionToHitGroupIndex = m_instances[i].hitGroupIndex;
     // Instance flags, including backface culling, winding, etc - TODO: should
     // be accessible from outside
-    instanceDescs[i].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+    instanceDescs[i].Flags = m_instances[i].flag;
     // Instance transform matrix
     DirectX::XMMATRIX m = XMMatrixTranspose(
         m_instances[i].transform); // 
@@ -194,7 +196,7 @@ void TopLevelASGenerator::Generate(
     instanceDescs[i].AccelerationStructure = m_instances[i].bottomLevelAS->GetGPUVirtualAddress();
     // Visibility mask, always visible here - TODO: should be accessible from
     // outside
-    instanceDescs[i].InstanceMask = 0xFF;
+    instanceDescs[i].InstanceMask = m_instances[i].instanceMask;
   }
 
   descriptorsBuffer->Unmap(0, nullptr);
@@ -252,8 +254,8 @@ void TopLevelASGenerator::Generate(
 //
 //
 TopLevelASGenerator::Instance::Instance(ID3D12Resource* blAS, const DirectX::XMMATRIX& tr, UINT iID,
-                                        UINT hgId)
-    : bottomLevelAS(blAS), transform(tr), instanceID(iID), hitGroupIndex(hgId)
+                                        UINT hgId,D3D12_RAYTRACING_INSTANCE_FLAGS iflag, UINT imask)
+    : bottomLevelAS(blAS), transform(tr), instanceID(iID), hitGroupIndex(hgId),flag(iflag),instanceMask(imask)
 {
 }
 } // namespace nv_helpers_dx12

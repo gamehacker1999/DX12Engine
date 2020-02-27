@@ -48,7 +48,7 @@ void ClosestHit(inout HitInfo payload, Attributes attrib)
 
     float NdotL = saturate(dot(normal, L));
 
-    payload.colorAndDistance = float4((light1.diffuse*NdotL).rgb, RayTCurrent());
+    payload.colorAndDistance = float4((light1.diffuse*NdotL).rgb, 1);
  // payload.colorAndDistance = float4(1, 1, 0, RayTCurrent());
 }
 
@@ -57,19 +57,37 @@ void ClosestHit(inout HitInfo payload, Attributes attrib)
 [shader("closesthit")]
 void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
 {
-    /*float3 barycentrics =
+    /**/float3 barycentrics =
         float3(1.f - attrib.bary.x - attrib.bary.y, attrib.bary.x, attrib.bary.y);
 
     const float3 A = float3(1, 0, 0);
     const float3 B = float3(0, 1, 0);
-    const float3 C = float3(0, 0, 1);*/
+    const float3 C = float3(0, 0, 1);
 
     //hardcoding the light position for now
     float3 lightPos = float3(-20, 20, 0);
     float3 worldOrigin = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();    
     float3 lightDirection = normalize(lightPos- worldOrigin);
 
-    RayDesc ray;
+    uint vertID = PrimitiveIndex() * 3;
+    float3 normal = vertex[vertID].Normal * barycentrics.x + vertex[vertID + 1].Normal * barycentrics.y + vertex[vertID + 2].Normal * barycentrics.z;
+    normal = normalize(normal);
+
+    float3 rayDir = normalize(WorldRayDirection());
+
+    HitInfo reflectedColor;
+
+    reflectedColor.colorAndDistance = float4(0, 0, 0, 0);
+
+    float3 reflectedDirection = reflect(rayDir, normal);
+
+    /*RayDesc ray;
+    ray.Origin = worldOrigin;
+    ray.Direction = reflectedDirection;
+    ray.TMin = 0.01;
+    ray.TMax = 100000;*/
+
+    /**/RayDesc ray;
     ray.Origin = worldOrigin;
     ray.Direction = lightDirection;
     ray.TMin = 0.01;
@@ -82,7 +100,10 @@ void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
     shadowPayload.isHit = false;
 
     //trace the ray
+    //TraceRay(SceneBVH, RAY_FLAG_NONE, ~0x02, 0, 2, 0, ray, reflectedColor);
+
     TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
+
 
    /* uint vertID = PrimitiveIndex() * 3;
     float3 normal = vertex[vertID].Normal * barycentrics.x + vertex[vertID + 1].Normal * barycentrics.y + vertex[vertID + 2].Normal * barycentrics.z;
@@ -93,5 +114,6 @@ void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
 
     float factor = shadowPayload.isHit ? 0.3f:1.0f;
 
+    //payload.colorAndDistance = reflectedColor.colorAndDistance;
     payload.colorAndDistance = float4(float3(0,1,0)*factor, RayTCurrent());
 }
