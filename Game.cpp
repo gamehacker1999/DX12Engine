@@ -194,9 +194,9 @@ HRESULT Game::Init()
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, flame->GetDescriptorHeap());
 	flame->volumeTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 
-	emitter1 = std::make_shared<Emitter>(300, //max particles
+	emitter1 = std::make_shared<Emitter>(1000, //max particles
 		50, //particles per second
-		0.7f, //lifetime
+		2.f, //lifetime
 		0.8f, //start size
 		0.03f, //end size
 		XMFLOAT4(1, 1.0f, 1.0f, 1.0f), //start color
@@ -993,7 +993,7 @@ void Game::CreateRayTracingPipeline()
 	//pipeline.AddRootSignatureAssociation(shadowRootSig.Get(), { L"ShadowHitGroup" });
 
 	//payload size defines the maximum size of the data carried by the rays
-	pipeline.SetMaxPayloadSize(4 * sizeof(float));
+	pipeline.SetMaxPayloadSize(20 * sizeof(float));
 
 	//max attrrib size, for now I am using the built in triangle attribs
 	pipeline.SetMaxAttributeSize(4 * sizeof(float));
@@ -1026,14 +1026,14 @@ void Game::Update(float deltaTime, float totalTime)
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
 
-	//rtCamera.view = mainCamera->GetViewMatrix();
-	//rtCamera.proj = mainCamera->GetProjectionMatrix();
-	//XMMATRIX viewTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.view));
-	//XMStoreFloat4x4(&rtCamera.iView, XMMatrixTranspose(XMMatrixInverse(nullptr,viewTranspose)));
-	//XMMATRIX projTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.proj));
-	//XMStoreFloat4x4(&rtCamera.iProj, XMMatrixTranspose(XMMatrixInverse(nullptr, projTranspose)));
-	////
-	//memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
+	rtCamera.view = mainCamera->GetViewMatrix();
+	rtCamera.proj = mainCamera->GetProjectionMatrix();
+	XMMATRIX viewTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.view));
+	XMStoreFloat4x4(&rtCamera.iView, XMMatrixTranspose(XMMatrixInverse(nullptr,viewTranspose)));
+	XMMATRIX projTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.proj));
+	XMStoreFloat4x4(&rtCamera.iProj, XMMatrixTranspose(XMMatrixInverse(nullptr, projTranspose)));
+	//
+	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
 
 	emitter1->UpdateParticles(deltaTime, totalTime);
 
@@ -1135,7 +1135,7 @@ void Game::PopulateCommandList()
 		commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
 		commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
 
-		//commandList->ExecuteBundle(skyboxBundle.Get());
+		commandList->ExecuteBundle(skyboxBundle.Get());
 
 		flame->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition(), totalTime);
 		commandList->SetPipelineState(flame->GetPipelineState().Get());

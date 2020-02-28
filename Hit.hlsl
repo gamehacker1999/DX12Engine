@@ -57,6 +57,10 @@ void ClosestHit(inout HitInfo payload, Attributes attrib)
 [shader("closesthit")]
 void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
 {
+    payload.rayDepth++;
+
+
+
     /**/float3 barycentrics =
         float3(1.f - attrib.bary.x - attrib.bary.y, attrib.bary.x, attrib.bary.y);
 
@@ -77,21 +81,21 @@ void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
 
     HitInfo reflectedColor;
 
-    reflectedColor.colorAndDistance = float4(0, 0, 0, 0);
+    reflectedColor.colorAndDistance = payload.colorAndDistance;
 
     float3 reflectedDirection = reflect(rayDir, normal);
 
-    /*RayDesc ray;
+    /**/RayDesc ray;
     ray.Origin = worldOrigin;
     ray.Direction = reflectedDirection;
     ray.TMin = 0.01;
-    ray.TMax = 100000;*/
+    ray.TMax = 100000;
 
-    /**/RayDesc ray;
+    /*RayDesc ray;
     ray.Origin = worldOrigin;
     ray.Direction = lightDirection;
     ray.TMin = 0.01;
-    ray.TMax = 100000;
+    ray.TMax = 100000;*/
 
     bool hit = true;
 
@@ -100,9 +104,13 @@ void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
     shadowPayload.isHit = false;
 
     //trace the ray
-    //TraceRay(SceneBVH, RAY_FLAG_NONE, ~0x02, 0, 2, 0, ray, reflectedColor);
 
-    TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
+    if (payload.rayDepth < 2)
+    {
+        TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, reflectedColor);
+    }
+
+    //TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
 
 
    /* uint vertID = PrimitiveIndex() * 3;
@@ -114,6 +122,8 @@ void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
 
     float factor = shadowPayload.isHit ? 0.3f:1.0f;
 
-    //payload.colorAndDistance = reflectedColor.colorAndDistance;
-    payload.colorAndDistance = float4(float3(0,1,0)*factor, RayTCurrent());
+    payload.colorAndDistance = reflectedColor.colorAndDistance;
+    
+    
+    //payload.colorAndDistance = float4(float3(0,1,0)*factor, RayTCurrent());
 }

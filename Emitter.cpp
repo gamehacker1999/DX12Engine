@@ -88,6 +88,8 @@ Emitter::Emitter(int maxParticles, int particlesPerSecond, float lifetime,
 	ZeroMemory(&externData, sizeof(ParticleExternalData));
 	externalDataResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&externDataBegin));
 	memcpy(externDataBegin, &externData, sizeof(ParticleExternalData));
+
+	delete[] indices;
 }
 
 Emitter::~Emitter()
@@ -133,7 +135,7 @@ void Emitter::UpdateParticles(float deltaTime, float currentTime)
 		}
 
 		//if firse alive is ahead
-		else
+		else if(firstDeadIndex<firstAliveIndex)
 		{
 			//go from the first alive to end of list
 			for (int i = firstAliveIndex; i < maxParticles; i++)
@@ -143,6 +145,14 @@ void Emitter::UpdateParticles(float deltaTime, float currentTime)
 
 			//go from zero to dead
 			for (int i = 0; i < firstDeadIndex; i++)
+			{
+				UpdateSingleParticle(deltaTime, i, currentTime);
+			}
+		}
+
+		else
+		{
+			for (int i = 0; i < maxParticles; i++)
 			{
 				UpdateSingleParticle(deltaTime, i, currentTime);
 			}
