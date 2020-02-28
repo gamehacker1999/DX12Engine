@@ -1,7 +1,9 @@
 #pragma once
 #include "DX12Helper.h"
 #include "DescriptorHeapWrapper.h"
+#include"GPUHeapRingBuffer.h"
 #include"Particles.h"
+#include<random>
 using namespace DirectX;
 //class to have particle emitters
 
@@ -55,11 +57,15 @@ public:
 	void SetAcceleration(XMFLOAT3 acel);
 
 	void UpdateParticles(float deltaTime, float currentTime);
-	void Draw(ComPtr<ID3D12CommandList> context, XMFLOAT4X4 view, XMFLOAT4X4 projection, float currentTime);
+	void Draw(ComPtr<ID3D12GraphicsCommandList> commandList,std::shared_ptr<GPUHeapRingBuffer> ringBuffer , XMFLOAT4X4 view, XMFLOAT4X4 projection, float currentTime);
 
 	void SetTemporary(float emitterLife);
 	bool IsDead();
 	void Explosive();
+
+	DescriptorHeapWrapper& GetDescriptor();
+
+	float particleTextureIndex;
 
 private:
 	int particlesPerSecond;

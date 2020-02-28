@@ -189,9 +189,28 @@ HRESULT Game::Init()
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
 	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources()-1;
 
-	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds",mesh2,volumePSO,volumeRootSignature,device,commandQueue,mainBufferHeap,commandList);
+	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds",mesh2,volumePSO,
+		volumeRootSignature,device,commandQueue,mainBufferHeap,commandList);
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, flame->GetDescriptorHeap());
 	flame->volumeTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+
+	emitter1 = std::make_shared<Emitter>(300, //max particles
+		50, //particles per second
+		0.7f, //lifetime
+		0.8f, //start size
+		0.03f, //end size
+		XMFLOAT4(1, 1.0f, 1.0f, 1.0f), //start color
+		XMFLOAT4(1, 0.1f, 0.1f, 0.6f), //end color
+		XMFLOAT3(0, 1, 0.f), //start vel
+		XMFLOAT3(0.2f, 0.2f, 0.2f), //velocity deviation range
+		XMFLOAT3(5, 0, 0), //start position
+		XMFLOAT3(0.1f, 0.1f, 0.1f), //position deviation range
+		XMFLOAT4(-2, 2, -2, 2), //rotation around z axis
+		XMFLOAT3(0.f, 1.f, 0.f),  //acceleration	
+		device,commandList,commandQueue,particlesPSO,particleRootSig,L"../../Assets/Textures/particle.jpg");
+
+	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, emitter1->GetDescriptor());
+	emitter1->particleTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 
 	ThrowIfFailed(commandList->Close());
 
@@ -387,12 +406,14 @@ void Game::LoadShaders()
 	CD3DX12_DESCRIPTOR_RANGE1 particleDescriptorRange[2];
 	CD3DX12_ROOT_PARAMETER1 particleRootParams[3];
 
-	particleDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
-	particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+	//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	particleDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
 
-	particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
-	particleRootParams[1].InitAsDescriptorTable(1, &particleDescriptorRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
-	particleRootParams[2].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_VERTEX);
+	//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+	particleRootParams[0].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_VERTEX);
+	//
+	particleRootParams[1].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_VERTEX);
+	particleRootParams[2].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
 
 	ComPtr<ID3DBlob> particleSignature;
 	ComPtr<ID3DBlob> particleError;
@@ -422,11 +443,11 @@ void Game::LoadShaders()
 	psoDescParticle.VS = CD3DX12_SHADER_BYTECODE(particleVS.Get());
 	psoDescParticle.PS = CD3DX12_SHADER_BYTECODE(particlePS.Get());
 	//psoDescParticle.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDescParticle.DepthStencilState.DepthEnable = true;
 	psoDescParticle.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 	psoDescParticle.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
 	psoDescParticle.DepthStencilState.DepthEnable = true;
 	psoDescParticle.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+	psoDescParticle.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 	psoDescParticle.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state
 	psoDescParticle.BlendState.AlphaToCoverageEnable = false;
 	psoDescParticle.BlendState.IndependentBlendEnable = false;
@@ -439,7 +460,7 @@ void Game::LoadShaders()
 	psoDescParticle.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
 	psoDescParticle.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	psoDescParticle.SampleMask = UINT_MAX;
-	psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+	psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDescParticle.NumRenderTargets = 1;
 	psoDescParticle.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -752,6 +773,8 @@ void Game::OnResize()
 		0.1f,				  	// Near clip plane distance
 		100.0f);			  	// Far clip plane distance
 	XMStoreFloat4x4(&projectionMatrix, XMMatrixTranspose(P)); // Transpose for HLSL!
+
+
 }
 
 AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vertexBuffers)
@@ -1003,14 +1026,16 @@ void Game::Update(float deltaTime, float totalTime)
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
 
-	rtCamera.view = mainCamera->GetViewMatrix();
-	rtCamera.proj = mainCamera->GetProjectionMatrix();
-	XMMATRIX viewTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.view));
-	XMStoreFloat4x4(&rtCamera.iView, XMMatrixTranspose(XMMatrixInverse(nullptr,viewTranspose)));
-	XMMATRIX projTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.proj));
-	XMStoreFloat4x4(&rtCamera.iProj, XMMatrixTranspose(XMMatrixInverse(nullptr, projTranspose)));
-	//
-	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
+	//rtCamera.view = mainCamera->GetViewMatrix();
+	//rtCamera.proj = mainCamera->GetProjectionMatrix();
+	//XMMATRIX viewTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.view));
+	//XMStoreFloat4x4(&rtCamera.iView, XMMatrixTranspose(XMMatrixInverse(nullptr,viewTranspose)));
+	//XMMATRIX projTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.proj));
+	//XMStoreFloat4x4(&rtCamera.iProj, XMMatrixTranspose(XMMatrixInverse(nullptr, projTranspose)));
+	////
+	//memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
+
+	emitter1->UpdateParticles(deltaTime, totalTime);
 
 }
 
@@ -1110,7 +1135,7 @@ void Game::PopulateCommandList()
 		commandList->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
 		commandList->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);*/
 
-		commandList->ExecuteBundle(skyboxBundle.Get());
+		//commandList->ExecuteBundle(skyboxBundle.Get());
 
 		flame->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition(), totalTime);
 		commandList->SetPipelineState(flame->GetPipelineState().Get());
@@ -1118,9 +1143,12 @@ void Game::PopulateCommandList()
 		commandList->SetGraphicsRootConstantBufferView(0, flame->GetConstantBuffer()->GetGPUVirtualAddress());
 		commandList->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(flame->volumeTextureIndex));
 		commandList->IASetVertexBuffers(0, 1, &flame->GetMesh()->GetVertexBuffer());
+		commandList->IASetVertexBuffers(0, 1, &flame->GetMesh()->GetVertexBuffer());
 		commandList->IASetIndexBuffer(&flame->GetMesh()->GetIndexBuffer());
 		commandList->DrawIndexedInstanced(flame->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-		///back buffer will now be used to present
+		//back buffer will now be used to present
+
+		emitter1->Draw(commandList, gpuHeapRingBuffer, mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), totalTime);
 	}
 
 	else
