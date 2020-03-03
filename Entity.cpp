@@ -1,6 +1,6 @@
 #include "Entity.h"
 
-Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& material)
+Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& material, entt::registry& registry)
 {
 	this->mesh = mesh;
 	this->material = material;
@@ -23,6 +23,8 @@ Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& materi
 	isAlive = true;
 
 	useRigidBody = false;
+
+	 entityID = registry.create();
 }
 
 Entity::~Entity()
@@ -122,6 +124,7 @@ XMFLOAT4X4 Entity::GetModelMatrix()
 {
 	//check if matrix has to be recalculated
 	//if yes then calculate it 
+
 	if (recalculateMatrix)
 	{
 		//getting the translation, scale, and rotation matrices
@@ -148,6 +151,11 @@ XMMATRIX Entity::GetRawModelMatrix()
 	XMMATRIX rotationMat = XMMatrixRotationQuaternion(XMLoadFloat4(&rotation));
 
 	return scaleMat * rotationMat * translate;
+}
+
+entt::entity Entity::GetEntityID()
+{
+	return entityID;
 }
 
 void Entity::SetTag(std::string tag)

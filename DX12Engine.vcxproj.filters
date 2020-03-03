@@ -105,6 +105,15 @@
     <ClInclude Include="Particles.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Flocker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Velocity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Systems.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DX12Engine.cpp">
@@ -162,6 +171,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Emitter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Systems.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

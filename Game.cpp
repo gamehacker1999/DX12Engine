@@ -1,5 +1,6 @@
 #include "Game.h"
 #include "Vertex.h"
+#include"Systems.h"
 
 // For the DirectX Math library
 using namespace DirectX;
@@ -43,6 +44,11 @@ Game::~Game()
 
 	CloseHandle(fenceEvent);
 	residencyManager.Destroy();
+
+	for (int i = 0; i < flockers.size(); i++)
+	{
+		registry.destroy(flockers[i]->GetEntityID());
+	}
 	
 	//residencyManager.DestroyResidencySet(residencySet.get());
 }
@@ -539,6 +545,7 @@ void Game::CreateBasicGeometry()
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
 	mesh2 = std::make_shared<Mesh>("../../Assets/Models/cube.obj", device, commandList);
 	mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
+	sharkMesh = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
 	
 
 	//creating the vertex buffer
@@ -556,10 +563,10 @@ void Game::CreateBasicGeometry()
 	materials.emplace_back(material2);
 
 
-	entity1 = std::make_shared<Entity>(mesh2,material1);
-	entity2 = std::make_shared<Entity>(mesh1,material1);
-	entity3 = std::make_shared<Entity>(mesh1,material2);
-	entity4 = std::make_shared<Entity>(mesh3,material1);
+	entity1 = std::make_shared<Entity>(mesh2,material1, registry);
+	entity2 = std::make_shared<Entity>(mesh1,material1, registry);
+	entity3 = std::make_shared<Entity>(mesh1,material2, registry);
+	entity4 = std::make_shared<Entity>(mesh3,material1, registry);
 	
 
 	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
@@ -579,10 +586,29 @@ void Game::CreateBasicGeometry()
 	entities.emplace_back(entity2);
 	entities.emplace_back(entity3);
 	entities.emplace_back(entity4);
-	entities.emplace_back(std::make_shared<Entity>(mesh3, material2));
+	entities.emplace_back(std::make_shared<Entity>(mesh3, material2, registry));
 
 	entities[entities.size() - 1]->SetPosition(XMFLOAT3(0, 2, 0));
 	entities[entities.size() - 1]->PrepareConstantBuffers(device,residencyManager,residencySet);
+
+	for (int i = 0; i < 10; i++)
+	{
+		flockers.emplace_back(std::make_shared<Entity>(sharkMesh, material2, registry));
+		flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
+		const auto enttID = flockers[i]->GetEntityID();
+
+		flockers[i]->SetPosition(XMFLOAT3(i + 2, i - 2, 0));
+		//registry.assign<Flocker>(enttID, XMFLOAT3(i+2,i-2,0), 2 ,XMFLOAT3(0,0,0), 10,XMFLOAT3(0,0,0),1);
+		auto valid = registry.valid(enttID);
+
+		auto &flocker = registry.assign<Flocker>(enttID);
+		flocker.pos = XMFLOAT3(i + 2, i - 2, 0);
+		flocker.vel = XMFLOAT3(0, 0, 0);
+		flocker.acceleration = XMFLOAT3(0, 0, 0);
+		flocker.mass = 2;
+		flocker.maxSpeed = 2;
+		flocker.safeDistance = 1;
+	}
 
 
 	//copying the data from upload heaps to default heaps
@@ -1037,6 +1063,8 @@ void Game::Update(float deltaTime, float totalTime)
 
 	emitter1->UpdateParticles(deltaTime, totalTime);
 
+	FlockerSystem(registry, flockers, deltaTime);
+
 }
 
 // --------------------------------------------------------
@@ -1104,7 +1132,7 @@ void Game::PopulateCommandList()
 		gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetStaticDescriptorOffset();
 		//commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetStaticDescriptorOffset());
 
-		/**/for (UINT i = 0; i < entities.size(); i++)
+		/*for (UINT i = 0; i < entities.size(); i++)
 		{
 			entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
 			gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
@@ -1120,6 +1148,25 @@ void Game::PopulateCommandList()
 			commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
 			commandList->IASetIndexBuffer(&indexBuffer);
 			commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+
+		}*/
+
+		/**/for (UINT i = 0; i < flockers.size(); i++)
+		{
+			flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+			gpuHeapRingBuffer->AddDescriptor(device, 1, flockers[i]->GetDescriptorHeap(), 0);
+			commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetDynamicResourceOffset());
+			commandList->SetGraphicsRoot32BitConstant(1, i, 0);
+			commandList->SetGraphicsRootSignature(flockers[i]->GetRootSignature().Get());
+			commandList->SetPipelineState(flockers[i]->GetPipelineState().Get());
+			commandList->SetGraphicsRoot32BitConstant(4, flockers[i]->GetMaterialIndex(), 0);
+			D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();
+			auto indexBuffer = flockers[i]->GetMesh()->GetIndexBuffer();
+			commandList->SetGraphicsRootConstantBufferView(2, lightConstantBufferResource->GetGPUVirtualAddress());
+
+			commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+			commandList->IASetIndexBuffer(&indexBuffer);
+			commandList->DrawIndexedInstanced(flockers[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 
 		}
 

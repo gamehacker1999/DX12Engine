@@ -12,8 +12,12 @@
 #include"Skybox.h"
 #include"GPUHeapRingBuffer.h"
 #include"RaymarchedVolume.h"
+#include"Flocker.h"
+#include"Velocity.h"
 
 #include <DirectXMath.h>
+#define ENTT_STANDARD_CPP
+#include<entity\registry.hpp>
 
 struct LightData
 {
@@ -126,6 +130,7 @@ private:
 	std::shared_ptr<Entity> entity1;
 	std::shared_ptr<Mesh> mesh2;
 	std::shared_ptr<Mesh> mesh3;
+	std::shared_ptr<Mesh> sharkMesh;
 	std::shared_ptr<Entity> entity2;
 	std::shared_ptr<Entity> entity3;
 	std::shared_ptr<Entity> entity4;
@@ -209,6 +214,12 @@ private:
 	ComPtr<ID3D12RootSignature> particleRootSig;
 
 	std::shared_ptr<Emitter> emitter1;
+
+	//ECS variables
+	entt::registry registry;
+
+	//flocking variables
+	std::vector<std::shared_ptr<Entity>> flockers;
 
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.

@@ -7,6 +7,8 @@
 #include"Lights.h"
 #include"Material.h"
 #include<memory>
+#include<entity\registry.hpp>
+#include"Velocity.h"
 //#include "RigidBody.h"
 //#include"Material.h"
 
@@ -51,12 +53,15 @@ protected:
 	//std::shared_ptr<RigidBody> body;
 	bool useRigidBody;
 
+	//entity id for the ECS
+	entt::entity entityID;
+
 	//descriptor heap
 	DescriptorHeapWrapper descriptorHeap;
 
 public:
 	//constructor which accepts a mesh
-	Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& material);
+	Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& material, entt::registry& registry);
 	virtual ~Entity();
 
 	//getters and setters
@@ -78,6 +83,8 @@ public:
 	XMFLOAT4 GetRotation();
 	XMFLOAT4X4 GetModelMatrix();
 	XMMATRIX GetRawModelMatrix();
+
+	entt::entity GetEntityID();
 
 	void SetTag(std::string tag);
 	std::string GetTag();
