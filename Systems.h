@@ -22,3 +22,5 @@ XMVECTOR Alignment(XMFLOAT3 direction, Flocker& flocker);
 XMVECTOR Seek(XMFLOAT3 point, Flocker& flocker);
 
 XMVECTOR Flee(XMFLOAT3 point, Flocker& flocker);
+
+XMVECTOR StayInPark(Flocker& flocker);

@@ -78,28 +78,8 @@ HRESULT Game::Init()
 	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer));
 	// Create descriptor heaps.
 	{
-		// Describe and create a render target view (RTV) descriptor heap.
-		/*D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-		rtvHeapDesc.NumDescriptors = frameCount;
-		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		hr = (device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvDescriptorHeap)));
-		if (FAILED(hr)) return hr;
-
-		rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);*/
 
 		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
-
-		//ThrowIfFailed(mainBufferHeap.Create(device, 4 + 6 + 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-
-		//creating the depth stencil heap
-		/*D3D12_DESCRIPTOR_HEAP_DESC dsHeapDesc = {};
-		dsHeapDesc.NumDescriptors = 1;
-		dsHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-		dsHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-
-		hr = device->CreateDescriptorHeap(&dsHeapDesc, IID_PPV_ARGS(dsDescriptorHeap.GetAddressOf()));
-		if (FAILED(hr)) return hr;*/
 
 		ThrowIfFailed(dsDescriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 
@@ -122,31 +102,6 @@ HRESULT Game::Init()
 		}
 
 	}
-
-	//creating depth stencil view
-	/*D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
-	dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
-	dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	dsDesc.Flags = D3D12_DSV_FLAG_NONE;
-	
-
-	//optimized clear value for depth stencil buffer
-	D3D12_CLEAR_VALUE depthClearValue = {};
-	depthClearValue.DepthStencil.Depth = 1.0f;
-	depthClearValue.DepthStencil.Stencil = 0;
-	depthClearValue.Format = dsDesc.Format;
-
-	//creating the default resource heap for the depth stencil
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, width, height, 1,1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
-		D3D12_RESOURCE_STATE_DEPTH_WRITE,
-		&depthClearValue,
-		IID_PPV_ARGS(depthStencilBuffer.resource.GetAddressOf())
-	));
-
-	device->CreateDepthStencilView(depthStencilBuffer.Get(), &dsDesc, dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart());*/
 
 	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer, RESOURCE_TYPE_DSV, device, 0, width, height);
 
@@ -545,7 +500,7 @@ void Game::CreateBasicGeometry()
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
 	mesh2 = std::make_shared<Mesh>("../../Assets/Models/cube.obj", device, commandList);
 	mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
-	sharkMesh = std::make_shared<Mesh>("../../Assets/Models/shark.obj", device, commandList);
+	sharkMesh = std::make_shared<Mesh>("../../Assets/Models/bird2.obj", device, commandList);
 	
 
 	//creating the vertex buffer
@@ -597,57 +552,18 @@ void Game::CreateBasicGeometry()
 		flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
 		const auto enttID = flockers[i]->GetEntityID();
 
-		flockers[i]->SetPosition(XMFLOAT3(i + 2, i - 2, 0));
+		flockers[i]->SetPosition(XMFLOAT3(i + 6, i - 6, 0));
 		//registry.assign<Flocker>(enttID, XMFLOAT3(i+2,i-2,0), 2 ,XMFLOAT3(0,0,0), 10,XMFLOAT3(0,0,0),1);
 		auto valid = registry.valid(enttID);
 
 		auto &flocker = registry.assign<Flocker>(enttID);
-		flocker.pos = XMFLOAT3(i + 2, i - 2, 0);
+		flocker.pos = XMFLOAT3(i + 6, i - 6, 0);
 		flocker.vel = XMFLOAT3(0, 0, 0);
 		flocker.acceleration = XMFLOAT3(0, 0, 0);
 		flocker.mass = 2;
 		flocker.maxSpeed = 2;
 		flocker.safeDistance = 1;
 	}
-
-
-	//copying the data from upload heaps to default heaps
-
-
-	//creating the constant buffer
-	/*ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),//must be a multiple of 64kb
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(constantBufferResource.GetAddressOf())
-	));*/
-
-	//create a constant buffer view
-	/*D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-	cbvDesc.BufferLocation = constantBuffer->GetGPUVirtualAddress(); //gpu address of the constant buffer
-	cbvDesc.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(constantBufferHeap->GetCPUDescriptorHandleForHeapStart(), 0, 0);
-	device->CreateConstantBufferView(&cbvDesc, cbvHandle);
-	cbvHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc2 = {};
-	cbvDesc2.BufferLocation = constantBuffer->GetGPUVirtualAddress() + (sizeof(SceneConstantBuffer) + 255) & ~255;
-	cbvDesc2.SizeInBytes = (sizeof(SceneConstantBuffer) + 255) & ~255;
-	device->CreateConstantBufferView(&cbvDesc2, cbvHandle);*/
-
-	/*ZeroMemory(&constantBufferData, sizeof(constantBufferData));
-
-	//setting range to 0,0 so that the cpu cannot read from this resource
-	//can keep the constant buffer mapped for the entire application
-	ThrowIfFailed(constantBufferResource->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferBegin)));
-	for (int i = 0; i < entities.size(); i++)
-	{
-		memcpy(constantBufferBegin + (i * sceneConstantBufferAlignmentSize), &constantBufferData, sizeof(constantBufferData));
-	}*/
-
-
-
 
 }
 
@@ -725,7 +641,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox3.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 

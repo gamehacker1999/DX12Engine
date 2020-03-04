@@ -1,4 +1,5 @@
 #include "Systems.h"
+#include"Utils.h"
 
 XMVECTOR CalcSteeringForces(Flocker& flocker, std::vector<std::shared_ptr<Entity>> flockers, XMFLOAT3 centerPos, XMFLOAT3 direction ,float deltaTime, UINT flockerID)
 {
@@ -6,7 +7,8 @@ XMVECTOR CalcSteeringForces(Flocker& flocker, std::vector<std::shared_ptr<Entity
 
 	ultimateForce += Seperation(flockers,flockerID,flocker);
 	ultimateForce += Cohesion(centerPos,flocker);
-	ultimateForce += Alignment(direction,flocker);
+	ultimateForce += Alignment(direction,flocker)*3;
+	//ultimateForce += StayInPark(flocker);
 
 	ultimateForce = XMVector3Normalize(ultimateForce);
 	ultimateForce *= flocker.maxSpeed;
@@ -45,6 +47,12 @@ void FlockerSystem(entt::registry& registry, std::vector<std::shared_ptr<Entity>
 		XMStoreFloat3(&flocker.vel, velTemp);
 		XMStoreFloat3(&flocker.pos, posTemp);
 
+		XMVECTOR lootRot = QuaternionLookRotation(XMVector3Normalize(velTemp), XMVectorSet(0, 1, 0, 0));
+
+		XMFLOAT4 tempRot;
+		XMStoreFloat4(&tempRot, lootRot);
+		flockers[id]->SetRotation(tempRot);
+
 		flockers[id]->SetPosition(flocker.pos);
 
 		id++;
@@ -81,9 +89,10 @@ XMVECTOR Seperation(std::vector<std::shared_ptr<Entity>> flockers, UINT flockerI
 		auto diff = XMLoadFloat3(&flockers[flockerID]->GetPosition()) - XMLoadFloat3(&flockers[i]->GetPosition());
 		float distance = sqrtf(XMVector3Dot(diff, diff).m128_f32[0]); //getting the distance between the two flockers
 
-		if (i != flockerID && distance < 7)
+		if (i != 10-
+			flockerID && distance < 10)
 		{
-			seperationForce += Flee(flockers[i]->GetPosition(),flocker);
+			seperationForce += Flee(flockers[i]->GetPosition(),flocker)/(distance-1);
 		}
 	}
 
@@ -92,7 +101,14 @@ XMVECTOR Seperation(std::vector<std::shared_ptr<Entity>> flockers, UINT flockerI
 
 XMVECTOR Cohesion(XMFLOAT3 centerPos, Flocker& flocker)
 {
-	return Seek(centerPos,flocker);
+	auto diff = XMLoadFloat3(&flocker.pos) - XMLoadFloat3(&centerPos);
+	float distance = sqrtf(XMVector3Dot(diff, diff).m128_f32[0]);
+
+	float cohesionWeight = 0.2;
+
+	if (distance > 20) cohesionWeight = 8;
+
+	return Seek(centerPos,flocker)*cohesionWeight;
 }
 
 XMVECTOR Alignment(XMFLOAT3 direction,Flocker& flocker)
@@ -122,6 +138,14 @@ XMVECTOR Flee(XMFLOAT3 point, Flocker& flocker)
 	auto fleeingForce = desiredVelocity - XMLoadFloat3(&flocker.vel);
 
 	return fleeingForce;
+}
+
+XMVECTOR StayInPark(Flocker& flocker)
+{
+	if (flocker.pos.x > 25 || flocker.pos.x < -25
+		|| flocker.pos.y>25 || flocker.pos.y < -25
+		|| flocker.pos.z>25 || flocker.pos.z < -25)
+		return Seek(XMFLOAT3(0, 0, 0), flocker);
 }
 
 

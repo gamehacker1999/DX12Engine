@@ -185,6 +185,7 @@
     <ClInclude Include="Systems.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="TopLevelASGenerator.h" />
+    <ClInclude Include="Utils.h" />
     <ClInclude Include="Velocity.h" />
     <ClInclude Include="Vertex.h" />
   </ItemGroup>
