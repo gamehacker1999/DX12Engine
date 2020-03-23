@@ -65,7 +65,7 @@ public:
 
 	DescriptorHeapWrapper& GetDescriptor();
 
-	float particleTextureIndex;
+	UINT particleTextureIndex;
 
 private:
 	int particlesPerSecond;

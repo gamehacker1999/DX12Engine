@@ -6,9 +6,9 @@
 struct Flocker 
 {
 	DirectX::XMFLOAT3 pos;
-	int mass;
+	float mass;
 	DirectX::XMFLOAT3 vel;
-	int maxSpeed;
+	float maxSpeed;
 	DirectX::XMFLOAT3 acceleration;
-	int safeDistance;
+	float safeDistance;
 };

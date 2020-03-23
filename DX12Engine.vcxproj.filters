@@ -111,10 +111,10 @@
     <ClInclude Include="Velocity.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Systems.h">
+    <ClInclude Include="Utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Utils.h">
+    <ClInclude Include="FlockingSystem.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -176,7 +176,7 @@
     <ClCompile Include="Emitter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Systems.cpp">
+    <ClCompile Include="FlockingSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

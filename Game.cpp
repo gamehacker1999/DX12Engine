@@ -1,6 +1,6 @@
 #include "Game.h"
 #include "Vertex.h"
-#include"Systems.h"
+#include"FlockingSystem.h"
 
 // For the DirectX Math library
 using namespace DirectX;
@@ -552,12 +552,12 @@ void Game::CreateBasicGeometry()
 		flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
 		const auto enttID = flockers[i]->GetEntityID();
 
-		flockers[i]->SetPosition(XMFLOAT3(i + 6, i - 6, 0));
+		flockers[i]->SetPosition(XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f));
 		//registry.assign<Flocker>(enttID, XMFLOAT3(i+2,i-2,0), 2 ,XMFLOAT3(0,0,0), 10,XMFLOAT3(0,0,0),1);
 		auto valid = registry.valid(enttID);
 
 		auto &flocker = registry.assign<Flocker>(enttID);
-		flocker.pos = XMFLOAT3(i + 6, i - 6, 0);
+		flocker.pos = XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f);
 		flocker.vel = XMFLOAT3(0, 0, 0);
 		flocker.acceleration = XMFLOAT3(0, 0, 0);
 		flocker.mass = 2;
@@ -979,7 +979,7 @@ void Game::Update(float deltaTime, float totalTime)
 
 	emitter1->UpdateParticles(deltaTime, totalTime);
 
-	FlockerSystem(registry, flockers, deltaTime);
+	FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
 
 }
 
