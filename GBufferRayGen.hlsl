@@ -44,7 +44,7 @@ void GBufferRayGen()
     ray.Direction = mul(float4(target.xyz, 0), cameraData.iView);
     ray.TMin = 0.01;
     ray.TMax = 100000;
-    TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
+    TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, payload);
 
 
     gDiffuse[launchIndex] = float4(payload.diffuse, 1.f);

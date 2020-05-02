@@ -28,7 +28,7 @@ cbuffer LightData: register(b1)
 
 ConstantBuffer<RayTraceCameraData> cameraData: register(b0);
 
-float ShootShadowRays(float3 origin, float3 direction, float minT, float maxT)
+float ShootShadowRays(float3 origin, float3 direction, float minT, float maxT, RaytracingAccelerationStructure SceneBVH)
 {
     //initialize the hit payload
     ShadowHitInfo shadowPayload;
@@ -42,19 +42,31 @@ float ShootShadowRays(float3 origin, float3 direction, float minT, float maxT)
 
     TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
 
-    return shadowPayload.isHit?0.3:1.0;
+    return shadowPayload.isHit?0.3:1.0f;
 }
 
 
-float3 DiffuseShade(float3 pos, float3 norm, float3 albedo, inout uint seed)
+float3 DiffuseShade(float3 pos, float3 norm, float3 albedo, inout uint seed, RaytracingAccelerationStructure SceneBVH)
 {
     float3 L = -light1.direction;
 
     float NdotL = saturate(dot(norm, L));
 
-    float factor = ShootShadowRays(pos, L, 1.0e-4f, 10000000);
+    float factor = ShootShadowRays(pos, L, 1.0e-4f, 10000000,SceneBVH);
 
-    //float factor = isHit ? 0.3 : 1.0;
+    //initialize the hit payload
+    //ShadowHitInfo shadowPayload;
+    //shadowPayload.isHit = false;
+    //
+    ///**/RayDesc ray;
+    //ray.Origin = pos;
+    //ray.Direction = L;
+    //ray.TMin = 1.0e-4f;
+    //ray.TMax = 10000000;
+    //
+    //TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
+    //
+    //float factor = shadowPayload.isHit ? 0.3 : 1.0;
     float3 rayColor = light1.diffuse*factor;
 
     return (NdotL * rayColor * (albedo));
@@ -91,7 +103,7 @@ void RayGen() {
 
   else
   {
-      color = diffuse;// DiffuseShade(pos, norm, albedo, rndseed);
+      color = diffuse;//DiffuseShade(pos, norm, albedo, rndseed,  SceneBVH);
 
       float3 giVal = float3(0, 0, 0);
       for (int i = 0; i < 32; i++)

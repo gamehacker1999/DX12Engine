@@ -861,7 +861,7 @@ void Game::CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>, 
 		topLevelAsGenerator.AddInstance(instances[i].first.Get(), instances[i].second, static_cast<UINT>(i), static_cast<UINT>(i*2),D3D12_RAYTRACING_INSTANCE_FLAG_NONE,0xFF);
 	}
 
-	topLevelAsGenerator.AddInstance(instances[2].first.Get(), instances[2].second, static_cast<UINT>(2), static_cast<UINT>(2 * 2), D3D12_RAYTRACING_INSTANCE_FLAG_NONE, 0x02);
+	topLevelAsGenerator.AddInstance(instances[2].first.Get(), instances[2].second, static_cast<UINT>(2), static_cast<UINT>(2 * 2), D3D12_RAYTRACING_INSTANCE_FLAG_NONE, 0xFF);
 
 
 	UINT64 scratchSize, resultSize, instanceDescsSize;
@@ -1241,7 +1241,7 @@ void Game::PopulateCommandList()
 		gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetStaticDescriptorOffset();
 		//commandList->SetGraphicsRootDescriptorTable(0, gpuHeapRingBuffer->GetStaticDescriptorOffset());
 
-		/*for (UINT i = 0; i < entities.size(); i++)
+		for (UINT i = 0; i < entities.size(); i++)
 		{
 			entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
 			gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
@@ -1258,7 +1258,7 @@ void Game::PopulateCommandList()
 			commandList->IASetIndexBuffer(&indexBuffer);
 			commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 
-		}*/
+		}
 
 		/**/for (UINT i = 0; i < flockers.size(); i++)
 		{

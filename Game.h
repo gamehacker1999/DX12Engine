@@ -13,6 +13,9 @@
 #include"Skybox.h"
 #include"GPUHeapRingBuffer.h"
 #include"RaymarchedVolume.h"
+#include<Audio.h>
+#include<Keyboard.h>
+#include<Mouse.h>
 
 #include"Velocity.h"
 
