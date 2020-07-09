@@ -171,7 +171,7 @@ float3 DirectLightPBR(DirectionalLight light, float3 normal, float3 worldPos, fl
 
 	float3 lambert = CalculateDiffuse(normal, L, light);
 	float3 numSpec = D * F * G;
-	float denomSpec = 4.0f * max(dot(N, V), 0.0001f) * max(dot(N, L), 0.0001f);
+	float denomSpec = 4.0f * max(dot(N, V), 0.0000f) * max(dot(N, L), 0.0000f);
 	float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
 
 	return ((kd * surfaceColor.xyz / PI) + specular) * lambert;
@@ -179,6 +179,10 @@ float3 DirectLightPBR(DirectionalLight light, float3 normal, float3 worldPos, fl
 
 Texture2D material[]: register(t0);
 SamplerState basicSampler: register(s0);
+TextureCube irradianceMap: register(t0, space1);
+TextureCube prefilteredMap: register(t1, space1);
+Texture2D brdfLUT: register(t2, space1);
+
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
@@ -228,6 +232,28 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float3 color = DirectLightPBR(light1 , N, input.worldPosition, cameraPosition,
 		roughness, metalColor.r, surfaceColor.xyz, f0);
+
+	float3 ksIndirect = FresnelRoughness(dot(N, V), f0, roughness);
+
+	float3 kdIndirect = float3(1.0f, 1.0f, 1.0f) - ksIndirect;
+
+	kdIndirect *= (1 - metalColor);
+
+	kdIndirect *= surfaceColor.rgb / PI;
+
+	float3 irradiance = irradianceMap.Sample(basicSampler, N).rgb;
+
+	float3 diffuseIndirect = surfaceColor.rgb * irradiance;
+
+	float3 prefilteredColor = prefilteredMap.SampleLevel(basicSampler, R, roughness * 4.0).rgb;
+
+	float2 envBRDF = brdfLUT.Sample(basicSampler, float2(saturate(dot(N, V)), roughness)).rg;
+
+	float3 specularIndirect = prefilteredColor * (ksIndirect * envBRDF.x + envBRDF.y);
+
+	float3 ambientIndirect = (kdIndirect * diffuseIndirect + specularIndirect * surfaceColor.rgb); 
+
+	color += ambientIndirect;
 
 	color = pow(abs(color), 1.f / 2.2f);
 

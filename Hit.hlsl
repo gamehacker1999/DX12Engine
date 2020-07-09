@@ -17,6 +17,13 @@ SamplerState basicSampler: register(s0);
 
 static const float PI = 3.14159265f;
 
+struct Index
+{
+    uint index;
+};
+
+ConstantBuffer<Index> entityIndex: register(b1);
+
 
 cbuffer LightData: register(b0)
 {
@@ -30,6 +37,7 @@ void ClosestHit(inout HitInfo payload, Attributes attrib)
     payload.rayDepth++;
 
 
+
     float3 barycentrics =
         float3(1.f - attrib.bary.x - attrib.bary.y, attrib.bary.x, attrib.bary.y);
 
@@ -38,20 +46,37 @@ void ClosestHit(inout HitInfo payload, Attributes attrib)
     const float3 C = float3(0, 0, 1);
 
     uint vertID = PrimitiveIndex() * 3;
-    float3 normal = vertex[vertID].Normal * barycentrics.x + vertex[vertID+1].Normal * barycentrics.y + vertex[vertID+2].Normal * barycentrics.z;
+    float3 normal = vertex[vertID].Normal * barycentrics.x + vertex[vertID + 1].Normal * barycentrics.y + vertex[vertID + 2].Normal * barycentrics.z;
+    normal = ConvertFromObjectToWorld(normal);
     float3 position = vertex[vertID].Position * barycentrics.x + vertex[vertID + 1].Position * barycentrics.y + vertex[vertID + 2].Position * barycentrics.z;
+    position = ConvertFromObjectToWorld(position);
+    float3 tangent = vertex[vertID].Tangent * barycentrics.x + vertex[vertID + 1].Tangent * barycentrics.y + vertex[vertID + 2].Tangent * barycentrics.z;
+    tangent = ConvertFromObjectToWorld(tangent);
 
-    //normal = normalize(normal);
+    float2 uv = vertex[vertID].UV * barycentrics.x + vertex[vertID + 1].UV * barycentrics.y + vertex[vertID + 2].UV * barycentrics.z;
+
+    uint index = entityIndex.index;
+    float3 texColor = material[index + 0].SampleLevel(basicSampler, uv, 0).rgb;
+    float3 normalColor = material[index + 1].SampleLevel(basicSampler, uv, 0).xyz;
+    float3 unpackedNormal = normalColor * 2.0f - 1.0f;
+
+    //orthonormalizing T, B and N using the gram-schimdt process
+    float3 N = normalize(normal);
+    float3 T = tangent - dot(tangent, N) * N;
+    T = normalize(T);
+    float3 Bi = normalize(cross(T, N));
+
+    float3x3 TBN = float3x3(T, Bi, N); //getting the tbn matrix
+
+    //transforming normal from map to world space
+    float3 finalNormal = normalize(mul(unpackedNormal, TBN));
 
     //hardcoding the light position for now
     float3 lightPos = float3(-20, 20, 0);
     float3 worldOrigin = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
     float3 lightDirection = normalize(lightPos - worldOrigin);
-
-
     float3 L = -light1.direction;
-
-    float NdotL = saturate(dot(normal, L));
+    float NdotL = saturate(dot(finalNormal, L));
 
     /**/RayDesc ray;
     ray.Origin = worldOrigin;
@@ -70,11 +95,11 @@ void ClosestHit(inout HitInfo payload, Attributes attrib)
 
     //float factor = shadowPayload.isHit ? 0.3f : 1.0f;
 
-    payload.color = (float4((light1.diffuse*NdotL).rgb, 1)*float4(1,1,1,1)).rgb;
+    payload.color = (float4((light1.diffuse*NdotL).rgb* texColor, 1)).rgb / M_PI;
 
     payload.currentPosition = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
-    payload.normal = normalize(normal);
-    payload.diffuseColor = float3(1, 0, 0);
+    payload.normal = normalize(finalNormal);
+    payload.diffuseColor = texColor;
 
    // if (payload.rayDepth <14)
    // {
@@ -125,51 +150,50 @@ void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
     payload.rayDepth++;
 
 
-
-    /**/float3 barycentrics =
+    float3 barycentrics =
         float3(1.f - attrib.bary.x - attrib.bary.y, attrib.bary.x, attrib.bary.y);
 
     const float3 A = float3(1, 0, 0);
     const float3 B = float3(0, 1, 0);
     const float3 C = float3(0, 0, 1);
 
-    //hardcoding the light position for now
-    float3 lightPos = float3(-20, 20, 0);
-    float3 worldOrigin = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();    
-    float3 lightDirection = normalize(lightPos- worldOrigin);
-
     uint vertID = PrimitiveIndex() * 3;
     float3 normal = vertex[vertID].Normal * barycentrics.x + vertex[vertID + 1].Normal * barycentrics.y + vertex[vertID + 2].Normal * barycentrics.z;
-    normal = normalize(normal);
+    normal = ConvertFromObjectToWorld(normal);
+    float3 position = vertex[vertID].Position * barycentrics.x + vertex[vertID + 1].Position * barycentrics.y + vertex[vertID + 2].Position * barycentrics.z;
+    position = ConvertFromObjectToWorld(position);
+    float3 tangent = vertex[vertID].Tangent * barycentrics.x + vertex[vertID + 1].Tangent * barycentrics.y + vertex[vertID + 2].Tangent * barycentrics.z;
+    tangent = ConvertFromObjectToWorld(tangent);
+    float2 uv = vertex[vertID].UV * barycentrics.x + vertex[vertID + 1].UV * barycentrics.y + vertex[vertID + 2].UV * barycentrics.z;
 
+    uint index = entityIndex.index;
+    float3 texColor = material[index + 0].SampleLevel(basicSampler, uv, 0).rgb;
+    float3 normalColor = material[index + 1].SampleLevel(basicSampler, uv, 0).xyz;
+    float3 unpackedNormal = normalColor * 2.0f - 1.0f;
+
+    //orthonormalizing T, B and N using the gram-schimdt process
+    float3 N = normalize(normal);
+    float3 T = tangent - dot(tangent, N) * N;
+    T = normalize(T);
+    float3 Bi = normalize(cross(T, N));
+
+    float3x3 TBN = float3x3(T, Bi, N); //getting the tbn matrix
+
+    //transforming normal from map to world space
+    float3 finalNormal = normalize(mul(unpackedNormal, TBN));
+
+    //hardcoding the light position for now
+    float3 lightPos = float3(-20, 20, 0);
+    float3 worldOrigin = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
+    float3 lightDirection = normalize(lightPos - worldOrigin);
     float3 L = -light1.direction;
-
-    float NdotL = saturate(dot(normal, L));
-
-    payload.normal = normal;
-
-    float3 rayDir = normalize(WorldRayDirection());
-
-    HitInfo reflectedColor;
-
-    reflectedColor.color = payload.color;
-
-    float3 reflectedDirection = reflect(rayDir, normal);
-
-    /*RayDesc ray;
-    ray.Origin = worldOrigin;
-    ray.Direction = reflectedDirection;
-    ray.TMin = 0.01;
-    ray.TMax = 100000;*/
+    float NdotL = saturate(dot(finalNormal, L));
 
     /**/RayDesc ray;
     ray.Origin = worldOrigin;
     ray.Direction = L;
-    ray.TMin = 0.01;
+    ray.TMin = 1;
     ray.TMax = 100000;
-
-    payload.currentPosition = worldOrigin;
-    payload.diffuseColor = float3(0, 1, 0);
 
     bool hit = true;
 
@@ -177,31 +201,16 @@ void PlaneClosestHit(inout HitInfo payload, Attributes attrib)
     ShadowHitInfo shadowPayload;
     shadowPayload.isHit = false;
 
-    //trace the ray
-
-    //if (payload.rayDepth < 2)
-    //{
-    //    TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, reflectedColor);
-    //}
-
     //TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
 
 
+    //float factor = shadowPayload.isHit ? 0.3f : 1.0f;
 
+    payload.color = (float4((light1.diffuse * NdotL).rgb* texColor, 1)).rgb / M_PI;
 
-   /* uint vertID = PrimitiveIndex() * 3;
-    float3 normal = vertex[vertID].Normal * barycentrics.x + vertex[vertID + 1].Normal * barycentrics.y + vertex[vertID + 2].Normal * barycentrics.z;
-
-    float3 L = -light1.direction;
-
-    float NdotL = saturate(dot(normal, L));*/
-
-   //float factor = shadowPayload.isHit ? 0.3f:1.0f;
-
-    //payload.colorAndDistance = reflectedColor.colorAndDistance;
-    
-    
-    payload.color = (float4((light1.diffuse * NdotL).rgb, 1) * float4(0, 1, 0, 1)).rgb;
+    payload.currentPosition = WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
+    payload.normal = normalize(finalNormal);
+    payload.diffuseColor = texColor;
 
  //if (payload.rayDepth < 2)
  //{

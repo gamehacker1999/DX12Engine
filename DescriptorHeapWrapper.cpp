@@ -49,13 +49,23 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE DescriptorHeapWrapper::GetGPUHandle(UINT index)
 	return offsettedDescHandle;
 }
 
+UINT DescriptorHeapWrapper::GetLastResourceIndex()
+{
+	return lastResourceIndex;
+}
+
+void DescriptorHeapWrapper::IncrementLastResourceIndex(UINT valueToIncrementBy)
+{
+	lastResourceIndex += valueToIncrementBy;
+}
+
 UINT DescriptorHeapWrapper::GetDescriptorIncrementSize()
 {
 	return handleIncrementSize;
 }
 
 void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,
-	ComPtr<ID3D12Device> device, size_t cbufferSize, UINT width, UINT height)
+	ComPtr<ID3D12Device> device, size_t cbufferSize, UINT width, UINT height, UINT firstArraySlice, UINT mipLevel)
 {
 	if (resourceType == RESOURCE_TYPE_CBV)
 	{
@@ -77,6 +87,8 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 		resource.resourceType = resourceType;
 		resource.currentState = D3D12_RESOURCE_STATE_GENERIC_READ;
 		resource.heapOffset = lastResourceIndex;
+		resource.cbvGPUHandle = GetGPUHandle(lastResourceIndex);
+		resource.cbvCPUHandle = GetCPUHandle(lastResourceIndex);
 		
 	}
 
@@ -110,14 +122,78 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 		resource.resourceType = resourceType;
 		resource.currentState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 		resource.heapOffset = lastResourceIndex;
+
+		resource.dsvGPUHandle = GetGPUHandle(lastResourceIndex);
+		resource.dsvCPUHandle = GetCPUHandle(lastResourceIndex);
 	}
 
 	else if (resourceType == RESOURCE_TYPE_UAV)
 	{
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		if (resource.resource->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D)
+		{
 			uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+			uavDesc.Texture2D.MipSlice = 0;
+		}
+		uavDesc.Format = resource.resource->GetDesc().Format;
 		device->CreateUnorderedAccessView(resource.resource.Get(), nullptr, &uavDesc, GetCPUHandle(lastResourceIndex));
+		resource.uavGPUHandle = GetGPUHandle(lastResourceIndex);
+		resource.uavCPUHandle = GetCPUHandle(lastResourceIndex);
+		resource.heapOffset = lastResourceIndex;
+
+	}
+
+	else if (resourceType == RESOURCE_TYPE_SRV)
+	{
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		if (resource.resource->GetDesc().DepthOrArraySize == 6)
+		{
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+			srvDesc.TextureCube.MostDetailedMip = 0;
+			srvDesc.TextureCube.MipLevels = mipLevel;
+	
+		}
+
+		else if (resource.resource->GetDesc().DepthOrArraySize == 1)
+		{
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MipLevels = mipLevel;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+		}
+
+		auto resourceDesc = resource.resource->GetDesc();
+		srvDesc.Format = resourceDesc.Format;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		device->CreateShaderResourceView(resource.resource.Get(), &srvDesc, GetCPUHandle(lastResourceIndex));
+		resource.srvGPUHandle = GetGPUHandle(lastResourceIndex);
+		resource.srvCPUHandle = GetCPUHandle(lastResourceIndex);
+		resource.heapOffset = lastResourceIndex;
+
+	}
+
+	else if (resourceType == RESOURCE_TYPE_RTV)
+	{
+		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+		auto resourceDesc = resource.resource->GetDesc();
+
+		if (resourceDesc.DepthOrArraySize > 1)
+		{
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+			rtvDesc.Texture2DArray.ArraySize = 1;
+			rtvDesc.Texture2DArray.MipSlice = mipLevel;
+			rtvDesc.Texture2DArray.FirstArraySlice = firstArraySlice;
+		}		
+
+		else if (resourceDesc.DepthOrArraySize == 1)
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+		rtvDesc.Format = resourceDesc.Format;
+		device->CreateRenderTargetView(resource.resource.Get(), &rtvDesc, GetCPUHandle(lastResourceIndex));
+
+		resource.rtvGPUHandle = GetGPUHandle(lastResourceIndex);
+		resource.rtvCPUHandle = GetCPUHandle(lastResourceIndex);
+		resource.heapOffset = lastResourceIndex;
+
 	}
 
 	lastResourceIndex++;
@@ -126,11 +202,10 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 
 void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResource& resource, 
 	RESOURCE_TYPE resourceType, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue,
-	TEXTURE_TYPES type)
+	TEXTURE_TYPES type, bool isCube)
 {
 	if (resourceType == RESOURCE_TYPE_SRV)
 	{
-		bool isCube = (type == TEXTURE_TYPE_DDS) ? true : false;
 		LoadTexture(device, resource.resource, resName, commandQueue,type);
 		CreateShaderResourceView(device.Get(), resource.resource.Get(), GetCPUHandle(lastResourceIndex), isCube);
 
@@ -138,6 +213,8 @@ void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResour
 		resource.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		resource.heapOffset = lastResourceIndex;
 		lastResourceIndex++;
+		resource.srvGPUHandle = GetGPUHandle(lastResourceIndex);
+		resource.srvCPUHandle = GetCPUHandle(lastResourceIndex);
 	}
 }
 
@@ -168,6 +245,9 @@ void DescriptorHeapWrapper::CreateStructuredBuffer(ManagedResource& resource, Co
 	resource.currentState = D3D12_RESOURCE_STATE_GENERIC_READ;
 	resource.heapOffset = lastResourceIndex;
 
+	resource.srvGPUHandle = GetGPUHandle(lastResourceIndex);
+	resource.srvCPUHandle = GetCPUHandle(lastResourceIndex);
+
 	lastResourceIndex++;
 }
 
@@ -180,5 +260,9 @@ void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComP
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.RaytracingAccelerationStructure.Location = topLevelASBuffer.pResult->GetGPUVirtualAddress();
 	device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(lastResourceIndex));
+
+	resource.srvGPUHandle = GetGPUHandle(lastResourceIndex);
+	resource.srvCPUHandle = GetCPUHandle(lastResourceIndex);
+
 	lastResourceIndex++;
 }

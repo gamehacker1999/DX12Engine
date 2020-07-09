@@ -9,6 +9,7 @@
 #include<wrl\client.h>
 #include<stdexcept>
 #include"d3dx12.h"
+#include"RootIndices.h"
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -66,6 +67,23 @@ struct ManagedResource
 	UINT heapOffset;
 	D3D12_RESOURCE_STATES currentState;
 	RESOURCE_TYPE resourceType;
+
+	D3D12_GPU_DESCRIPTOR_HANDLE srvGPUHandle;
+	D3D12_GPU_DESCRIPTOR_HANDLE uavGPUHandle;
+	D3D12_GPU_DESCRIPTOR_HANDLE cbvGPUHandle;
+
+	D3D12_GPU_DESCRIPTOR_HANDLE rtvGPUHandle;
+	D3D12_GPU_DESCRIPTOR_HANDLE dsvGPUHandle;
+
+	D3D12_GPU_DESCRIPTOR_HANDLE ringBufferGPUHandle;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE srvCPUHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE uavCPUHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE cbvCPUHandle;
+
+
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvCPUHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvCPUHandle;
 };
 
 
@@ -91,3 +109,5 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, ComPtr<ID3D12CommandQueue>& commandQueue,TEXTURE_TYPES type=TEXTURE_TYPE_DEAULT);
 
 void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter);
+
+ComPtr<ID3D12PipelineState> CreatePipelineState();

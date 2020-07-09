@@ -16,6 +16,7 @@
 #include<Audio.h>
 #include<Keyboard.h>
 #include<Mouse.h>
+#include"RootIndices.h"
 
 #include"Velocity.h"
 
@@ -28,6 +29,7 @@ struct LightData
 {
 	DirectionalLight light1;
 	XMFLOAT3 cameraPosition;
+	float padding;
 };
 
 inline ID3D12Resource* CreateRBBuffer(ID3D12Resource* buffer, ID3D12Device* device, UINT bufferSize)
@@ -68,6 +70,7 @@ public:
 	// Overridden setup and game loop methods, which
 	// will be called automatically
 	HRESULT Init();
+	HRESULT InitEnvironment();
 	void OnResize();
 
 	//------------------Raytracing Functions--------------------------
@@ -166,12 +169,18 @@ private:
 	std::shared_ptr<Mesh> mesh2;
 	std::shared_ptr<Mesh> mesh3;
 	std::shared_ptr<Mesh> sharkMesh;
+	std::shared_ptr<Mesh> faceMesh;
 	std::shared_ptr<Entity> entity2;
 	std::shared_ptr<Entity> entity3;
 	std::shared_ptr<Entity> entity4;
 	std::shared_ptr<Entity> entity5;
+	std::shared_ptr<Entity> entity6;
 	std::shared_ptr<Material> material1;
 	std::shared_ptr<Material> material2;
+	std::shared_ptr<Material> skinMat;
+
+	bool enableSSS;
+
 
 	std::vector<std::shared_ptr<Entity>> entities;
 	std::vector<std::shared_ptr<Material>> materials;
@@ -186,6 +195,9 @@ private:
 
 	//pbr pipeline state
 	ComPtr<ID3D12PipelineState> pbrPipelineState;
+
+	//subsurface scattering
+	ComPtr<ID3D12PipelineState> sssPipelineState;
 
 	//managing the residency
 	D3DX12Residency::ResidencyManager residencyManager;
@@ -281,6 +293,20 @@ private:
 	//bool mDenoiseOutput = true;
 
 	//-------------------------------------------------------
+
+	//image based lighting 
+
+		//pipeline state objects
+	ComPtr<ID3D12PipelineState> irradiencePSO;
+	ComPtr<ID3D12PipelineState> prefilteredMapPSO;
+	ComPtr<ID3D12PipelineState> brdfLUTPSO;
+
+	//root signatures
+	ComPtr<ID3D12RootSignature> irradianceRootSignature;
+	ComPtr<ID3D12RootSignature> prefilteredRootSignature;
+	ComPtr<ID3D12RootSignature> brdfRootSignature;
+
+	//------------------------------------
 
 	//particle data
 	ComPtr<ID3D12PipelineState> particlesPSO;

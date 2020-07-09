@@ -2,6 +2,7 @@
 #include"DX12Helper.h"
 #include<DirectXMath.h>
 #include<memory>
+#include"Model.h"
 #include"Vertex.h"
 #include<string>
 #include<vector>
@@ -29,8 +30,8 @@ class Mesh
 	std::vector<unsigned int> indices;
 
 public:
-	Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList);
-	Mesh(std::string fileName, ComPtr<ID3D12Device> device,ComPtr<ID3D12GraphicsCommandList> commandList);
+	Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
+	Mesh(std::string fileName, ComPtr<ID3D12Device> device,ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
 	void CalculateTangents(std::vector<Vertex>& vertices, std::vector<XMFLOAT3>& position,
 		std::vector<XMFLOAT2>& uvs, unsigned int vertCount);
 	~Mesh();
@@ -39,6 +40,7 @@ public:
 
 	D3D12_VERTEX_BUFFER_VIEW GetVertexBuffer();
 	D3D12_INDEX_BUFFER_VIEW GetIndexBuffer();
+	ComPtr<ID3D12Resource> GetVertexBufferResource();
 	unsigned int GetIndexCount();
 	std::vector<XMFLOAT3> GetPoints();
 
@@ -46,6 +48,8 @@ public:
 	void LoadFBX(ComPtr<ID3D12Device> device , std::string& filename);
 	//method to load obj files
 	void LoadOBJ(ComPtr<ID3D12Device> device , std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList);
+	//sdk meshes
+	void LoadSDKMesh(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue);
 
 	//function to load draw the mesh
 	//void Draw(ID3D11DeviceContext* context);

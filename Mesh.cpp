@@ -1,6 +1,6 @@
 #include "Mesh.h"
 #include"Game.h"
-Mesh::Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList)
+Mesh::Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
 {
 	ComPtr<ID3D12Resource> vertexBufferDeafult;
 	vertexBuffer = CreateVBView(vertices, numVertices, device, commandList, defaultHeap,uploadHeap);
@@ -11,7 +11,7 @@ Mesh::Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, in
 	this->numIndices = numIndices;
 }
 
-Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList)
+Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
 {
 	vertexBuffer = {};
 	indexBuffer = {};
@@ -25,6 +25,11 @@ Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12Graph
 	else if (fileName.find(".obj") != std::string::npos)
 	{
 		LoadOBJ(device, fileName,commandList);
+	}
+
+	else if (fileName.find(".sdkmesh") != std::string::npos && commandQueue)
+	{
+		LoadSDKMesh(device, fileName, commandList, commandQueue);
 	}
 
 }
@@ -89,6 +94,11 @@ D3D12_INDEX_BUFFER_VIEW Mesh::GetIndexBuffer()
 	return indexBuffer;
 }
 
+ComPtr<ID3D12Resource> Mesh::GetVertexBufferResource()
+{
+	return defaultHeap;
+}
+
 unsigned int Mesh::GetIndexCount()
 {
 	return numIndices;
@@ -105,6 +115,37 @@ void Mesh::LoadFBX(ComPtr<ID3D12Device> device, std::string& filename)
 
 void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList)
 {
+
+	bool binExists = false;
+
+	std::string binaryFileName = fileName + ".bin";
+
+	std::ifstream fileStream;
+	fileStream.open(binaryFileName.c_str(), std::ios::in | std::ios::binary);
+
+	if (fileStream.fail())
+	{
+		binExists = false;
+		fileStream.close();
+	}
+
+	else
+	{
+		UINT vertCount = 0;
+		UINT indicesCount = 0;
+		fileStream.read(reinterpret_cast<char*>(&vertCount), sizeof(vertCount));
+		fileStream.read(reinterpret_cast<char*>(&indicesCount), sizeof(indicesCount));
+		vertices.resize(vertCount);
+		indices.resize(indicesCount, 0);
+		fileStream.read(reinterpret_cast<char*>(&vertices[0]), sizeof(Vertex)*vertCount);
+		fileStream.read(reinterpret_cast<char*>(&indices[0]), sizeof(UINT)* indicesCount);
+		fileStream.close();
+		vertexBuffer = CreateVBView(vertices.data(), vertCount, device, commandList, defaultHeap, uploadHeap);
+		indexBuffer = CreateIBView(indices.data(), vertCount, device, commandList, defaultIndexHeap, uploadIndexHeap);
+		this->numIndices = vertCount;
+		return;
+	}
+
 	std::ifstream ifile(fileName.c_str());
 
 	std::string line; //line that stores file data
@@ -272,6 +313,19 @@ void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID
 		vertexBuffer = CreateVBView(vertices.data(), vertCount, device, commandList, defaultHeap, uploadHeap);
 		indexBuffer = CreateIBView(indices.data(), vertCount, device, commandList, defaultIndexHeap, uploadIndexHeap);
 
+		if (!binExists)
+		{
+			std::ofstream fout((fileName + ".bin"), std::ios::out | std::ios::binary);
+			UINT vertexCount = vertices.size();
+			UINT indicesCount = indices.size();
+			fout.write(reinterpret_cast<char*>(&vertexCount), sizeof(vertexCount));
+			fout.write(reinterpret_cast<char*>(&indicesCount), sizeof(indicesCount));
+			fout.write(reinterpret_cast<char*>(&vertices[0]), vertices.size() * sizeof(Vertex));
+			fout.write(reinterpret_cast<char*>(&indices[0]), indices.size() * sizeof(UINT));
+
+			fout.close();
+		}
+
 		//create the vertex and index buffer
 		//vertexBuffer
 		/*D3D11_BUFFER_DESC vbd;
@@ -300,4 +354,19 @@ void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID
 		device->CreateBuffer(&ibd, &initialIndexData, &indexBuffer);*/
 		ifile.close();
 	}
+}
+
+void Mesh::LoadSDKMesh(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
+{
+	std::wstring name = std::wstring(fileName.begin(), fileName.end());
+	auto model = Model::CreateFromSDKMESH(name.c_str(), device.Get());
+
+	ResourceUploadBatch resourceUploadBatch(device.Get());
+
+	resourceUploadBatch.Begin();
+	model->LoadStaticBuffers(device.Get(), resourceUploadBatch);
+
+	auto uploadResourcesFinished = resourceUploadBatch.End(commandQueue.Get());
+
+	uploadResourcesFinished.wait();
 }

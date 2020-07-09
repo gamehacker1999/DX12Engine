@@ -27,4 +27,5 @@ struct DirectionalLight
 	XMFLOAT4 diffuse;
 	XMFLOAT4 specularity;
 	XMFLOAT3 direction;
+	float padding;
 };

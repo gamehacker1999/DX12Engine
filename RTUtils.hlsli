@@ -110,3 +110,8 @@ float3 getCosHemisphereSample(inout uint randSeed, float3 hitNorm)
 	// Get our cosine-weighted hemisphere lobe sample direction
 	return tangent * (r * cos(phi).x) + bitangent * (r * sin(phi)) + hitNorm.xyz * sqrt(max(0.0, 1.0f - randVal.x));
 }
+
+float3 ConvertFromObjectToWorld(float3 vec)
+{
+	return mul(vec, ObjectToWorld4x3());
+}

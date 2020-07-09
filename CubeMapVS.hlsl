@@ -4,7 +4,6 @@ struct VertexShaderInput
 
 	//  v    v                v
 	float3 position		: POSITION;     // XYZ position
-	//float4 color		: COLOR;        // RGBA color
 	float3 normal		: NORMAL;		//Normal of the vertex
 	float3 tangent		: TANGENT;      //tangent of the vertex
 	float2 uv			: TEXCOORD;		//Texture coordinates
@@ -23,7 +22,7 @@ cbuffer SkyboxData: register(b0)
 	matrix view;
 	matrix projection;
 	float3 cameraPos;
-}
+};
 
 //entry point of the skybox vertex shader
 VertexToPixel main(VertexShaderInput input)
