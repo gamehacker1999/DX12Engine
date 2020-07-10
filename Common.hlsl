@@ -15,10 +15,10 @@ struct HitInfo
 
 struct GbufferPayload
 {
+    float4 roughnessMetallic;
     float3 albedo;
     float3 position;
     float3 normal;
-    float3 diffuse;
 };
 
 struct DirectionalLight

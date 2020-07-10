@@ -563,6 +563,7 @@ void Game::CreateBasicGeometry()
 	mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
 	sharkMesh = std::make_shared<Mesh>("../../Assets/Models/bird2.obj", device, commandList);
 	faceMesh = std::make_shared<Mesh>("../../Assets/Models/face.obj", device, commandList);
+	skyDome = std::make_shared<Mesh>("../../Assets/Models/sky_dome.obj", device, commandList);
 	
 
 	//creating the vertex buffer
@@ -574,7 +575,8 @@ void Game::CreateBasicGeometry()
 		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
 		L"../../Assets/Textures/GoldRoughness.png",L"../../Assets/Textures/GoldMetallic.png");
 	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pipelineState, rootSignature,
-		L"../../Assets/Textures/RocksDiffuse.jpg",L"../../Assets/Textures/RocksNormal.jpg");
+		L"../../Assets/Textures/LayeredDiffuse.png",L"../../Assets/Textures/LayeredNormal.png",
+		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
 
 	std::shared_ptr<Material> material3 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, rootSignature,
 		L"../../Assets/Textures/BronzeDiffuse.png", L"../../Assets/Textures/BronzeNormal.png",
@@ -721,7 +723,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh1, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", skyDome, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 

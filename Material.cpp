@@ -29,6 +29,13 @@ Material::Material(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& comm
 		numTextures++;
 	}
 
+	else
+	{
+		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultNormal.png", normalTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
+		materialOffset = normalTexture.heapOffset;
+		numTextures++;
+	}
+
 	if (roughness != L"default")
 	{
 		descriptorHeap.CreateDescriptor(roughness, roughnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
@@ -36,9 +43,23 @@ Material::Material(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& comm
 		numTextures++;
 	}
 
+	else
+	{
+		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultRoughness.png", roughnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
+		materialOffset = roughnessTexture.heapOffset;
+		numTextures++;
+	}
+
 	if (metallnes != L"default")
 	{
 		descriptorHeap.CreateDescriptor(metallnes, metallnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
+		materialOffset = metallnessTexture.heapOffset;
+		numTextures++;
+	}
+
+	else
+	{
+		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultMetallic.png", metallnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
 		materialOffset = metallnessTexture.heapOffset;
 		numTextures++;
 	}

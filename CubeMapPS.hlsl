@@ -19,34 +19,37 @@ float AngleBetween(in float3 dir0, in float3 dir1)
 //-------------------------------------------------------------------------------------------------
 float3 CIEClearSky(in float3 dir, in float3 sunDir)
 {
-    float cosThetaV = dir.z;
+	float3 skyDir = float3(dir.x, abs(dir.y), dir.z);
+	float gamma = AngleBetween(skyDir, sunDir);
+	float S = AngleBetween(sunDir, float3(0, 1, 0));
+	float theta = AngleBetween(skyDir, float3(0, 1, 0));
 
-    if (cosThetaV < 0.0f)
-        cosThetaV = 0.0f;
+	float cosTheta = cos(theta);
+	float cosS = cos(S);
+	float cosGamma = cos(gamma);
 
-    float cosThetaS = sunDir.z;
-    float thetaS = acos(cosThetaS);
+	float num = (0.91f + 10 * exp(-3 * gamma) + 0.45 * cosGamma * cosGamma) * (1 - exp(-0.32f / cosTheta));
+	float denom = (0.91f + 10 * exp(-3 * S) + 0.45 * cosS * cosS) * (1 - exp(-0.32f));
 
-    float cosGamma = dot(sunDir, dir);
-    float gamma = acos(cosGamma);
+	float lum = num / max(denom, 0.0001f);
 
-    float top1 = 0.91f + 10 * exp(-3 * gamma) + 0.45f * (cosGamma * cosGamma);
-    float bot1 = 0.91f + 10 * exp(-3 * thetaS) + 0.45f * (cosThetaS * cosThetaS);
+  // Clear Sky model only calculates luminance, so we'll pick a strong blue color for the sky
+	const float3 SkyColor = float3(0.2f, 0.5f, 1.0f) * 1;
+	const float3 SunColor = float3(1.0f, 0.8f, 0.3f) * 1500;
+	const float SunWidth = 0.015f;
 
-    float top2 = 1 - exp(-0.32f / (cosThetaV + 1e-6f));
-    float bot2 = 1 - exp(-0.32f);
+	float3 color = SkyColor;
 
-    return float3(1,1,1) * (top1 * top2) / (bot1 * bot2);
+  // Draw a circle for the sun
+  [flatten]
+	if (1)
+	{
+		float sunGamma = AngleBetween(dir, sunDir);
+		color = lerp(SunColor, SkyColor, saturate(abs(sunGamma) / SunWidth));
+	}
+	
+	return max(color * lum, 0);
 
-    // Draw a circle for the sun
-    
-    //if (true)
-    //{
-    //    float sunGamma = AngleBetween(dir, sunDir);
-    //    color = lerp(SunColor, SkyColor, saturate(abs(sunGamma) / SunWidth));
-    //}
-
-    //return max(color * lum, 0);
 }
 
 float4 main(VertexToPixel input) : SV_TARGET
@@ -58,6 +61,8 @@ float4 main(VertexToPixel input) : SV_TARGET
 	return float4(skyboxColor, 1.0f);
 
     float3 dir = normalize(input.worldPos);
+	
+	float3 sunDir = { 0, 3, 2 };
     
-    return float4(CIEClearSky(dir, float3(0,1,1)), 1.0f);
+	return float4(CIEClearSky(dir, normalize(sunDir)), 1.0f);
 }

@@ -25,11 +25,20 @@
 #include<entity\registry.hpp>
 #include"Flocker.h"
 
+#define MAX_LIGHTS 128
+
 struct LightData
 {
 	DirectionalLight light1;
 	XMFLOAT3 cameraPosition;
 	float padding;
+};
+
+struct LightingData
+{
+	Light lights[MAX_LIGHTS];
+	XMFLOAT3 cameraPosition;
+	UINT lightCount;
 };
 
 inline ID3D12Resource* CreateRBBuffer(ID3D12Resource* buffer, ID3D12Device* device, UINT bufferSize)
@@ -168,6 +177,7 @@ private:
 	std::shared_ptr<Entity> entity1;
 	std::shared_ptr<Mesh> mesh2;
 	std::shared_ptr<Mesh> mesh3;
+	std::shared_ptr<Mesh> skyDome;
 	std::shared_ptr<Mesh> sharkMesh;
 	std::shared_ptr<Mesh> faceMesh;
 	std::shared_ptr<Entity> entity2;

@@ -2,7 +2,7 @@
 
 // Raytracing output texture, accessed as a UAV
 RWTexture2D< float4 > gOutput : register(u0);
-RWTexture2D< float4 > gDiffuse : register(u1);
+RWTexture2D< float4 > gRoughnessMetallic : register(u1);
 RWTexture2D< float4 > gPosition : register(u2);
 RWTexture2D< float4 > gNormal : register(u3);
 RWTexture2D< float4 > gAlbedo : register(u4);
@@ -26,7 +26,7 @@ ConstantBuffer<RayTraceCameraData> cameraData: register(b0);
 void GBufferRayGen() 
 {
     // Initialize the ray payload
-    GbufferPayload payload = { float3(0,0,0),float3(0,0,0) ,float3(0,0,0) ,float3(0,0,0) };
+    GbufferPayload payload = { float4(0, 0, 0, 0),float3(0,0,0) ,float3(0,0,0) ,float3(0,0,0) };
 
     // Get the location within the dispatched 2D grid of work items
     // (often maps to pixels, so this could represent a pixel coordinate).
@@ -46,7 +46,7 @@ void GBufferRayGen()
     TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, payload);
 
 
-    gDiffuse[launchIndex] = float4(payload.diffuse, 1.f);
+    gRoughnessMetallic[launchIndex] = payload.roughnessMetallic;
     gPosition[launchIndex] = float4(payload.position, 1.f);
     gNormal[launchIndex] = float4(payload.normal, 1.f);
     gAlbedo[launchIndex] = float4(payload.albedo, 1.f);

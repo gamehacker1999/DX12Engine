@@ -320,5 +320,11 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="Assets\Models\Head.sdkmesh" />
+    <None Include="HitGroupIncludes.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Lighting.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

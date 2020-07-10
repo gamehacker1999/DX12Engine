@@ -113,5 +113,5 @@ float3 getCosHemisphereSample(inout uint randSeed, float3 hitNorm)
 
 float3 ConvertFromObjectToWorld(float3 vec)
 {
-	return mul(vec, ObjectToWorld4x3());
+	return mul(vec, ObjectToWorld3x4());
 }
