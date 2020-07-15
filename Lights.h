@@ -18,7 +18,7 @@ struct Light
 	float intensity;
 	XMFLOAT3 diffuse;
 	float spotFalloff;
-	XMFLOAT3 padding;
+	XMFLOAT3 color;
 };
 
 struct DirectionalLight

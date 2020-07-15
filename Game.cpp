@@ -32,9 +32,12 @@ Game::Game(HINSTANCE hInstance)
 	constantBufferBegin = nullptr;
 	cameraBufferBegin = 0;
 	lightCbufferBegin = 0;
+	lightingCbufferBegin = 0;
+	lightCount = 0;
 	raster = true;
 
 	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
+	memset(&lightingData, 0, sizeof(LightingData));
 
 	isRaytracingAllowed = false;
 	rtToggle = true;
@@ -547,7 +550,17 @@ void Game::CreateBasicGeometry()
 		IID_PPV_ARGS(lightConstantBufferResource.GetAddressOf())
 	));
 
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(1026 * 64),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(lightingConstantBufferResource.GetAddressOf())
+	));
+
 	ZeroMemory(&lightData, sizeof(lightData));
+	ZeroMemory(&lightingData, sizeof(lightingData));
 
 	lightData.light1.diffuse = XMFLOAT4(1, 1, 1, 1);
 	lightData.light1.direction = XMFLOAT3(-1, -1, 0);
@@ -556,6 +569,15 @@ void Game::CreateBasicGeometry()
 
 	lightConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCbufferBegin));
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
+
+	lightingData.lights[0].type = LIGHT_TYPE_DIR;
+	lightingData.lights[0].direction = XMFLOAT3(-1, -1, 0);
+	lightingData.lights[0].color = XMFLOAT3(1, 1, 1);
+	lightingData.lights[0].intensity = 8;
+	lightCount++;
+
+	lightingConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightingCbufferBegin));
+	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
 
 	UINT64 cbufferOffset = 0;
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
@@ -574,7 +596,7 @@ void Game::CreateBasicGeometry()
 	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, pbrPipelineState,rootSignature,
 		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
 		L"../../Assets/Textures/GoldRoughness.png",L"../../Assets/Textures/GoldMetallic.png");
-	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pipelineState, rootSignature,
+	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, rootSignature,
 		L"../../Assets/Textures/LayeredDiffuse.png",L"../../Assets/Textures/LayeredNormal.png",
 		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
 
@@ -723,7 +745,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", skyDome, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 
@@ -822,18 +844,15 @@ void Game::CreateShaderBindingTable()
 
 	//the ray generation shader needs external data therefore it needs the pointer to the heap
 	//the miss and hit group shaders don't have any data
-	sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightConstantBufferResource->GetGPUVirtualAddress() });
+	sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress() });
 	sbtGenerator.AddMissProgram(L"Miss", {heapPointer});
-	for (int i = 0; i < 2; i++)
+	for (int i = 0; i < bottomLevelBufferInstances.size(); i++)
 	{
-		UINT materialIndex = entities[2]->GetMaterialIndex();
+		UINT materialIndex = entities[i]->GetMaterialIndex();
 		auto matIndexPtr = reinterpret_cast<UINT*>(materialIndex);
-		sbtGenerator.AddHitGroup(L"HitGroup", { (void*)entities[3]->GetMesh()->GetVertexBufferResource()->GetGPUVirtualAddress(),(void*)lightConstantBufferResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr});
+		sbtGenerator.AddHitGroup(L"HitGroup", { (void*)entities[i]->GetMesh()->GetVertexBufferResource()->GetGPUVirtualAddress(),(void*)lightingConstantBufferResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr});
 		sbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
 	}
-	UINT materialIndex = entities[2]->GetMaterialIndex();
-	auto matIndexPtr = reinterpret_cast<UINT*>(materialIndex);
-	sbtGenerator.AddHitGroup(L"PlaneHitGroup", { (void*)entities[0]->GetMesh()->GetVertexBufferResource()->GetGPUVirtualAddress(),(void*)lightConstantBufferResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr});
 
 	sbtGenerator.AddMissProgram(L"ShadowMiss", {});
 	sbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
@@ -867,19 +886,14 @@ void Game::CreateShaderBindingTable()
 		//the miss and hit group shaders don't have any data
 		GBsbtGenerator.AddRayGenerationProgram(L"GBufferRayGen", { heapPointer });
 		GBsbtGenerator.AddMissProgram(L"GBufferMiss", { heapPointer });
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < bottomLevelBufferInstances.size(); i++)
 		{
-			UINT materialIndex = entities[2]->GetMaterialIndex();
+			UINT materialIndex = entities[i]->GetMaterialIndex();
 			auto matIndexPtr = reinterpret_cast<UINT*>(materialIndex);
-			GBsbtGenerator.AddHitGroup(L"GBufferHitGroup", { (void*)entities[3]->GetMesh()->GetVertexBufferResourceAndCount().first.Get()->GetGPUVirtualAddress(),(void*)lightConstantBufferResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr });
+			GBsbtGenerator.AddHitGroup(L"GBufferHitGroup", { (void*)entities[i]->GetMesh()->GetVertexBufferResourceAndCount().first.Get()->GetGPUVirtualAddress(),(void*)lightingConstantBufferResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr });
 			GBsbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
 
 		}
-		UINT materialIndex = entities[2]->GetMaterialIndex();
-		auto matIndexPtr = reinterpret_cast<UINT*>(materialIndex);
-		GBsbtGenerator.AddHitGroup(L"GBufferPlaneHitGroup", { (void*)entities[0]->GetMesh()->GetVertexBufferResourceAndCount().first.Get()->GetGPUVirtualAddress(),(void*)lightConstantBufferResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr });
-		GBsbtGenerator.AddMissProgram(L"ShadowMiss", {});
-		GBsbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
 
 	
 		//compute the size of the GBsbt
@@ -992,15 +1006,12 @@ AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<Com
 	return buffers;
 }
 
-void Game::CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>, XMMATRIX>>& instances)
+void Game::CreateTopLevelAS(const std::vector<EntityInstance>& instances)
 {
-	for (int i = 0; i < instances.size()-1; i++)
+	for (int i = 0; i < instances.size(); i++)
 	{
-		topLevelAsGenerator.AddInstance(instances[i].first.Get(), instances[i].second, static_cast<UINT>(i), static_cast<UINT>(i*2),D3D12_RAYTRACING_INSTANCE_FLAG_NONE,0xFF);
+		topLevelAsGenerator.AddInstance(instances[i].bottomLevelBuffer.Get(), instances[i].modelMatrix, static_cast<UINT>(i), static_cast<UINT>(i*2),D3D12_RAYTRACING_INSTANCE_FLAG_NONE,0xFF);
 	}
-
-	topLevelAsGenerator.AddInstance(instances[2].first.Get(), instances[2].second, static_cast<UINT>(2), static_cast<UINT>(2 * 2), D3D12_RAYTRACING_INSTANCE_FLAG_NONE, 0xFF);
-
 
 	UINT64 scratchSize, resultSize, instanceDescsSize;
 
@@ -1036,16 +1047,26 @@ void Game::CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>, 
 
 void Game::CreateAccelerationStructures()
 {
-	//creating a bottom level AS for the first entity for now
-	AccelerationStructureBuffers bottomLevelBuffers = CreateBottomLevelAS({ entities[3]->GetMesh()->GetVertexBufferResourceAndCount() });
-	AccelerationStructureBuffers planeBottomLevelBuffer = CreateBottomLevelAS({ entities[0]->GetMesh()->GetVertexBufferResourceAndCount() });
+	std::vector<AccelerationStructureBuffers> bottomLevelBuffers;
+
+	for (int i = 0; i < entities.size(); i++)
+	{
+		AccelerationStructureBuffers blasBuffer = CreateBottomLevelAS({ entities[i]->GetMesh()->GetVertexBufferResourceAndCount() });
+		bottomLevelBuffers.emplace_back(blasBuffer);
+	}
 
 	//create only one instance for now
 
 	//instances.emplace_back(std::pair<ComPtr<ID3D12Resource>, XMFLOAT4X4>(bottomLevelBuffers.pResult, entities[3]->GetModelMatrix()));
 
-	instances = { {bottomLevelBuffers.pResult, entities[3]->GetRawModelMatrix()},{bottomLevelBuffers.pResult, XMMatrixTranslation(-1,3,20)},{planeBottomLevelBuffer.pResult,entities[0]->GetRawModelMatrix()} };
-	CreateTopLevelAS(instances);
+	for (int i = 0; i < bottomLevelBuffers.size(); i++)
+	{
+		EntityInstance instance = {i ,bottomLevelBuffers[i].pResult, entities[i]->GetRawModelMatrix() };
+		bottomLevelBufferInstances.emplace_back(instance);
+	}
+
+	//bottomLevelBufferInstances = { {bottomLevelBuffer.pResult, entities[3]->GetRawModelMatrix()},{bottomLevelBuffer.pResult, XMMatrixTranslation(-1,3,20)},{planeBottomLevelBuffer.pResult,entities[0]->GetRawModelMatrix()} };
+	CreateTopLevelAS(bottomLevelBufferInstances);
 
 	commandList->Close();
 	ID3D12CommandList* ppCommandLists[] = { commandList.Get() };
@@ -1055,8 +1076,6 @@ void Game::CreateAccelerationStructures()
 
 	ThrowIfFailed(
 		commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
-
-	bottomLevelAs = bottomLevelBuffers.pResult;
 
 }
 
@@ -1095,13 +1114,13 @@ ComPtr<ID3D12RootSignature> Game::CreateClosestHitRootSignature()
 {
 	//the hit signature only has a payload
 	nv_helpers_dx12::RootSignatureGenerator rsc;
-	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV);
-	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV);
+	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV, 1);
+	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 1);
 	rsc.AddHeapRangesParameter({ 
-		{1, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, RaytracingHeapRangesIndices::RTAccelerationStruct},
+		{0, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, RaytracingHeapRangesIndices::RTAccelerationStruct},
 		{0, 1, 1, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, RaytracingHeapRangesIndices::RTMaterials}
 	});
-	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, 1, 0, 1);
+	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, 0, 0, 1);
 	CD3DX12_STATIC_SAMPLER_DESC samplerDesc;
 	samplerDesc.Init(0);
 	rsc.AddStaticSamplers(samplerDesc);
@@ -1165,7 +1184,7 @@ void Game::CreateRaytracingDescriptorHeap()
 
 	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(device, rtOutPut, topLevelAsBuffers);
 	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
-	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox3.dds",skyboxTexResource,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DDS, true);
+	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox1.dds",skyboxTexResource,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DDS, true);
 
 
 	//for (size_t i = 0; i < materials.size(); i++)
@@ -1344,6 +1363,10 @@ void Game::Update(float deltaTime, float totalTime)
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
 
+	lightingData.cameraPosition = mainCamera->GetPosition();
+	lightingData.lightCount = lightCount;
+	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
+
 	if (isRaytracingAllowed)
 	{
 
@@ -1440,7 +1463,7 @@ void Game::PopulateCommandList()
 			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, gpuHeapRingBuffer->GetDynamicResourceOffset());
 			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityIndex, enableSSS, 0);
 			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, entities[i]->GetMaterialIndex(), 0);
-			commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightConstantBufferResource->GetGPUVirtualAddress());
+			commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
 
 			D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
@@ -1465,7 +1488,7 @@ void Game::PopulateCommandList()
 			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, gpuHeapRingBuffer->GetDynamicResourceOffset());
 			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityIndex, i, 0);
 			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, flockers[i]->GetMaterialIndex(), 0);
-			commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightConstantBufferResource->GetGPUVirtualAddress());
+			commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
 
 			D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();

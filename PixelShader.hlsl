@@ -1,15 +1,16 @@
-struct DirectionalLight
-{
-	float4 ambientColor;
-	float4 diffuse;
-	float4 specularity;
-	float3 direction;
-};
+#include "Lighting.hlsli"
 
-cbuffer LightData: register(b1)
+//cbuffer LightData: register(b1)
+//{
+//	DirectionalLight light1;
+//	float3 cameraPosition;
+//};
+
+cbuffer LightingData : register(b1)
 {
-	DirectionalLight light1;
+	Light lights[MAX_LIGHTS];
 	float3 cameraPosition;
+	uint lightCount;
 };
 
 struct Index
@@ -29,39 +30,6 @@ struct VertexToPixel
 	float2 uv: TEXCOORD;
 
 };
-
-//function that accepts light and normal and then calculates the final color
-float4 CalculateLight(DirectionalLight light, float3 normal, VertexToPixel input)
-{
-	//standard N dot L calculation for the light
-	float3 L = -light.direction;
-	L = normalize(L); //normalizing the negated direction
-	float3 N = normal;
-	N = normalize(N); //normalizing the normal
-	float3 R = reflect(-L, N); //reflect R over N
-	float3 V = normalize(cameraPosition - input.worldPosition); //view vector
-	float4 NdotV = saturate(dot(N, V));
-	float4 rimColor = float4(0.0f, 0.0f, 1.0f, 1.0f);
-
-	//calculate the cosine of the angle to calculate specularity
-	//I am calculating the light based on the phong reflection model
-	float cosine = dot(R, V);
-	cosine = saturate(cosine);
-	float shininess = 8.f;
-	float specularAmount = pow(cosine, shininess); //increase the cosine curve fall off
-
-	float NdotL = dot(N, L);
-	NdotL = saturate(NdotL); //this is the light amount, we need to clamp it to 0 and 1.0
-
-	//float4 diffuse = celShading.Sample(basicSampler, NdotL);
-	//return diffuse;
-
-	//adding diffuse, ambient, and specular color
-	float4 finalLight = light.diffuse * NdotL;
-	finalLight += specularAmount;
-
-	return finalLight;
-}
 
 Texture2D material[]: register(t0);
 SamplerState basicSampler: register(s0);
@@ -85,6 +53,24 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3x3 TBN = float3x3(T, B, N);
 
 	float3 finalNormal = mul(unpackedNormal, TBN);
+    N = normalize(finalNormal);
+	
+    float3 Lo = float3(0, 0, 0);
+	for (int i = 0; i < lightCount; i++)
+	{
+		switch (lights[i].type)
+		{
+			case LIGHT_TYPE_DIR:
+                Lo += DirectionalLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+				break;
+			case LIGHT_TYPE_SPOT:
+				Lo += SpotLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+				break;
+			case LIGHT_TYPE_POINT:
+				Lo += PointLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+				break;
+		}
+	}
 
-	return float4(CalculateLight(light1,finalNormal,input))*texColor;
+    return float4(Lo, texColor.w);
 }

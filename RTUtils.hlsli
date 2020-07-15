@@ -1,39 +1,76 @@
 #include "Common.hlsl"
+#include "Lighting.hlsli"
 
 static const float M_PI = 3.14159265f;
 
-//bool ShootShadowRays(float3 origin, float3 direction, float minT, float maxT)
-//{
-//	//initialize the hit payload
-//	ShadowHitInfo shadowPayload;
-//	shadowPayload.isHit = false;
-//
-//	/**/RayDesc ray;
-//	ray.Origin = origin;
-//	ray.Direction = direction;
-//	ray.TMin = minT;
-//	ray.TMax = 100000;
-//
-//	TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
-//
-//	return isHit;
-//}
-//
-//
-//float3 DiffuseShade(float3 pos, float3 norm, float3 albedo, inout uint seed, DirectionalLight light1)
-//{
-//
-//	float3 L = -light1.direction;
-//
-//	float NdotL = saturate(dot(norm, L));
-//
-//	bool isHit = ShootShadowRay(pos, L, 1.0e-4f, 10000000);
-//
-//	float factor = isHit ? 0.3 : 1.0;
-//	float3 rayColor = light1.diffuse * factor;
-//
-//	return (NdotL * rayColor * (albedo / PI));
-//}
+struct Vertex
+{
+    float3 Position; // The position of the vertex
+    float3 Normal;
+    float3 Tangent;
+    float2 UV;
+};
+
+StructuredBuffer<Vertex> vertex : register(t1);
+RaytracingAccelerationStructure SceneBVH : register(t0);
+
+Texture2D material[] : register(t0, space1);
+SamplerState basicSampler : register(s0);
+
+struct Index
+{
+    uint index;
+};
+
+ConstantBuffer<Index> entityIndex : register(b0);
+
+cbuffer LightingData : register(b1)
+{
+    Light lights[MAX_LIGHTS];
+    float3 cameraPosition;
+    uint lightCount;
+};
+
+float RadicalInverse_VdC(uint bits)
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+}
+
+//function to generate a hammersly low discrepency sequence for importance sampling
+float2 Hammersley(uint i, uint N)
+{
+    return float2(float(i) / float(N), RadicalInverse_VdC(i));
+}
+
+//importance sampling
+float3 ImportanceSamplingGGX(float2 xi, float3 N, float roughness)
+{
+    float a = roughness * roughness;
+
+    float phi = 2.0f * M_PI * xi.x;
+    float cosTheta = sqrt((1.0f - xi.y) / (1.0f + (a * a - 1.f) * xi.y));
+    float sinTheta = 1 - (cosTheta * cosTheta); //using the trigonometric rule
+
+	//from spherica coordinats to cartsian space
+    float3 H;
+    H.x = sinTheta * cos(phi);
+    H.y = sinTheta * sin(phi);
+    H.z = cosTheta;
+
+	//from tangent to world space using TBN matrix
+    float3 up = abs(N.z) < 0.999 ? float3(0.0f, 0.0f, 1.0f) : float3(0.0f, 1.0f, 0.0f); //up vector is based on the value of N
+    float3 tangent = normalize(cross(up, N));
+    float3 bitangent = cross(N, tangent);
+
+    float3 sampleVec = tangent * H.x + bitangent * H.y + H.z * N;
+
+    return normalize(sampleVec);
+}
 
 // Utility function to get a vector perpendicular to an input vector 
 //    (from "Efficient Construction of Perpendicular Vectors Without Branching")
@@ -115,3 +152,119 @@ float3 ConvertFromObjectToWorld(float3 vec)
 {
 	return mul(vec, ObjectToWorld3x4());
 }
+
+// Approximates luminance from an RGB value
+float Luminance(float3 color)
+{
+    return dot(color, float3(0.299f, 0.587f, 0.114f));
+}
+
+float probabilityToSampleDiffuse(float3 difColor, float3 specColor)
+{
+    float lumDiffuse = max(0.01f, Luminance(difColor.rgb));
+    float lumSpecular = max(0.01f, Luminance(specColor.rgb));
+    return lumDiffuse / (lumDiffuse + lumSpecular);
+}
+
+float ShootShadowRays(float3 origin, float3 direction, float minT, float maxT)
+{
+    //initialize the hit payload
+    ShadowHitInfo shadowPayload;
+    shadowPayload.isHit = false;
+    ///shadowPayload.primitiveIndex = InstanceID();
+
+    /**/
+    RayDesc ray;
+    ray.Origin = origin;
+    ray.Direction = direction;
+    ray.TMin = minT;
+    ray.TMax = maxT;
+
+    TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
+
+    return shadowPayload.isHit ? 0.3 : 1.0f;
+}
+
+
+float3 DirectLighting(float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness)
+{
+    int lightToSample = min(int(nextRand(rndseed) * lightCount),
+                             lightCount - 1);
+    
+    float3 color = float3(0, 0, 0);
+    if (lights[lightToSample].type == LIGHT_TYPE_DIR)
+    {
+        color += DirectLightPBR(lights[lightToSample], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+    }
+    else if (lights[lightToSample].type == LIGHT_TYPE_POINT)
+    {
+        color += PointLightPBR(lights[lightToSample], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+    }
+    else if (lights[lightToSample].type == LIGHT_TYPE_SPOT)
+    {
+        color += SpotLightPBR(lights[lightToSample], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+    }
+        
+    return color * ShootShadowRays(pos, lights[0].direction, 0.1, 1000000);
+}
+
+float3 IndirectLighting(float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness, float rayDepth)
+{
+    float probDiffuse = probabilityToSampleDiffuse(surfaceColor, f0);
+    float chooseDiffuse = (nextRand(rndseed) < probDiffuse);
+    
+    if (chooseDiffuse)
+    {
+	// Shoot a randomly selected cosine-sampled diffuse ray.
+        float3 L = getCosHemisphereSample(rndseed, norm);
+        
+        HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+       
+        /**/
+        RayDesc ray;
+        ray.Origin = pos;
+        ray.Direction = L;
+        ray.TMin = 0.01;
+        ray.TMax = 100000;
+        
+        TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+
+        return giPayload.color * surfaceColor / probDiffuse;
+    }
+    else
+    {
+        float2 randVals = Hammersley(1, 4096);
+        float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
+        float3 L = normalize(2 * dot(V, H) * H - V);
+        
+        HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+       
+        RayDesc ray;
+        ray.Origin = pos;
+        ray.Direction = L;
+        ray.TMin = 0.01;
+        ray.TMax = 100000;
+       
+        TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+		
+	   // Compute some dot products needed for shading
+        float NdotL = saturate(dot(norm, L));
+        float NdotH = saturate(dot(norm, H));
+        float LdotH = saturate(dot(L, H));
+        float NdotV = saturate(dot(norm, V));
+       
+	    // valuate our BRDF using a microfacet BRDF model
+        float D = SpecularDistribution(roughness, H, norm);
+        float G = GeometricShadowing(norm, V, H, roughness) * GeometricShadowing(norm, L, H, roughness);
+        float3 F = FresnelRoughness(NdotV, f0, roughness);
+        float3 ggxTerm = D * G * F / (4 * NdotL * NdotV);
+        
+        // What's the probability of sampling vector H from getGGXMicrofacet()?
+        float ggxProb = D * NdotH / (4 * LdotH);
+
+	    // Accumulate color:  ggx-BRDF * lightIn * NdotL / probability-of-sampling
+	    //    -> Note: Should really cancel and simplify the math above
+        return NdotL * giPayload.color * ggxTerm / (ggxProb * (1.0f - probDiffuse));
+    }
+}
+

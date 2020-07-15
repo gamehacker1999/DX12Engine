@@ -1,25 +1,17 @@
 #include "Lighting.hlsli"
 
-struct DirectionalLight
-{
-	float4 ambientColor;
-	float4 diffuse;
-	float4 specularity;
-	float3 direction;
-};
-
-cbuffer LightData: register(b1)
-{
-	DirectionalLight light1;
-	float3 cameraPosition;
-};
-
-//cbuffer LightingData : register(b1)
+//cbuffer LightData: register(b1)
 //{
-//	Light lights[MAX_LIGHTS];
+//	DirectionalLight light1;
 //	float3 cameraPosition;
-//  uint lightCount;
 //};
+
+cbuffer LightingData : register(b1)
+{
+	Light lights[MAX_LIGHTS];
+	float3 cameraPosition;
+	uint lightCount;
+};
 
 struct Index
 {
@@ -38,82 +30,6 @@ struct VertexToPixel
 	float2 uv: TEXCOORD;
 
 };
-
-//function that accepts light and normal and then calculates the final color
-/*float4 CalculateLight(DirectionalLight light, float3 normal, VertexToPixel input)
-{
-	//standard N dot L calculation for the light
-	float3 L = -light.direction;
-	L = normalize(L); //normalizing the negated direction
-	float3 N = normal;
-	N = normalize(N); //normalizing the normal
-	float3 R = reflect(-L, N); //reflect R over N
-	float3 V = normalize(cameraPosition - input.worldPosition); //view vector
-	float4 NdotV = saturate(dot(N, V));
-	float4 rimColor = float4(0.0f, 0.0f, 1.0f, 1.0f);
-
-	//calculate the cosine of the angle to calculate specularity
-	//I am calculating the light based on the phong reflection model
-	float cosine = dot(R, V);
-	cosine = saturate(cosine);
-	float shininess = 8.f;
-	float specularAmount = pow(cosine, shininess); //increase the cosine curve fall off
-
-	float NdotL = dot(N, L);
-	NdotL = saturate(NdotL); //this is the light amount, we need to clamp it to 0 and 1.0
-
-	//float4 diffuse = celShading.Sample(basicSampler, NdotL);
-	//return diffuse;
-
-	//adding diffuse, ambient, and specular color
-	float4 finalLight = light.diffuse * NdotL;
-	finalLight += specularAmount;
-
-	return finalLight;
-}*/
-
-float3 CalculateDiffuse(float3 n, float3 l, DirectionalLight light)
-{
-	float3 L = l;
-	L = normalize(L); //normalizing the negated direction
-	float3 N = n;
-	N = normalize(N); //normalizing the normal
-
-	float NdotL = dot(N, L);
-	NdotL = saturate(NdotL); //this is the light amount, we need to clamp it to 0 and 1.0
-
-	//adding diffuse, ambient color
-	float3 finalLight = light.diffuse.xyz * NdotL;
-	//finalLight += light.ambientColor;
-	return finalLight;
-}
-
-float3 DirectLightPBR(DirectionalLight light, float3 normal, float3 worldPos, float3 cameraPos, 
-	float roughness, float metalness, float3 surfaceColor, float3 f0)
-{
-	//variables for different functions
-	float3 F; //fresnel
-	float D; //ggx
-	float G; //geomteric shadowing
-
-	float3 V = normalize(cameraPos - worldPos);
-	float3 L = -light.direction;
-	float3 H = normalize(L + V);
-	float3 N = normalize(normal);
-
-	CookTorrence(normal, H, roughness, V, f0, L, F, D, G);
-
-	float3 ks = F;
-	float3 kd = float3(1.0f, 1.0f, 1.0f) - ks;
-	kd *= (float3(1.0f, 1.0f, 1.0f) - metalness);
-
-	float3 lambert = CalculateDiffuse(normal, L, light);
-	float3 numSpec = D * F * G;
-	float denomSpec = 4.0f * max(dot(N, V), 0.0000f) * max(dot(N, L), 0.0000f);
-	float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
-
-	return ((kd * surfaceColor.xyz / PI) + specular) * lambert;
-}
 
 Texture2D material[]: register(t0);
 SamplerState basicSampler: register(s0);
@@ -160,37 +76,31 @@ float4 main(VertexToPixel input) : SV_TARGET
 	//for now radiance is just the color of the direction light, the diffuse part is lambertian*c/pi
 	//specular is calculated by cook torrence, which ontains in ks term in is due to fresnel
 
-	float3 L = -light1.direction;
-	L = normalize(L); //normalizing the negated direction
 	N = finalNormal;
 	N = normalize(N); //normalizing the normal
 	float3 V = normalize(cameraPosition - input.worldPosition); //view vector
-	float3 H = normalize(L + V);
 	float3 R = reflect(-V, N); //reflect R over N
 	
 	float3 Lo = float3(0.0f, 0.0f, 0.0f);
 
-	//for (int i = 0; i < lightCount; i++)
-	//{
-	//	switch (lights[i].type)
-	//	{
-	//		case LIGHT_TYPE_DIR:
-	//			Lo += DirectLightPBR(lights[i], N, input.worldPosition, cameraPosition,
-	//		roughness, metalColor.r, surfaceColor.xyz, f0);
-	//			break;
-	//		case LIGHT_TYPE_SPOT:
-	//			Lo += SpotLightPBR(lights[i], N, input.worldPosition, cameraPosition,
-	//		roughness, metalColor.r, surfaceColor.xyz, f0);
-	//			break;
-	//		case LIGHT_TYPE_POINT:
-	//			Lo += PointLightPBR(lights[i], N, input.worldPosition, cameraPosition,
-	//		roughness, metalColor.r, surfaceColor.xyz, f0);
-	//			break;
-	//	}
-	//}
-
-	float3 color = DirectLightPBR(light1 , N, input.worldPosition, cameraPosition,
-		roughness, metalColor.r, surfaceColor.xyz, f0);
+	for (int i = 0; i < lightCount; i++)
+	{
+		switch (lights[i].type)
+		{
+			case LIGHT_TYPE_DIR:
+				Lo += DirectLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+			roughness, metalColor.r, surfaceColor.xyz, f0);
+				break;
+			case LIGHT_TYPE_SPOT:
+				Lo += SpotLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+			roughness, metalColor.r, surfaceColor.xyz, f0);
+				break;
+			case LIGHT_TYPE_POINT:
+				Lo += PointLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+			roughness, metalColor.r, surfaceColor.xyz, f0);
+				break;
+		}
+	}
 
 	float3 ksIndirect = FresnelRoughness(dot(N, V), f0, roughness);
 
@@ -202,7 +112,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float3 irradiance = irradianceMap.Sample(basicSampler, N).rgb;
 
-	float3 diffuseIndirect = surfaceColor.rgb * irradiance;
+	float3 diffuseIndirect = surfaceColor.rgb * irradiance/ 3.14169;
 
 	float3 prefilteredColor = prefilteredMap.SampleLevel(basicSampler, R, roughness * 4.0).rgb;
 
@@ -210,11 +120,12 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float3 specularIndirect = prefilteredColor * (ksIndirect * envBRDF.x + envBRDF.y);
 
-	float3 ambientIndirect = (kdIndirect * diffuseIndirect + specularIndirect * surfaceColor.rgb); 
+	float3 ambientIndirect = (kdIndirect * diffuseIndirect + specularIndirect); 
 
+    float3 color = Lo;
 	color += ambientIndirect;
 
 	color = pow(abs(color), 1.f / 2.2f);
 
-	return float4(color, 1.0f);
+	return float4(color, surfaceColor.w);
 }

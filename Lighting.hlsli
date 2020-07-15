@@ -18,7 +18,7 @@ struct Light
 	float intensity;
 	float3 diffuse;
 	float spotFalloff;
-	float3 padding;
+	float3 color;
 
 };
 
@@ -31,7 +31,23 @@ float Attenuate(Light light, float3 worldPos)
 	return att * att;
 }
 
-float3 CalculateDiffuse(float3 n, float3 l, Light light)
+// Lambert diffuse BRDF
+float Diffuse(float3 normal, float3 dirToLight)
+{
+    return saturate(dot(normal, dirToLight));
+}
+
+// Blinn-Phong (specular) BRDF
+float SpecularBlinnPhong(float3 normal, float3 dirToLight, float3 toCamera, float shininess)
+{
+	// Calculate halfway vector
+    float3 halfwayVector = normalize(dirToLight + toCamera);
+
+	// Compare halflway vector and normal and raise to a power
+    return shininess == 0 ? 0.0f : pow(max(dot(halfwayVector, normal), 0), shininess);
+}
+
+float CalculateDiffuse(float3 n, float3 l)
 {
 	float3 L = l;
 	L = normalize(L); //normalizing the negated direction
@@ -41,10 +57,7 @@ float3 CalculateDiffuse(float3 n, float3 l, Light light)
 	float NdotL = dot(N, L);
 	NdotL = saturate(NdotL); //this is the light amount, we need to clamp it to 0 and 1.0
 
-	//adding diffuse, ambient color
-	float3 finalLight = light.diffuse.xyz * NdotL;
-	//finalLight += light.ambientColor;
-	return finalLight;
+    return NdotL;
 }
 
 //function for the fresnel term(Schlick approximation)
@@ -116,6 +129,48 @@ void CookTorrence(float3 n, float3 h, float roughness, float3 v, float3 f0, floa
 }
 
 
+float3 DirectionalLight(Light light, float3 normal, float3 worldPos, float3 camPos, float shininess, float3 surfaceColor)
+{
+	// Get normalize direction to the light
+    float3 toLight = normalize(-light.direction);
+    float3 toCam = normalize(camPos - worldPos);
+
+	// Calculate the light amounts
+    float diff = Diffuse(normal, toLight);
+    float spec = SpecularBlinnPhong(normal, toLight, toCam, shininess);
+
+	// Combine
+    return (diff * surfaceColor + spec) * light.intensity * light.color;
+}
+
+
+float3 PointLight(Light light, float3 normal, float3 worldPos, float3 camPos, float shininess, float3 surfaceColor)
+{
+	// Calc light direction
+    float3 toLight = normalize(light.position - worldPos);
+    float3 toCam = normalize(camPos - worldPos);
+
+	// Calculate the light amounts
+    float atten = Attenuate(light, worldPos);
+    float diff = Diffuse(normal, toLight);
+    float spec = SpecularBlinnPhong(normal, toLight, toCam, shininess);
+
+	// Combine
+    return (diff * surfaceColor + spec) * atten * light.intensity * light.color;
+}
+
+
+float3 SpotLight(Light light, float3 normal, float3 worldPos, float3 camPos, float shininess, float3 surfaceColor)
+{
+	// Calculate the spot falloff
+    float3 toLight = normalize(light.position - worldPos);
+    float penumbra = pow(saturate(dot(-toLight, light.direction)), light.spotFalloff);
+	
+	// Combine with the point light calculation
+	// Note: This could be optimized a bit
+    return PointLight(light, normal, worldPos, camPos, shininess, surfaceColor) * penumbra;
+}
+
 float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
 {
 	//variables for different functions
@@ -134,7 +189,7 @@ float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 camera
 	float3 kd = float3(1.0f, 1.0f, 1.0f) - ks;
 	kd *= (float3(1.0f, 1.0f, 1.0f) - metalness);
 
-	float3 lambert = CalculateDiffuse(normal, L, light);
+	float lambert = CalculateDiffuse(normal, L);
 	float3 numSpec = D * F * G;
 	float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
 	float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
@@ -159,7 +214,7 @@ float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraP
 
 	CookTorrence(normal, H, roughness, V, f0, L, F, D, G);
 
-	float3 lambert = CalculateDiffuse(normal, L, light);
+	float lambert = CalculateDiffuse(normal, L);
 	float3 ks = F;
 	float3 kd = float3(1.0f, 1.0f, 1.0f) - ks;
 	kd *= (float3(1.0f, 1.0f, 1.0f) - metalness);

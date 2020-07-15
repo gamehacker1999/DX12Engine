@@ -94,7 +94,12 @@ struct AccelerationStructureBuffers
 	ComPtr<ID3D12Resource> pInstanceDesc; // Hold the matrices of the instances
 };
 
-
+struct EntityInstance
+{
+	UINT entityIndex;
+	ComPtr<ID3D12Resource> bottomLevelBuffer;
+	DirectX::XMMATRIX modelMatrix;
+};
 
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue,ComPtr<ID3D12Fence> fence, UINT64 fenceValue,HANDLE fenceEvent);
 

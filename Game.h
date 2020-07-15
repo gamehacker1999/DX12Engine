@@ -87,7 +87,7 @@ public:
 	//create the acceleration structure for the buffers
 	AccelerationStructureBuffers CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>,uint32_t>> vertexBuffers);
 	//create top level acceleration structures
-	void CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>,XMMATRIX>>& instances);
+	void CreateTopLevelAS(const std::vector<EntityInstance>& instances);
 	//create both top and bottom structures
 	void CreateAccelerationStructures();
 
@@ -166,6 +166,11 @@ private:
 	UINT8* lightCbufferBegin;
 	LightData lightData;
 
+	ComPtr<ID3D12Resource> lightingConstantBufferResource;
+	UINT8* lightingCbufferBegin;
+	LightingData lightingData;
+	UINT lightCount;
+
 	//ComPtr<ID3D12Resource> depthStencilBuffer;
 	ManagedResource depthStencilBuffer;
 	//ComPtr<ID3D12DescriptorHeap> dsDescriptorHeap;
@@ -225,7 +230,7 @@ private:
 	ComPtr<ID3D12Resource> bottomLevelAs; //storage for bottom level as
 	nv_helpers_dx12::TopLevelASGenerator topLevelAsGenerator;
 	AccelerationStructureBuffers topLevelAsBuffers;
-	std::vector<std::pair<ComPtr<ID3D12Resource>, XMMATRIX>> instances;
+	std::vector<EntityInstance> bottomLevelBufferInstances;
 
 	//dxr root signatures
 	ComPtr<ID3D12RootSignature> rayGenRootSig;

@@ -1,4 +1,4 @@
-#include "RTUtils.hlsli"
+#include "RayGenIncludes.hlsli"
 
 // Raytracing output texture, accessed as a UAV
 RWTexture2D< float4 > gOutput : register(u0);
@@ -7,9 +7,6 @@ RWTexture2D< float4 > gPosition : register(u2);
 RWTexture2D< float4 > gNormal : register(u3);
 RWTexture2D< float4 > gAlbedo : register(u4);
 
-
-// Raytracing acceleration structure, accessed as a SRV
-RaytracingAccelerationStructure SceneBVH : register(t0);
 
 struct RayTraceCameraData
 {

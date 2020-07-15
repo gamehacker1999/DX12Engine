@@ -3,7 +3,11 @@
 [shader("closesthit")]
 void ShadowClosestHit(inout ShadowHitInfo hit, Attributes bary)
 {
-    hit.isHit = true;
+    //if (InstanceID() == hit.primitiveIndex)
+      //  hit.isHit = false;
+    
+    //else
+        hit.isHit = true;
 }
 
 [shader("miss")]

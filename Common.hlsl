@@ -39,7 +39,10 @@ struct Attributes
 //since the plane needs to case shadow rays, we need the scene bvh and the shadow ray payload
 struct ShadowHitInfo
 {
+    uint primitiveIndex;
     bool isHit; // this is tha payload of the ray, we just want to know if we hit something or not
 };
+
+
 
 
