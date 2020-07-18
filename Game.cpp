@@ -1,4 +1,5 @@
 #include "Game.h"
+#include"LTC.h"
 #include "Vertex.h"
 #include"FlockingSystem.h"
 
@@ -52,10 +53,10 @@ Game::~Game()
 	CloseHandle(fenceEvent);
 	residencyManager.Destroy();
 
-	for (int i = 0; i < flockers.size(); i++)
-	{
-		registry.destroy(flockers[i]->GetEntityID());
-	}
+	//for (int i = 0; i < flockers.size(); i++)
+	//{
+	//	registry.destroy(flockers[i]->GetEntityID());
+	//}
 	
 	//delete[] denoised_pixels;
 	//inputBuffer->destroy();
@@ -169,21 +170,11 @@ HRESULT Game::Init()
 
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
 	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources()-1;
-
-
-
 	skybox->CreateEnvironment(commandList, device, skyboxRootSignature, skyboxRootSignature, irradiencePSO, prefilteredMapPSO, brdfLUTPSO, dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 3, skybox->GetEnvironmentHeap());
 	skybox->environmentTexturesIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1-2;
 
-	//commandList->Close();
-	//ID3D12CommandList* commandLists[] = { commandList.Get() };
-	//commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
-	//
-	//WaitForPreviousFrame();
-	//
-	//ThrowIfFailed(commandAllocators[frameIndex]->Reset());
-	//ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
+	CreateLTCTexture();
 
 	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds",mesh2,volumePSO,
 		volumeRootSignature,device,commandQueue,mainBufferHeap,commandList);
@@ -255,20 +246,23 @@ void Game::LoadShaders()
 {
 
 	//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[3];
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[4];
 	CD3DX12_ROOT_PARAMETER1 rootParams[EntityRootIndices::EntityNumRootIndices]; // specifies the descriptor table
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+	ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 3, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	rootParams[EntityRootIndices::EntityVertexCBV].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[EntityRootIndices::EntityIndex].InitAsConstants(1, 2, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityPixelCBV].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityMaterials].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityMaterialIndex].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityEnvironmentSRV].InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParams[EntityRootIndices::EntityLTCSRV].InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL);
 
-	CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+	CD3DX12_STATIC_SAMPLER_DESC staticSamplers[2];//(0, D3D12_FILTER_ANISOTROPIC);
 	staticSamplers[0].Init(0);
+	staticSamplers[1].Init(1, D3D12_FILTER_ANISOTROPIC, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
 	//rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC);
 
@@ -573,8 +567,19 @@ void Game::CreateBasicGeometry()
 	lightingData.lights[0].type = LIGHT_TYPE_DIR;
 	lightingData.lights[0].direction = XMFLOAT3(-1, -1, 0);
 	lightingData.lights[0].color = XMFLOAT3(1, 1, 1);
-	lightingData.lights[0].intensity = 8;
+	lightingData.lights[0].intensity = 1;
 	lightCount++;
+
+	lightingData.lights[1].type = 3;
+	lightingData.lights[1].color = XMFLOAT3(1, 1, 1);
+	lightingData.lights[1].rectLight.height = 5;
+	lightingData.lights[1].rectLight.width = 5;
+	lightingData.lights[1].rectLight.rotY = 0;
+	lightingData.lights[1].rectLight.rotZ = 0;
+	lightingData.lights[1].rectLight.position = XMFLOAT3(0, -2, 0);
+	lightingData.lights[1].intensity = 8;
+	lightCount++;
+
 
 	lightingConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightingCbufferBegin));
 	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
@@ -586,6 +591,7 @@ void Game::CreateBasicGeometry()
 	sharkMesh = std::make_shared<Mesh>("../../Assets/Models/bird2.obj", device, commandList);
 	faceMesh = std::make_shared<Mesh>("../../Assets/Models/face.obj", device, commandList);
 	skyDome = std::make_shared<Mesh>("../../Assets/Models/sky_dome.obj", device, commandList);
+	std::shared_ptr<Mesh> rect = std::make_shared<Mesh>("../../Assets/Models/RectLight.obj", device, commandList);
 	
 
 	//creating the vertex buffer
@@ -595,7 +601,7 @@ void Game::CreateBasicGeometry()
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
 	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, pbrPipelineState,rootSignature,
 		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
-		L"../../Assets/Textures/GoldRoughness.png",L"../../Assets/Textures/GoldMetallic.png");
+		L"../../Assets/Textures/Goldroughness.png",L"../../Assets/Textures/GoldMetallic.png");
 	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, rootSignature,
 		L"../../Assets/Textures/LayeredDiffuse.png",L"../../Assets/Textures/LayeredNormal.png",
 		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
@@ -607,17 +613,23 @@ void Game::CreateBasicGeometry()
 	std::shared_ptr<Material> material4 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, sssPipelineState, rootSignature,
 		L"../../Assets/Textures/Head_Diffuse.png", L"../../Assets/Textures/Head_Normal.png");
 
+	std::shared_ptr<Material> material5 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, sssPipelineState, rootSignature,
+		L"../../Assets/Textures/GoldMetallic.png", L"../../Assets/Textures/GoldNormal.png", L"../../Assets/Textures/DefaultRoughness.png", 
+		L"../../Assets/Textures/LayeredMetallic.png");
+
 	materials.emplace_back(material1);
 	materials.emplace_back(material2);
 	materials.emplace_back(material3);
 	materials.emplace_back(material4);
+	materials.emplace_back(material5);
 
 
-	entity1 = std::make_shared<Entity>(mesh2,material3, registry);
+	entity1 = std::make_shared<Entity>(mesh2,material1, registry);
 	entity2 = std::make_shared<Entity>(mesh1,material1, registry);
 	entity3 = std::make_shared<Entity>(mesh1,material2, registry);
 	entity4 = std::make_shared<Entity>(mesh3,material1, registry);
-	//entity6 = std::make_shared<Entity>(faceMesh, material4, registry);
+	entity6 = std::make_shared<Entity>(mesh2, material5, registry);
+	
 	
 
 	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
@@ -625,45 +637,51 @@ void Game::CreateBasicGeometry()
 	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
 	entity3->SetPosition(XMFLOAT3(-3, 0, 1.f));
 	entity4->SetPosition(XMFLOAT3(8, -8, 1.f));
-	//entity6->SetPosition(XMFLOAT3(-8.f, 0.f, 1.f));
+	entity6->SetPosition(lightingData.lights[1].rectLight.position);
+	entity6->SetScale(XMFLOAT3(5, 5, 0.01));
+
+	auto initialRot = entity6->GetRotation();
+	XMVECTOR finalRot = XMQuaternionRotationRollPitchYaw(0, lightingData.lights[1].rectLight.rotY * 3.14159 / 180, lightingData.lights[1].rectLight.rotZ * 3.14159 / 180);
+	XMStoreFloat4(&initialRot, finalRot);
+	entity6->SetRotation(initialRot);
 
 
 	entity1->PrepareConstantBuffers(device,residencyManager,residencySet);
 	entity2->PrepareConstantBuffers(device,residencyManager,residencySet);
 	entity3->PrepareConstantBuffers(device,residencyManager,residencySet);
 	entity4->PrepareConstantBuffers(device,residencyManager,residencySet);
-	//entity6->PrepareConstantBuffers(device, residencyManager, residencySet);
+	entity6->PrepareConstantBuffers(device, residencyManager, residencySet);
 
 
 	entities.emplace_back(entity1);
 	entities.emplace_back(entity2);
 	entities.emplace_back(entity3);
 	entities.emplace_back(entity4);
-	//entities.emplace_back(entity6);
+	entities.emplace_back(entity6);
 	entities.emplace_back(std::make_shared<Entity>(mesh3, material2, registry));
 
 
 	entities[entities.size() - 1]->SetPosition(XMFLOAT3(0, 2, 0));
 	entities[entities.size() - 1]->PrepareConstantBuffers(device,residencyManager,residencySet);
 
-	for (int i = 0; i < 10; i++)
-	{
-		flockers.emplace_back(std::make_shared<Entity>(sharkMesh, material2, registry));
-		flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
-		const auto enttID = flockers[i]->GetEntityID();
-
-		flockers[i]->SetPosition(XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f));
-		//registry.assign<Flocker>(enttID, XMFLOAT3(i+2,i-2,0), 2 ,XMFLOAT3(0,0,0), 10,XMFLOAT3(0,0,0),1);
-		auto valid = registry.valid(enttID);
-
-		auto &flocker = registry.assign<Flocker>(enttID);
-		flocker.pos = XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f);
-		flocker.vel = XMFLOAT3(0, 0, 0);
-		flocker.acceleration = XMFLOAT3(0, 0, 0);
-		flocker.mass = 2;
-		flocker.maxSpeed = 2;
-		flocker.safeDistance = 1;
-	}
+	//for (int i = 0; i < 10; i++)
+	//{
+	//	flockers.emplace_back(std::make_shared<Entity>(sharkMesh, material2, registry));
+	//	flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
+	//	const auto enttID = flockers[i]->GetEntityID();
+	//
+	//	flockers[i]->SetPosition(XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f));
+	//	//registry.assign<Flocker>(enttID, XMFLOAT3(i+2,i-2,0), 2 ,XMFLOAT3(0,0,0), 10,XMFLOAT3(0,0,0),1);
+	//	auto valid = registry.valid(enttID);
+	//
+	//	auto &flocker = registry.assign<Flocker>(enttID);
+	//	flocker.pos = XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f);
+	//	flocker.vel = XMFLOAT3(0, 0, 0);
+	//	flocker.acceleration = XMFLOAT3(0, 0, 0);
+	//	flocker.mass = 2;
+	//	flocker.maxSpeed = 2;
+	//	flocker.safeDistance = 1;
+	//}
 
 }
 
@@ -1186,18 +1204,6 @@ void Game::CreateRaytracingDescriptorHeap()
 	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
 	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox1.dds",skyboxTexResource,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DDS, true);
 
-
-	//for (size_t i = 0; i < materials.size(); i++)
-	//{
-	//	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, materials[i]->GetDescriptorHeap());
-	////auto cpuHandle = descriptorHeap.GetCPUHandle(numStaticResources);
-	////auto otherCPUHandle = otherDescHeap.GetCPUHandle(0);
-	////numStaticResources += numDescriptors;
-	////device->CopyDescriptorsSimple(numDescriptors, cpuHandle, otherCPUHandle, otherDescHeap.GetDescriptorHeapType());
-	//	materials[i]->materialIndex = (UINT)i * 4;
-	//}
-	//
-
 	static UINT numStaticResources = 0;
 	for (int i = 0; i < materials.size(); i++)
 	{
@@ -1363,6 +1369,13 @@ void Game::Update(float deltaTime, float totalTime)
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
 
+	lightingData.lights[1].rectLight.rotY += 4 * deltaTime;
+
+	auto initialRot = entity6->GetRotation();
+	XMVECTOR finalRot = XMQuaternionRotationRollPitchYaw(0, lightingData.lights[1].rectLight.rotY * 3.14159 / 180, lightingData.lights[1].rectLight.rotZ * 3.14159 / 180);	
+	XMStoreFloat4(&initialRot, finalRot);
+	entity6->SetRotation(initialRot);
+
 	lightingData.cameraPosition = mainCamera->GetPosition();
 	lightingData.lightCount = lightCount;
 	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
@@ -1382,7 +1395,7 @@ void Game::Update(float deltaTime, float totalTime)
 
 	emitter1->UpdateParticles(deltaTime, totalTime);
 
-	FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
+	//FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
 
 }
 
@@ -1465,6 +1478,7 @@ void Game::PopulateCommandList()
 			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, entities[i]->GetMaterialIndex(), 0);
 			commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
+			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityLTCSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(ltcLUT.heapOffset));
 
 			D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
 			auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
@@ -1473,31 +1487,6 @@ void Game::PopulateCommandList()
 			commandList->IASetIndexBuffer(&indexBuffer);
 
 			commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-
-		}
-
-		/**/for (UINT i = 0; i < flockers.size(); i++)
-		{
-			commandList->SetGraphicsRootSignature(flockers[i]->GetRootSignature().Get());
-			commandList->SetPipelineState(flockers[i]->GetPipelineState().Get());
-
-			flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
-
-			gpuHeapRingBuffer->AddDescriptor(device, 1, flockers[i]->GetDescriptorHeap(), 0);
-
-			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, gpuHeapRingBuffer->GetDynamicResourceOffset());
-			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityIndex, i, 0);
-			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, flockers[i]->GetMaterialIndex(), 0);
-			commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
-			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
-
-			D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();
-			auto indexBuffer = flockers[i]->GetMesh()->GetIndexBuffer();
-
-			commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-			commandList->IASetIndexBuffer(&indexBuffer);
-
-			commandList->DrawIndexedInstanced(flockers[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 
 		}
 
@@ -1637,6 +1626,82 @@ void Game::CreateGBufferRays()
 
 	commandList->SetPipelineState1(gbufferStateObject.Get());
 	commandList->DispatchRays(&desc);
+}
+
+void Game::CreateLTCTexture()
+{
+	//D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+	//heapDesc.NumDescriptors = 1;
+	//heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	//heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	//
+	//ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(ltcDescriptorHeap.GetAddressOf())));
+	//
+	//// Create the texture.
+	//
+	//// Describe and create a Texture2D.
+	//D3D12_RESOURCE_DESC textureDesc = {};
+	//textureDesc.MipLevels = 1;
+	//textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	//textureDesc.Width = 64;
+	//textureDesc.Height = 64;
+	//textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	//textureDesc.DepthOrArraySize = 1;
+	//textureDesc.SampleDesc.Count = 1;
+	//textureDesc.SampleDesc.Quality = 0;
+	//textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	//
+	//ThrowIfFailed(device->CreateCommittedResource(
+	//	&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+	//	D3D12_HEAP_FLAG_NONE,
+	//	&textureDesc,
+	//	D3D12_RESOURCE_STATE_COPY_DEST,
+	//	nullptr,
+	//	IID_PPV_ARGS(ltcLUT.resource.GetAddressOf())));
+	//
+	//const UINT64 uploadBufferSize = GetRequiredIntermediateSize(ltcLUT.resource.Get(), 0, 1);
+	//
+	//// Create the GPU upload buffer.
+	//ThrowIfFailed(device->CreateCommittedResource(
+	//	&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+	//	D3D12_HEAP_FLAG_NONE,
+	//	&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+	//	D3D12_RESOURCE_STATE_GENERIC_READ,
+	//	nullptr,
+	//	IID_PPV_ARGS(&ltcTextureUploadHeap)));
+	//
+	//// Copy data to the intermediate upload heap and then schedule a copy 
+	//// from the upload heap to the Texture2D
+	//
+	//D3D12_SUBRESOURCE_DATA textureData = {};
+	//textureData.pData = &ltc2[0];
+	//textureData.RowPitch = 64 * 4;
+	//textureData.SlicePitch = textureData.RowPitch * 64;
+	//
+	//UpdateSubresources<1>(commandList.Get(), ltcLUT.resource.Get(), ltcTextureUploadHeap.Get(), 0, 0, 1, &textureData);
+	//commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(ltcLUT.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+	//
+	//// Describe and create a SRV for the texture.
+	//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	//srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	//srvDesc.Format = textureDesc.Format;
+	//srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	//srvDesc.Texture2D.MipLevels = 1;
+	//
+	//device->CreateShaderResourceView(ltcLUT.resource.Get(),&srvDesc,ltcDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
+	ltcDescriptorHeap.Create(device, 3, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_mat.png", ltcLUT, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_amp.png", ltcLUT2, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+
+
+	if (gpuHeapRingBuffer != nullptr)
+	{
+	
+		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 3, ltcDescriptorHeap);
+		ltcLUT.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 3;
+	}
 }
 
 

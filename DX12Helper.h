@@ -18,6 +18,8 @@
 
 using namespace Microsoft::WRL;
 
+using namespace DirectX;
+
 class Game;
 
 typedef enum TEXTURE_TYPES

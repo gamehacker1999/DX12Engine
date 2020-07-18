@@ -178,13 +178,11 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 void Environment::CreateBRDFLut(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, D3D12_CPU_DESCRIPTOR_HANDLE depthStencilHandle)
 {
 
-
-
 	D3D12_RESOURCE_DESC integrationLUTTexture = {};
 	integrationLUTTexture.DepthOrArraySize = 1;
 	integrationLUTTexture.MipLevels = 0;
-	integrationLUTTexture.Width = 512;
-	integrationLUTTexture.Height = 512;
+	integrationLUTTexture.Width = 64;
+	integrationLUTTexture.Height = 64;
 	integrationLUTTexture.SampleDesc.Count = 1;
 	integrationLUTTexture.SampleDesc.Quality = 0;
 	integrationLUTTexture.Format = DXGI_FORMAT_R32G32_FLOAT;
@@ -200,16 +198,16 @@ void Environment::CreateBRDFLut(ComPtr<ID3D12Device> device, ComPtr<ID3D12Graphi
 	srvDescriptorHeap.CreateDescriptor(environmentBRDFLUT, RESOURCE_TYPE_SRV, device, 0, 0, 0, 0, 1);
 
 	viewPort = {};
-	viewPort.Height = 512.f;
-	viewPort.Width = 512.f;
+	viewPort.Height = 64;
+	viewPort.Width = 64;
 	viewPort.MaxDepth = 1.f;
 	viewPort.MinDepth = 0.0f;
 	viewPort.TopLeftX = 0.f;
 	viewPort.TopLeftY = 0.0f;
 
 	scissorRect = {};
-	scissorRect.bottom = 512;
-	scissorRect.right = 512;
+	scissorRect.bottom = 64;
+	scissorRect.right = 64;
 	scissorRect.left = 0;
 	scissorRect.top = 0;
 
@@ -225,7 +223,7 @@ void Environment::CreateBRDFLut(ComPtr<ID3D12Device> device, ComPtr<ID3D12Graphi
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(environmentBRDFLUT.resource.Get(), environmentBRDFLUT.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET));
 	environmentBRDFLUT.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 
-	rtvDescriptorHeap.CreateDescriptor(environmentBRDFLUT, RESOURCE_TYPE_RTV, device, 0, 512, 512, 0, 0);
+	rtvDescriptorHeap.CreateDescriptor(environmentBRDFLUT, RESOURCE_TYPE_RTV, device, 0, 64, 64, 0, 0);
 	commandList->ClearRenderTargetView(environmentBRDFLUT.rtvCPUHandle, clearColor, 0, 0);
 	commandList->OMSetRenderTargets(1, &environmentBRDFLUT.rtvCPUHandle, FALSE, &depthStencilHandle);
 	commandList->ClearDepthStencilView(depthStencilHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, 0);

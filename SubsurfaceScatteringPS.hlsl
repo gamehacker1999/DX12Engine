@@ -136,5 +136,6 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float4 texColor = material[index].Sample(basicSampler,input.uv);
 
+    return float4(1, 1, 1, 1);
 	return float4(CalculateLight(light1, input, material[index + 1], basicSampler)) * texColor * 1/M_PI;
 }

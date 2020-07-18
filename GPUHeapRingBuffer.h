@@ -29,6 +29,8 @@ public:
 
 	DescriptorHeapWrapper& GetDescriptorHeap();
 
+	void IncrementNumStaticResources(UINT num);
+
 	UINT GetNumStaticResources();
 
 	void EndRender();

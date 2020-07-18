@@ -1,5 +1,4 @@
 #include "Mesh.h"
-#include"Game.h"
 Mesh::Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
 {
 	ComPtr<ID3D12Resource> vertexBufferDeafult;

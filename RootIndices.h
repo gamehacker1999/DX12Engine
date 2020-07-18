@@ -7,6 +7,7 @@ enum EntityRootIndices
 	EntityMaterials,
 	EntityMaterialIndex,
 	EntityEnvironmentSRV,
+	EntityLTCSRV,
 	EntityNumRootIndices,
 };
 

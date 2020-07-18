@@ -109,6 +109,8 @@ public:
 
 	void CreateGBufferRays();
 
+	void CreateLTCTexture();
+
 	//----------------------------------------------------------------
 
 	//--------------------------optix functions----------------------
@@ -281,6 +283,13 @@ private:
 	//shadow ray variables
 	ComPtr<IDxcBlob> shadowRayLib;
 	ComPtr<ID3D12RootSignature> shadowRootSig;
+
+	//Linearly transformed cosines
+	DescriptorHeapWrapper ltcDescriptorHeap;
+	ComPtr<ID3D12Resource> ltcTextureUploadHeap;
+	ManagedResource ltcLUT;
+	ManagedResource ltcLUT2;
+	ManagedResource ltcTexture;
 	
 	//-------------------------------------------------------
 

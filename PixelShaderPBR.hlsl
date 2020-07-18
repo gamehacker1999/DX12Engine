@@ -33,9 +33,13 @@ struct VertexToPixel
 
 Texture2D material[]: register(t0);
 SamplerState basicSampler: register(s0);
+SamplerState brdfSampler : register(s1);
 TextureCube irradianceMap: register(t0, space1);
 TextureCube prefilteredMap: register(t1, space1);
 Texture2D brdfLUT: register(t2, space1);
+Texture2D LtcLUT : register(t3, space1);
+Texture2D LtcLUT2 : register(t4, space1);
+Texture2D LTCTexture : register(t5, space1);
 
 
 float4 main(VertexToPixel input) : SV_TARGET
@@ -70,6 +74,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	//getting the roughness of pixel
 	float roughness = material[index + 2].Sample(basicSampler, input.uv).x;
+    float3 diffuseColor = surfaceColor.rgb * (1 - metalColor);
 
 	//step 1 --- Solving the radiance integral for direct lighting, the integral is just the number of light sources
 	// the solid angle on the hemisphere in infinitely small, so the wi is just a direction vector
@@ -82,6 +87,18 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 R = reflect(-V, N); //reflect R over N
 	
 	float3 Lo = float3(0.0f, 0.0f, 0.0f);
+	
+	
+    float ndotv = saturate(dot(N, V));
+	
+    float2 ltcUV = ltcCoords(ndotv, roughness);
+
+    //loat2 uv = float2(roughness, sqrt(1-ndotv));
+    //v = uv * LUT_SCALE + LUT_BIAS;
+
+    float4 t1 = LtcLUT.Sample(brdfSampler, ltcUV);
+    float4 t2 = LtcLUT2.Sample(brdfSampler, ltcUV);
+    float2 envBRDF = brdfLUT.Sample(brdfSampler, float2(saturate(dot(N, V)), roughness)).rg;
 
 	for (int i = 0; i < lightCount; i++)
 	{
@@ -99,7 +116,10 @@ float4 main(VertexToPixel input) : SV_TARGET
 				Lo += PointLightPBR(lights[i], N, input.worldPosition, cameraPosition,
 			roughness, metalColor.r, surfaceColor.xyz, f0);
 				break;
-		}
+			case LIGHT_TYPE_AREA_RECT:
+                Lo += RectAreaLightPBR(lights[i], N, V, input.worldPosition, cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, t2, LTCTexture, brdfSampler);
+                break;
+        }
 	}
 
 	float3 ksIndirect = FresnelRoughness(dot(N, V), f0, roughness);
@@ -115,8 +135,6 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 diffuseIndirect = surfaceColor.rgb * irradiance/ 3.14169;
 
 	float3 prefilteredColor = prefilteredMap.SampleLevel(basicSampler, R, roughness * 4.0).rgb;
-
-	float2 envBRDF = brdfLUT.Sample(basicSampler, float2(saturate(dot(N, V)), roughness)).rg;
 
 	float3 specularIndirect = prefilteredColor * (ksIndirect * envBRDF.x + envBRDF.y);
 

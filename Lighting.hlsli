@@ -1,34 +1,23 @@
 
 #ifndef __LIGHTING_HLSLI__
 #define __LIGHTING_HLSLI__
+#include "LTCLighting.hlsli"
+
 #define LIGHT_TYPE_DIR 0
 #define LIGHT_TYPE_SPOT 1
 #define LIGHT_TYPE_POINT 2
+#define LIGHT_TYPE_AREA_RECT 3
 
-static const float PI = 3.14159265f;
+static const float PI = 3.14159265359f;
 
-#define MAX_LIGHTS 128
-
-struct Light
-{
-	int type;
-	float3 direction;
-	float range;
-	float3 position;
-	float intensity;
-	float3 diffuse;
-	float spotFalloff;
-	float3 color;
-
-};
 
 float Attenuate(Light light, float3 worldPos)
 {
-	float dist = distance(light.position, worldPos);
+    float dist = distance(light.position, worldPos);
 
-	float att = saturate(1.0f - (dist * dist / (light.range * light.range)));
+    float att = saturate(1.0f - (dist * dist / (light.range * light.range)));
 
-	return att * att;
+    return att * att;
 }
 
 // Lambert diffuse BRDF
@@ -171,6 +160,8 @@ float3 SpotLight(Light light, float3 normal, float3 worldPos, float3 camPos, flo
     return PointLight(light, normal, worldPos, camPos, shininess, surfaceColor) * penumbra;
 }
 
+
+
 float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
 {
 	//variables for different functions
@@ -194,7 +185,7 @@ float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 camera
 	float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
 	float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
 
-	return ((kd * surfaceColor.xyz / PI) + specular) * lambert;
+	return ((kd * surfaceColor.xyz / PI) + specular) * lambert*light.intensity;
 }
 
 float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
@@ -223,7 +214,7 @@ float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraP
 	float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
 	float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
 
-	return ((kd * surfaceColor.xyz / PI) + specular) * lambert * atten;
+	return ((kd * surfaceColor.xyz / PI) + specular) * lambert * atten *light.intensity;
 
 }
 
@@ -235,5 +226,34 @@ float3 SpotLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPo
 	return PointLightPBR(light, normal, worldPos, cameraPos, roughness, metalness, surfaceColor, f0) * penumbra;
 }
 
+float3 RectAreaLightPBR(Light light, float3 normal, float3 view ,float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0, 
+                        float4 ltc1, float4 ltc2, Texture2D ltcTex, SamplerState samplerState)
+{
+	
+    Rect rect;
+    InitRect(rect, light);
+    
+    float3 points[4];
+    InitRectPoints(rect, points);
+	
+	//calculating the inverse matrix to transform the distribution back into the clamped cosine
+    float3x3 minV = float3x3(
+	   float3(1, 0, ltc1.y),
+	   float3(0, ltc1.z, 0),
+	   float3(ltc1.w, 0, ltc1.x)
+	);
+	
+    minV = transpose(minV);
+    
+    float3 spec = LTC_Evaluate(normal, view, worldPos, minV, points, ltc2,false, ltcTex, samplerState);
+    
+    spec *= f0 * (ltc2.x) + (1 - f0) * (ltc2.y);
+    
+    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 1, 1, 1, 1, 1, 1, 1, 1), points, ltc2,false, ltcTex, samplerState);
+    float3 color = light.intensity * (light.color) * (spec + diffuse * surfaceColor);
+
+    return color / (2*PI);
+
+}
 
 #endif

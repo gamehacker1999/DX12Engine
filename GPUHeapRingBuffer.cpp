@@ -58,6 +58,11 @@ DescriptorHeapWrapper& GPUHeapRingBuffer::GetDescriptorHeap()
 	return descriptorHeap;
 }
 
+void GPUHeapRingBuffer::IncrementNumStaticResources(UINT num)
+{
+	numStaticResources++;
+}
+
 UINT GPUHeapRingBuffer::GetNumStaticResources()
 {
 	return numStaticResources;

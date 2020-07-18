@@ -1,5 +1,4 @@
-#include"DX12Helper.h"
-#include"Game.h"
+#include "DX12Helper.h"
 
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence> fence, UINT64 fenceValue, HANDLE fenceEvent)
 {

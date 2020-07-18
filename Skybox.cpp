@@ -107,6 +107,8 @@ DescriptorHeapWrapper Skybox::GetEnvironmentHeap()
 	{
 		return this->environment->GetSRVDescriptorHeap();
 	}
+
+	return DescriptorHeapWrapper();
 }
 
 
