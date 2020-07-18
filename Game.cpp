@@ -577,7 +577,7 @@ void Game::CreateBasicGeometry()
 	lightingData.lights[1].rectLight.rotY = 0;
 	lightingData.lights[1].rectLight.rotZ = 0;
 	lightingData.lights[1].rectLight.position = XMFLOAT3(0, -2, 0);
-	lightingData.lights[1].intensity = 8;
+	lightingData.lights[1].intensity = 15;
 	lightCount++;
 
 

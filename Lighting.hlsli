@@ -249,8 +249,8 @@ float3 RectAreaLightPBR(Light light, float3 normal, float3 view ,float3 worldPos
     
     spec *= f0 * (ltc2.x) + (1 - f0) * (ltc2.y);
     
-    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 1, 1, 1, 1, 1, 1, 1, 1), points, ltc2,false, ltcTex, samplerState);
-    float3 color = light.intensity * (light.color) * (spec + diffuse * surfaceColor);
+    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), points, ltc2,false, ltcTex, samplerState);
+    float3 color = light.intensity * (light.color) * (spec + diffuse*surfaceColor);
 
     return color / (2*PI);
 
