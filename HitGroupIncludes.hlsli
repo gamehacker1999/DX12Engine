@@ -8,11 +8,11 @@ void GetPrimitiveProperties(inout float3 texColor, inout float3 position, inout 
 	
     uint vertID = PrimitiveIndex() * 3;
     normal = vertex[vertID].Normal * barycentrics.x + vertex[vertID + 1].Normal * barycentrics.y + vertex[vertID + 2].Normal * barycentrics.z;
-    normal = ConvertFromObjectToWorld(normal);
+    normal = ConvertFromObjectToWorld(float4(normal,0));
     position = vertex[vertID].Position * barycentrics.x + vertex[vertID + 1].Position * barycentrics.y + vertex[vertID + 2].Position * barycentrics.z;
-    position = ConvertFromObjectToWorld(position);
+    position = ConvertFromObjectToWorld(float4(position,1));
     float3 tangent = vertex[vertID].Tangent * barycentrics.x + vertex[vertID + 1].Tangent * barycentrics.y + vertex[vertID + 2].Tangent * barycentrics.z;
-    tangent = ConvertFromObjectToWorld(tangent);
+    tangent = ConvertFromObjectToWorld(float4(tangent,0));
     float2 uv = vertex[vertID].UV * barycentrics.x + vertex[vertID + 1].UV * barycentrics.y + vertex[vertID + 2].UV * barycentrics.z;
 
     uint index = entityIndex.index;

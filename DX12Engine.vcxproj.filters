@@ -289,6 +289,21 @@
     <FxCompile Include="SubsurfaceScatteringPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="DepthPrePassPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="LightCullingCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="VelocityWriteVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="VelocityWritePS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="DepthPrePassVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -330,6 +345,9 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="RayGenIncludes.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="LTCLighting.hlsli">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

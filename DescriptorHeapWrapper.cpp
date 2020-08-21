@@ -96,31 +96,15 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 	{
 
 		D3D12_DEPTH_STENCIL_VIEW_DESC dsDesc = {};
-		dsDesc.Format = DXGI_FORMAT_D32_FLOAT;
+		dsDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 		dsDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 		dsDesc.Flags = D3D12_DSV_FLAG_NONE;
-
-
-		//optimized clear value for depth stencil buffer
-		D3D12_CLEAR_VALUE depthClearValue = {};
-		depthClearValue.DepthStencil.Depth = 1.0f;
-		depthClearValue.DepthStencil.Stencil = 0;
-		depthClearValue.Format = dsDesc.Format;
-
-		//creating the default resource heap for the depth stencil
-		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
-			D3D12_RESOURCE_STATE_DEPTH_WRITE,
-			&depthClearValue,
-			IID_PPV_ARGS(resource.resource.GetAddressOf())
-		));
+		dsDesc.Texture2D.MipSlice = 0;
 
 		device->CreateDepthStencilView(resource.resource.Get(), &dsDesc, GetCPUHandle(lastResourceIndex));
 
 		resource.resourceType = resourceType;
-		resource.currentState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+
 		resource.heapOffset = lastResourceIndex;
 
 		resource.dsvGPUHandle = GetGPUHandle(lastResourceIndex);
@@ -163,6 +147,10 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 
 		auto resourceDesc = resource.resource->GetDesc();
 		srvDesc.Format = resourceDesc.Format;
+		if (resourceDesc.Format == DXGI_FORMAT_R24G8_TYPELESS)
+		{
+			srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+		}
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		device->CreateShaderResourceView(resource.resource.Get(), &srvDesc, GetCPUHandle(lastResourceIndex));
 		resource.srvGPUHandle = GetGPUHandle(lastResourceIndex);
@@ -251,8 +239,7 @@ void DescriptorHeapWrapper::CreateStructuredBuffer(ManagedResource& resource, Co
 	lastResourceIndex++;
 }
 
-void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, 
-	ManagedResource& resource, AccelerationStructureBuffers topLevelASBuffer)
+void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer)
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -261,8 +248,19 @@ void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComP
 	srvDesc.RaytracingAccelerationStructure.Location = topLevelASBuffer.pResult->GetGPUVirtualAddress();
 	device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(lastResourceIndex));
 
-	resource.srvGPUHandle = GetGPUHandle(lastResourceIndex);
-	resource.srvCPUHandle = GetCPUHandle(lastResourceIndex);
+	topLevelASBuffer.srvIndex = lastResourceIndex;
 
 	lastResourceIndex++;
+}
+
+void DescriptorHeapWrapper::UpdateRaytracingAccelerationStruct(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer)
+{
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
+	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.RaytracingAccelerationStructure.Location = topLevelASBuffer.pResult->GetGPUVirtualAddress();
+	device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(topLevelASBuffer.srvIndex));
+
+	//topLevelASBuffer.srvIndex = lastResourceIndex;
 }

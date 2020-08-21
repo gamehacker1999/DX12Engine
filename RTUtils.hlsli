@@ -1,4 +1,3 @@
-#include "Common.hlsl"
 #include "Lighting.hlsli"
 
 static const float M_PI = 3.14159265f;
@@ -15,7 +14,6 @@ StructuredBuffer<Vertex> vertex : register(t1);
 RaytracingAccelerationStructure SceneBVH : register(t0);
 
 Texture2D material[] : register(t0, space1);
-SamplerState basicSampler : register(s0);
 
 struct Index
 {
@@ -26,10 +24,11 @@ ConstantBuffer<Index> entityIndex : register(b0);
 
 cbuffer LightingData : register(b1)
 {
-    Light lights[MAX_LIGHTS];
     float3 cameraPosition;
     uint lightCount;
 };
+
+StructuredBuffer<Light> lights : register(t0, space2);
 
 float RadicalInverse_VdC(uint bits)
 {
@@ -148,9 +147,9 @@ float3 getCosHemisphereSample(inout uint randSeed, float3 hitNorm)
 	return tangent * (r * cos(phi).x) + bitangent * (r * sin(phi)) + hitNorm.xyz * sqrt(max(0.0, 1.0f - randVal.x));
 }
 
-float3 ConvertFromObjectToWorld(float3 vec)
+float3 ConvertFromObjectToWorld(float4 vec)
 {
-	return mul(vec, ObjectToWorld3x4());
+	return mul(vec, ObjectToWorld4x3()).xyz;
 }
 
 // Approximates luminance from an RGB value

@@ -25,8 +25,6 @@
 #include<entity\registry.hpp>
 #include"Flocker.h"
 
-#define MAX_LIGHTS 128
-
 struct LightData
 {
 	DirectionalLight light1;
@@ -36,9 +34,17 @@ struct LightData
 
 struct LightingData
 {
-	Light lights[MAX_LIGHTS];
 	XMFLOAT3 cameraPosition;
 	UINT lightCount;
+};
+
+struct LightCullingExternalData
+{
+	XMFLOAT4X4 view;
+	XMFLOAT4X4 projection;
+	XMFLOAT4X4 inverseProjection;
+	XMFLOAT3 cameraPosition;
+	int lightCount;
 };
 
 inline ID3D12Resource* CreateRBBuffer(ID3D12Resource* buffer, ID3D12Device* device, UINT bufferSize)
@@ -79,6 +85,7 @@ public:
 	// Overridden setup and game loop methods, which
 	// will be called automatically
 	HRESULT Init();
+	void InitComputeEngine();
 	HRESULT InitEnvironment();
 	void OnResize();
 
@@ -87,7 +94,7 @@ public:
 	//create the acceleration structure for the buffers
 	AccelerationStructureBuffers CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>,uint32_t>> vertexBuffers);
 	//create top level acceleration structures
-	void CreateTopLevelAS(const std::vector<EntityInstance>& instances);
+	void CreateTopLevelAS(const std::vector<EntityInstance>& instances, bool updateOnly = false);
 	//create both top and bottom structures
 	void CreateAccelerationStructures();
 
@@ -121,6 +128,8 @@ public:
 
 	//---------------------------------------------------------------
 
+	void DepthPrePass();
+	void LightCullingPass();
 	void Update(float deltaTime, float totalTime);
 	void Draw(float deltaTime, float totalTime);
 	void PopulateCommandList();
@@ -145,6 +154,15 @@ private:
 	//app resources
 	ComPtr<ID3D12Resource> vertexBuffer;
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
+
+	//Compute shader data
+	ComPtr<ID3D12CommandAllocator> computeCommandAllocator[frameCount];
+	ComPtr<ID3D12CommandQueue> computeCommandQueue;
+	ComPtr<ID3D12RootSignature> computeRootSignature;
+	ComPtr<ID3D12GraphicsCommandList> computeCommandList;
+	ComPtr<ID3D12PipelineState> computePipelineState;
+	ComPtr<ID3D12Fence> computeFence;
+	//
 
 	ComPtr<ID3D12GraphicsCommandList> skyboxBundle;
 	ComPtr<ID3D12CommandAllocator> bundleAllocator;
@@ -171,7 +189,24 @@ private:
 	ComPtr<ID3D12Resource> lightingConstantBufferResource;
 	UINT8* lightingCbufferBegin;
 	LightingData lightingData;
+	Light lights[MAX_LIGHTS];
+	UINT8* lightBufferBegin;
+	ComPtr<ID3D12Resource> lightListResource;
 	UINT lightCount;
+
+	ManagedResource visibleLightIndicesBuffer;
+	UINT8* visibleLightIndicesResource;
+	UINT* visibleLightIndices;
+
+	LightCullingExternalData lightCullingExternData;
+	UINT8* lightCullingExternBegin;
+	ComPtr<ID3D12Resource> lightCullingCBVResource;
+
+	//Light culling variables
+	ComPtr<ID3D12Resource> visibleLightList;
+	ComPtr<ID3D12Resource> lightGrid;
+
+	//
 
 	//ComPtr<ID3D12Resource> depthStencilBuffer;
 	ManagedResource depthStencilBuffer;
@@ -187,6 +222,7 @@ private:
 	std::shared_ptr<Mesh> skyDome;
 	std::shared_ptr<Mesh> sharkMesh;
 	std::shared_ptr<Mesh> faceMesh;
+	std::shared_ptr<Mesh> rect;
 	std::shared_ptr<Entity> entity2;
 	std::shared_ptr<Entity> entity3;
 	std::shared_ptr<Entity> entity4;
@@ -216,6 +252,10 @@ private:
 	//subsurface scattering
 	ComPtr<ID3D12PipelineState> sssPipelineState;
 
+	ManagedResource depthTex;
+	ComPtr<ID3D12PipelineState> depthPrePassPipelineState;
+	DescriptorHeapWrapper depthDesc;
+
 	//managing the residency
 	D3DX12Residency::ResidencyManager residencyManager;
 	std::shared_ptr<D3DX12Residency::ResidencySet> residencySet;
@@ -233,6 +273,7 @@ private:
 	nv_helpers_dx12::TopLevelASGenerator topLevelAsGenerator;
 	AccelerationStructureBuffers topLevelAsBuffers;
 	std::vector<EntityInstance> bottomLevelBufferInstances;
+	ComPtr<ID3D12Resource> previousBuffer;
 
 	//dxr root signatures
 	ComPtr<ID3D12RootSignature> rayGenRootSig;

@@ -31,6 +31,7 @@ public:
 		RESOURCE_TYPE resourceType, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue,
 		TEXTURE_TYPES type, bool isCube = false);
 	void CreateStructuredBuffer(ManagedResource& resource, ComPtr<ID3D12Device> device, UINT numElements, UINT stride, UINT bufferSize);
-	void CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, ManagedResource& resource,AccelerationStructureBuffers topLevelASBuffer);
+	void CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer);
+	void UpdateRaytracingAccelerationStruct(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer);
 };
 

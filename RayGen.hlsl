@@ -52,7 +52,6 @@ void RayGen() {
 
     else
     {
-		//color = DirectLightPBR(lights[0],norm,pos,cameraPosition,roughness,metalColor.r,albedo,f0);
         float3 V = normalize(cameraPosition - pos);
         // Do explicit direct lighting to a random light in the scene
         color += DirectLighting(rndseed, pos, norm, V, metalColor.r,
@@ -61,10 +60,8 @@ void RayGen() {
         // Do indirect lighting for global illumination
         color += IndirectLighting(rndseed, pos, norm, V, metalColor.r,
 	    albedo, f0, roughness, 0);
-        
-        //color *= ShootShadowRays(pos, normalize(-lights[0].direction), 1.f, 1000000.f);
 
     } 
 
     gOutput[launchIndex] = float4(color, 1.f);
-}
+    }

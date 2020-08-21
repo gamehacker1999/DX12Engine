@@ -16,7 +16,6 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 
 	fpsFrameCount = 0;
 	fpsTimeElapsed = 0;
-	frameIndex = 0;
 	viewport.Height = static_cast<FLOAT>(height);
 	viewport.Width = static_cast<FLOAT>(width);
 	viewport.MinDepth = 0;
@@ -28,7 +27,6 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 	scissorRect.top = 0;
 	scissorRect.right = static_cast<LONG>(width);
 	scissorRect.bottom = static_cast<LONG>(height);
-	rtvDescriptorSize = 0;
 
 	__int64 perfFreq;
 	QueryPerformanceFrequency((LARGE_INTEGER*)&perfFreq);
@@ -207,7 +205,7 @@ HRESULT DXCore::InitDirectX()
 
 		hr = D3D12CreateDevice(
 			hardwareAdapter.Get(),
-			D3D_FEATURE_LEVEL_11_0,
+			D3D_FEATURE_LEVEL_12_0,
 			IID_PPV_ARGS(&device)
 		);
 

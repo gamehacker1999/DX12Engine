@@ -8,7 +8,6 @@
 
 cbuffer LightingData : register(b1)
 {
-	Light lights[MAX_LIGHTS];
 	float3 cameraPosition;
 	uint lightCount;
 };
@@ -19,6 +18,8 @@ struct Index
 };
 
 ConstantBuffer<Index> entityIndex: register(b0);
+StructuredBuffer<Light> lights : register(t0, space2);
+StructuredBuffer<uint> LightIndices : register(t1, space2);
 
 struct VertexToPixel
 {
@@ -32,10 +33,13 @@ struct VertexToPixel
 };
 
 Texture2D material[]: register(t0);
-SamplerState basicSampler: register(s0);
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
+    uint2 location = uint2(input.position.xy);
+    uint2 tileID = location / uint2(16, 16);
+    uint numberOfTilesX = 1280 / 16;
+    uint tileIndex = tileID.y * numberOfTilesX + tileID.x;
 
 	uint index = entityIndex.index;
 
@@ -55,22 +59,51 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 finalNormal = mul(unpackedNormal, TBN);
     N = normalize(finalNormal);
 	
+    uint offset = tileIndex * 1024;
+
+	
     float3 Lo = float3(0, 0, 0);
-	for (int i = 0; i < lightCount; i++)
-	{
-		switch (lights[i].type)
+	
+	if(true)
+    {
+			//[loop]
+		for (uint i = 0; i < 1024 && LightIndices[offset + i] != -1; i++)
 		{
+		    uint lightIndex = LightIndices[offset+i];
+				
+		    switch (lights[lightIndex].type)
+		    {
 			case LIGHT_TYPE_DIR:
-                Lo += DirectionalLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+                    Lo += DirectionLight(lights[lightIndex], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
 				break;
 			case LIGHT_TYPE_SPOT:
-				Lo += SpotLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+                    Lo += SpotLight(lights[lightIndex], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
 				break;
 			case LIGHT_TYPE_POINT:
-				Lo += PointLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
-				break;
+                    Lo += PointLight(lights[lightIndex], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+						break;
+		    }
 		}
-	}
+    }
+    else
+    {
+    
+        for (int i = 0; i < (int) lightCount; i++)
+        {
+            switch (lights[i].type)
+            {
+                case LIGHT_TYPE_DIR:
+                    Lo += DirectionLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+                    break;
+                case LIGHT_TYPE_SPOT:
+                    Lo += SpotLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+                    break;
+                case LIGHT_TYPE_POINT:
+                    Lo += PointLight(lights[i], N, input.worldPosition, cameraPosition, 64, texColor.xyz);
+                    break;
+            }
+        }
+    }
 
     return float4(Lo, texColor.w);
 }

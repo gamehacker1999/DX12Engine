@@ -1,5 +1,4 @@
 #define _CRTDBG_MAP_ALLOC
-#define NOMINMAX
 #include <Windows.h>
 #include "Game.h"
 #include<crtdbg.h>

@@ -21,7 +21,7 @@ Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12Graph
 		LoadFBX(device, fileName);
 	}
 
-	else if (fileName.find(".obj") != std::string::npos)
+	else if (fileName.find(".obj") != std::string::npos || fileName.find(".OBJ") != std::string::npos)
 	{
 		LoadOBJ(device, fileName,commandList);
 	}

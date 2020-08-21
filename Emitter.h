@@ -3,7 +3,7 @@
 #include "DescriptorHeapWrapper.h"
 #include"GPUHeapRingBuffer.h"
 #include"Particles.h"
-#include<random>
+
 using namespace DirectX;
 //class to have particle emitters
 

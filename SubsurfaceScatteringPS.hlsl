@@ -1,17 +1,11 @@
 #include"SphericalGaussian.hlsli"
+#include "Lighting.hlsli"
 
-struct DirectionalLight
-{
-	float4 ambientColor;
-	float4 diffuse;
-	float4 specularity;
-	float3 direction;
-};
 
-cbuffer LightData: register(b1)
+cbuffer LightingData : register(b1)
 {
-	DirectionalLight light1;
-	float3 cameraPosition;
+    float3 cameraPosition;
+    uint lightCount;
 };
 
 struct Index
@@ -23,9 +17,10 @@ struct SubsurfaceScattering
 {
 	bool enableSSS;
 };
+ConstantBuffer<SubsurfaceScattering> subsurfaceScattering : register(b2);
 
 ConstantBuffer<Index> entityIndex: register(b0);
-ConstantBuffer<SubsurfaceScattering> subsurfaceScattering: register(b2);
+StructuredBuffer<Light> lights : register(t0, space2);
 
 struct VertexToPixel
 {
@@ -38,25 +33,33 @@ struct VertexToPixel
 
 };
 
+inline float3 UnpackNormal(float3 packednormal)
+{
+    float3 normal;
+    normal.xy = packednormal.xy * 2 - 1;
+    normal.z = sqrt(1 - normal.x * normal.x - normal.y * normal.y);
+    return normal;
+}
+
 //function that accepts light and normal and then calculates the final color
-float4 CalculateLight(DirectionalLight light, VertexToPixel input, Texture2D normalMap, SamplerState basicSampler)
+float3 CalculateLight(Light light, VertexToPixel input, Texture2D normalMap, SamplerState basicSampler)
 {
 
 	float3 normalVal = normalMap.Sample(basicSampler, input.uv).xyz;
 
-	float3 unpackedNormal = normalVal * 2.0 - 1.0f;
+    float3 unpackedNormal = UnpackNormal(normalVal);
 
 	float3 normalValR = normalMap.SampleBias(basicSampler, input.uv,3).xyz;
 
-	float3 unpackedNormalR = normalValR * 2.0 - 1.0f;
+    float3 unpackedNormalR = UnpackNormal(normalValR);
 
 	float3 normalValG = normalMap.SampleBias(basicSampler, input.uv,2).xyz;
 
-	float3 unpackedNormalG = normalValG * 2.0 - 1.0f;
+    float3 unpackedNormalG = UnpackNormal(normalValG);
 
 	float3 normalValB = normalMap.SampleBias(basicSampler, input.uv,1).xyz;
 
-	float3 unpackedNormalB = normalValB * 2.0 - 1.0f;
+    float3 unpackedNormalB = UnpackNormal(normalValB);
 
 
 	float3 N = normalize(input.normal);
@@ -81,8 +84,20 @@ float4 CalculateLight(DirectionalLight light, VertexToPixel input, Texture2D nor
 	float3 V = normalize(cameraPosition - input.worldPosition); //view vector
 	float4 NdotV = saturate(dot(N, V));
 	float4 rimColor = float4(0.0f, 0.0f, 1.0f, 1.0f);
+	
+    float rcpDistFromCamera = 1 / distance(input.worldPosition, cameraPosition);
+	
+	  // Compute curvature
+    float3 dx = ddx(N);
+    float3 dy = ddy(N);
+    float3 xneg = N - dx;
+    float3 xpos = N + dx;
+    float3 yneg = N - dy;
+    float3 ypos = N + dy;
+    float depth = length(input.worldPosition);
+    float curvature = (cross(xneg, xpos).y - cross(yneg, ypos).x) * 4.0 / depth;
 
-	float radius = length(fwidth(normalize(N))) / length(fwidth(input.worldPosition));
+    float radius = clamp(length(fwidth(N)), 0, 1) / (length(fwidth(input.worldPosition)) * rcpDistFromCamera);
 
 	//calculate the cosine of the angle to calculate specularity
 	//I am calculating the light based on the phong reflection model
@@ -99,10 +114,10 @@ float4 CalculateLight(DirectionalLight light, VertexToPixel input, Texture2D nor
 	float3 diffuse = NdotL;
 	if (enableSSS)
 	{
-		float c1 = length(fwidth(finalNormalR)) / length(fwidth(input.worldPosition));
-		float c2 = length(fwidth(finalNormalG)) / length(fwidth(input.worldPosition));
-		float c3 = length(fwidth(finalNormalB)) / length(fwidth(input.worldPosition));
-		float3 scatterAmount = float3(1.0f, 1.0f, 1.0f);
+        float c1 = clamp(length(fwidth(finalNormalR)), 0, 1) / length(fwidth(input.worldPosition) * rcpDistFromCamera);
+        float c2 = clamp(length(fwidth(finalNormalG)), 0, 1) / length(fwidth(input.worldPosition) * rcpDistFromCamera);
+        float c3 = clamp(length(fwidth(finalNormalB)), 0, 1) / length(fwidth(input.worldPosition) * rcpDistFromCamera);
+		float3 scatterAmount = float3(1.f, 1.f, 1.f);
 		//float3 radius = float3(c1, c2, c3);
 		scatterAmount /= radius*radius;
 		SphericalGaussian redKernal = MakeNormalizedSG(L, 1.0f/ (scatterAmount.x));
@@ -112,22 +127,15 @@ float4 CalculateLight(DirectionalLight light, VertexToPixel input, Texture2D nor
 		//convolving the light source with the spherical gaussian kernels 
 		diffuse = float3(SphericalGaussianIrradianceFitted(redKernal, finalNormalR).x, SphericalGaussianIrradianceFitted(greenKernal, finalNormalG).x, SphericalGaussianIrradianceFitted(blueKernal, finalNormalB).x);
 
-		diffuse = saturate(diffuse);
-
 	}
 
-	//float4 diffuse = celShading.Sample(basicSampler, NdotL);
-	//return diffuse;
-
-	//adding diffuse, ambient, and specular color
-	float4 finalLight = light.diffuse * float4(diffuse,1.0);
+	float3 finalLight = light.color*diffuse;
 	finalLight += specularAmount;
 
-	return finalLight*2;
+    return float3(finalLight);
 }
 
 Texture2D material[]: register(t0);
-SamplerState basicSampler: register(s0);
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
@@ -136,6 +144,6 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float4 texColor = material[index].Sample(basicSampler,input.uv);
 
-    return float4(1, 1, 1, 1);
-	return float4(CalculateLight(light1, input, material[index + 1], basicSampler)) * texColor * 1/M_PI;
+    //return float4(1, 1, 1, 1);
+	return float4(CalculateLight(lights[0], input, material[index + 1], basicSampler), 1.0f) * texColor;
 }

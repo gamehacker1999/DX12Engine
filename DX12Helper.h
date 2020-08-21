@@ -1,4 +1,5 @@
 #pragma once
+#include<random>
 #include"ResourceUploadBatch.h"
 #include <WICTextureLoader.h>
 #include<DDSTextureLoader.h>
@@ -94,6 +95,7 @@ struct AccelerationStructureBuffers
 	ComPtr<ID3D12Resource> pScratch;      // Scratch memory for AS builder
 	ComPtr<ID3D12Resource> pResult;       // Where the AS is
 	ComPtr<ID3D12Resource> pInstanceDesc; // Hold the matrices of the instances
+	UINT srvIndex;
 };
 
 struct EntityInstance
@@ -102,6 +104,16 @@ struct EntityInstance
 	ComPtr<ID3D12Resource> bottomLevelBuffer;
 	DirectX::XMMATRIX modelMatrix;
 };
+
+inline XMFLOAT3 GetRandomFloat3(float minRange, float maxRange)
+{
+	//random position and veloctiy of the particle
+	std::random_device rd;
+	std::mt19937 randomGenerator(rd());
+	std::uniform_real_distribution<float> dist(minRange,maxRange);
+
+	return XMFLOAT3(dist(randomGenerator), dist(randomGenerator), dist(randomGenerator));
+}
 
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue,ComPtr<ID3D12Fence> fence, UINT64 fenceValue,HANDLE fenceEvent);
 

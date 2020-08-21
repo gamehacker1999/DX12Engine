@@ -215,6 +215,11 @@ DescriptorHeapWrapper& Entity::GetDescriptorHeap()
 	constantBufferData.view = view;
 	constantBufferData.projection = projection;
 
+	XMMATRIX invTransposeTemp = GetRawModelMatrix();
+
+	invTransposeTemp = XMMatrixInverse(nullptr, invTransposeTemp);
+	XMStoreFloat4x4(&constantBufferData.worldInvTranspose, invTransposeTemp);
+
 	memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 }
 

@@ -2,13 +2,16 @@
 #ifndef __LIGHTING_HLSLI__
 #define __LIGHTING_HLSLI__
 #include "LTCLighting.hlsli"
+#include "Common.hlsl"
 
 #define LIGHT_TYPE_DIR 0
 #define LIGHT_TYPE_SPOT 1
 #define LIGHT_TYPE_POINT 2
 #define LIGHT_TYPE_AREA_RECT 3
+#define LIGHT_TYPE_AREA_DISK 4
 
 static const float PI = 3.14159265359f;
+
 
 
 float Attenuate(Light light, float3 worldPos)
@@ -118,7 +121,7 @@ void CookTorrence(float3 n, float3 h, float roughness, float3 v, float3 f0, floa
 }
 
 
-float3 DirectionalLight(Light light, float3 normal, float3 worldPos, float3 camPos, float shininess, float3 surfaceColor)
+float3 DirectionLight(Light light, float3 normal, float3 worldPos, float3 camPos, float shininess, float3 surfaceColor)
 {
 	// Get normalize direction to the light
     float3 toLight = normalize(-light.direction);
@@ -185,7 +188,7 @@ float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 camera
 	float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
 	float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
 
-	return ((kd * surfaceColor.xyz / PI) + specular) * lambert*light.intensity;
+	return ((kd * surfaceColor.xyz / PI) + specular) * lambert*light.intensity * light.color;
 }
 
 float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
@@ -214,7 +217,7 @@ float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraP
 	float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
 	float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
 
-	return ((kd * surfaceColor.xyz / PI) + specular) * lambert * atten *light.intensity;
+	return ((kd * surfaceColor.xyz / PI) + specular) * lambert * atten * light.intensity * light.color;
 
 }
 
@@ -227,10 +230,10 @@ float3 SpotLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPo
 }
 
 float3 RectAreaLightPBR(Light light, float3 normal, float3 view ,float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0, 
-                        float4 ltc1, float4 ltc2, Texture2D ltcTex, SamplerState samplerState)
+                        float4 ltc1, float4 ltc2, SamplerState samplerState)
 {
 	
-    Rect rect;
+    Area rect;
     InitRect(rect, light);
     
     float3 points[4];
@@ -238,21 +241,51 @@ float3 RectAreaLightPBR(Light light, float3 normal, float3 view ,float3 worldPos
 	
 	//calculating the inverse matrix to transform the distribution back into the clamped cosine
     float3x3 minV = float3x3(
-	   float3(1, 0, ltc1.y),
-	   float3(0, ltc1.z, 0),
-	   float3(ltc1.w, 0, ltc1.x)
+	   float3(ltc1.x, 0, ltc1.y),
+	   float3(0, 1, 0),
+	   float3(ltc1.z, 0, ltc1.w)
 	);
 	
     minV = transpose(minV);
     
-    float3 spec = LTC_Evaluate(normal, view, worldPos, minV, points, ltc2,false, ltcTex, samplerState);
+    float3 spec = LTC_Evaluate(normal, view, worldPos, minV, points, ltc2,false, samplerState);
     
     spec *= f0 * (ltc2.x) + (1 - f0) * (ltc2.y);
     
-    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), points, ltc2,false, ltcTex, samplerState);
-    float3 color = light.intensity * (light.color) * (spec + diffuse*surfaceColor);
+    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), points, ltc2,false, samplerState);
+    float3 color = light.intensity * light.color * (spec + diffuse*surfaceColor);
 
-    return color / (2*PI);
+    return color;
+
+}
+
+float3 DiskAreaLightPBR(Light light, float3 normal, float3 view, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0,
+                        float4 ltc1, float4 ltc2, SamplerState samplerState)
+{
+	
+    Area disk;
+    InitDisk(disk, light);
+    
+    float3 points[4];
+    InitDiskPoints(disk, points);
+	
+	//calculating the inverse matrix to transform the distribution back into the clamped cosine
+    float3x3 minV = float3x3(
+	   float3(ltc1.x, 0, ltc1.y),
+	   float3(0, 1, 0),
+	   float3(ltc1.z, 0, ltc1.w)
+	);
+	
+    minV = transpose(minV);
+    
+    float3 spec = LTC_EvaluateDisk(normal, view, worldPos, minV, points, ltc2, false);
+    
+    spec *= f0 * (ltc2.x) + (1 - f0) * (ltc2.y);
+    
+    float3 diffuse = LTC_EvaluateDisk(normal, view, worldPos, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), points, ltc2, false);
+    float3 color = light.intensity * light.color * (spec + diffuse * surfaceColor);
+
+    return color;
 
 }
 

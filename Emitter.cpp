@@ -60,7 +60,6 @@ Emitter::Emitter(int maxParticles, int particlesPerSecond, float lifetime,
 
 	//adding texture and structured buffer to the descriptor heap
 	descriptorHeap.CreateDescriptor(textureName, texture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
-	//descriptorHeap.CreateStructuredBuffer(particleBuffer, device, maxParticles, sizeof(Particle), sizeof(Particle) * maxParticles);
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -175,30 +174,20 @@ void Emitter::Draw(ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_pt
 	//setting the up the buffer
 	UINT stride = 0;
 	UINT offset = 0;
-	//ID3D11Buffer* nullBuffer = nullptr;
+
 	//context->IASetIndexBuffer(indexBuffer, DXGI_FORMAT_R32_UINT, 0);
 	commandList->IASetIndexBuffer(&indexBuffer);
 	commandList->IASetVertexBuffers(0, 1, nullptr);
-	//context->IASetVertexBuffers(0, 1, &nullBuffer, &stride, &offset);
 
 	//setting the view and projection matrix
-	//vs->SetMatrix4x4("view", view);
 	externData.view = view;
-	//vs->SetMatrix4x4("projection", projection);
 	externData.projection = projection;
-	//vs->SetFloat3("acceleration", emitterAcceleration);
 	externData.acceleration = emitterAcceleration;
-	//vs->SetFloat4("startColor", startColor);
 	externData.startColor = startColor;
-	//vs->SetFloat4("endColor", endColor);
 	externData.endColor = endColor;
-	//vs->SetFloat("startSize", startSize);
 	externData.startSize = startSize;
-	//vs->SetFloat("endSize", endSize);
 	externData.endSize = endSize;
-	//vs->SetFloat("lifetime", lifetime);
 	externData.lifetime = lifetime;
-	//vs->SetFloat("currentTime", currentTime);
 	externData.currentTime = currentTime;
 
 	commandList->SetPipelineState(particlePSO.Get());
@@ -206,43 +195,21 @@ void Emitter::Draw(ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_pt
 
 	commandList->SetGraphicsRootShaderResourceView(0, particleBuffer.resource.Get()->GetGPUVirtualAddress());
 	commandList->SetGraphicsRootConstantBufferView(1, externalDataResource.Get()->GetGPUVirtualAddress());
-	//commandList->SetGraphicsRootConstantBufferView
 	commandList->SetGraphicsRootDescriptorTable(2, ringBuffer->GetDescriptorHeap().GetGPUHandle(particleTextureIndex));
-
-	//vs->SetShader();
-
-	//context->VSSetShaderResources(0, 1, &particleData);
-
-	//ps->SetShaderResourceView("particle", texture);
-	//ps->SetShader();
-	//ps->CopyAllBufferData();
-
-	//commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
 
 	if (firstAliveIndex < firstDeadIndex)
 	{
-		//vs->SetInt("startIndex", firstAliveIndex);
-		//vs->CopyAllBufferData();
 		externData.startIndex = firstAliveIndex;
 		memcpy(externDataBegin, &externData, sizeof(externData));
-		//context->DrawIndexed(livingParticleCount * 6, 0, 0);
 		commandList->DrawIndexedInstanced(livingParticleCount * 6, 1, 0, 0, 0);
 	}
 
 	else
 	{
-		//draw from 0 to dead
-		//vs->SetInt("startIndex", 0);
-		//vs->CopyAllBufferData();
-		//context->DrawIndexed(firstDeadIndex * 6, 0, 0);
 		externData.startIndex = 0;
 		memcpy(externDataBegin, &externData, sizeof(externData));
 		commandList->DrawIndexedInstanced(firstDeadIndex * 6, 1, 0, 0, 0);
 
-		//draw from alive to max
-		//vs->SetInt("startIndex", firstAliveIndex);
-		//vs->CopyAllBufferData();
-		//context->DrawIndexed((maxParticles - firstAliveIndex) * 6, 0, 0);
 		externData.startIndex = firstAliveIndex;
 		memcpy(externDataBegin, &externData, sizeof(externData));
 		commandList->DrawIndexedInstanced((maxParticles - firstAliveIndex) * 6, 1, 0, 0, 0);

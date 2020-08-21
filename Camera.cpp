@@ -56,6 +56,17 @@ XMFLOAT4X4 Camera::GetProjectionMatrix()
 	return projectionMatrix;
 }
 
+XMFLOAT4X4 Camera::GetInverseProjection()
+{
+	XMMATRIX inverseProjTemp = XMLoadFloat4x4(&GetProjectionMatrix());
+	inverseProjTemp = XMMatrixInverse(nullptr, inverseProjTemp);
+
+	XMFLOAT4X4 invP;
+	XMStoreFloat4x4(&invP, inverseProjTemp);
+
+	return invP;
+}
+
 void Camera::CreateProjectionMatrix(float aspectRatio)
 {
 	//creating the projection matrix

@@ -1,3 +1,6 @@
+#define TILE_SIZE 16
+#define MAX_LIGHTS 7500
+
 #ifdef __cplusplus
 #pragma once
 #include"DX12Helper.h"
@@ -6,22 +9,21 @@ using namespace DirectX;
 
 static const float PI = 3.14159265f;
 
-#define MAX_LIGHTS 128
-
 #define LIGHT_TYPE_DIR 0
 #define LIGHT_TYPE_SPOT 1
 #define LIGHT_TYPE_POINT 2
 #define LIGHT_TYPE_AREA_RECT 3
+#define LIGHT_TYPE_AREA_DISK 4
 
 
-struct RectLight
+struct AreaLight
 {
 	float width;
 	float height;
 	float rotY;
 	float rotZ;
-	XMFLOAT3 position;
-	float padding;
+	float rotX;
+	XMFLOAT3 padding;
 };
 
 struct Light
@@ -35,7 +37,13 @@ struct Light
 	float spotFalloff;
 	XMFLOAT3 color;
 
-	RectLight rectLight;
+	AreaLight rectLight;
+};
+
+struct Decal
+{
+	XMFLOAT4X4 decalProjection;
+	XMFLOAT3 scale;
 };
 
 struct DirectionalLight
@@ -48,7 +56,7 @@ struct DirectionalLight
 };
 
 #else
-struct Rect
+struct Area
 {
 	float halfx;
 	float halfy;
@@ -57,14 +65,14 @@ struct Rect
 	float3 center;
 };
 
-struct RectLight
+struct AreaLight
 {
 	float width;
 	float height;
 	float rotY;
 	float rotZ;
-	float3 position;
-	float padding;
+	float rotX;
+	float3 padding;
 };
 
 struct Light
@@ -78,6 +86,11 @@ struct Light
 	float spotFalloff;
 	float3 color;
 
-	RectLight rectLight;
+	AreaLight rectLight;
+};
+
+struct Decal
+{
+	matrix decalProjectionMatrix;
 };
 #endif

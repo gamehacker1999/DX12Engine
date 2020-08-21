@@ -4,6 +4,8 @@ enum EntityRootIndices
 	EntityVertexCBV,
 	EntityIndex,
 	EntityPixelCBV,
+	EntityLightListSRV,
+	EntityLightIndices,
 	EntityMaterials,
 	EntityMaterialIndex,
 	EntityEnvironmentSRV,
@@ -44,4 +46,13 @@ enum RaytracingHeapRangesIndices
 	RTMaterials,
 	RTNumParameters
 
+};
+
+enum LightCullingRootIndices
+{
+	LightListSRV,
+	DepthMapSRV,
+	VisibleLightIndicesUAV,
+	LightCullingExternalDataCBV,
+	LightCullingNumParameters
 };

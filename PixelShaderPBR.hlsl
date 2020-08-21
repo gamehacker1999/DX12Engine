@@ -1,14 +1,7 @@
 #include "Lighting.hlsli"
 
-//cbuffer LightData: register(b1)
-//{
-//	DirectionalLight light1;
-//	float3 cameraPosition;
-//};
-
 cbuffer LightingData : register(b1)
 {
-	Light lights[MAX_LIGHTS];
 	float3 cameraPosition;
 	uint lightCount;
 };
@@ -19,6 +12,12 @@ struct Index
 };
 
 ConstantBuffer <Index>entityIndex: register(b0);
+
+struct SubsurfaceScattering
+{
+    bool enableSSS;
+};
+ConstantBuffer<SubsurfaceScattering> subsurfaceScattering : register(b2);
 
 struct VertexToPixel
 {
@@ -31,19 +30,21 @@ struct VertexToPixel
 
 };
 
+#define TILE_SIZE 16
+
 Texture2D material[]: register(t0);
-SamplerState basicSampler: register(s0);
-SamplerState brdfSampler : register(s1);
 TextureCube irradianceMap: register(t0, space1);
 TextureCube prefilteredMap: register(t1, space1);
-Texture2D brdfLUT: register(t2, space1);
-Texture2D LtcLUT : register(t3, space1);
-Texture2D LtcLUT2 : register(t4, space1);
-Texture2D LTCTexture : register(t5, space1);
 
+StructuredBuffer<Light> lights : register(t0, space2);
+StructuredBuffer<uint> LightIndices : register(t1, space2);
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
+    uint2 location = uint2(input.position.xy);
+    uint2 tileID = location / uint2(TILE_SIZE, TILE_SIZE);
+    uint numberOfTilesX = 1280 / TILE_SIZE;
+    uint tileIndex = tileID.y * numberOfTilesX + tileID.x;
 
 	uint index = entityIndex.index;
 
@@ -91,36 +92,79 @@ float4 main(VertexToPixel input) : SV_TARGET
 	
     float ndotv = saturate(dot(N, V));
 	
-    float2 ltcUV = ltcCoords(ndotv, roughness);
+    float2 ltcUV = float2(roughness, sqrt(1-ndotv));
+    ltcUV = ltcUV * LUT_SCALE + LUT_BIAS;
 
-    //loat2 uv = float2(roughness, sqrt(1-ndotv));
-    //v = uv * LUT_SCALE + LUT_BIAS;
+    float4 t1 = LtcLUT.Sample(basicSampler, ltcUV);
+    float4 t2 = LtcLUT2.Sample(basicSampler, ltcUV);
+    float4 envBRDF = brdfLUT.Sample(basicSampler, float2(ndotv, roughness));
+	
+    uint offset = tileIndex * 1024;
+	
+    bool enableSSS = subsurfaceScattering.enableSSS;
 
-    float4 t1 = LtcLUT.Sample(brdfSampler, ltcUV);
-    float4 t2 = LtcLUT2.Sample(brdfSampler, ltcUV);
-    float2 envBRDF = brdfLUT.Sample(brdfSampler, float2(saturate(dot(N, V)), roughness)).rg;
-
-	for (int i = 0; i < lightCount; i++)
-	{
-		switch (lights[i].type)
-		{
-			case LIGHT_TYPE_DIR:
-				Lo += DirectLightPBR(lights[i], N, input.worldPosition, cameraPosition,
-			roughness, metalColor.r, surfaceColor.xyz, f0);
-				break;
-			case LIGHT_TYPE_SPOT:
-				Lo += SpotLightPBR(lights[i], N, input.worldPosition, cameraPosition,
-			roughness, metalColor.r, surfaceColor.xyz, f0);
-				break;
-			case LIGHT_TYPE_POINT:
-				Lo += PointLightPBR(lights[i], N, input.worldPosition, cameraPosition,
-			roughness, metalColor.r, surfaceColor.xyz, f0);
-				break;
-			case LIGHT_TYPE_AREA_RECT:
-                Lo += RectAreaLightPBR(lights[i], N, V, input.worldPosition, cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, t2, LTCTexture, brdfSampler);
-                break;
+	
+	if(enableSSS)
+    {
+    
+		[loop]
+        for (uint i = 0; i < 1024 && LightIndices[offset + i] != -1; i++)
+        {
+            uint lightIndex = LightIndices[offset + i];
+		
+            switch (lights[lightIndex].type)
+            {
+                case LIGHT_TYPE_DIR:
+                    Lo += DirectLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
+				roughness, metalColor.r, surfaceColor.xyz, f0);
+                    break;
+                case LIGHT_TYPE_SPOT:
+                    Lo += SpotLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
+				roughness, metalColor.r, surfaceColor.xyz, f0);
+                    break;
+                case LIGHT_TYPE_POINT:
+                    Lo += PointLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
+				roughness, metalColor.r, surfaceColor.xyz, f0);
+                    break;
+                case LIGHT_TYPE_AREA_RECT:
+                    Lo += RectAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
+				cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
+                    break;
+                case LIGHT_TYPE_AREA_DISK:
+                    Lo += DiskAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
+				cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
+                    break;
+            }
         }
-	}
+    }
+    else
+    {
+    
+        for (int i = 0; i < (int) lightCount; i++)
+        {
+            switch (lights[i].type)
+            {
+                case LIGHT_TYPE_DIR:
+                    Lo += DirectLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+			roughness, metalColor.r, surfaceColor.xyz, f0);
+                    break;
+                case LIGHT_TYPE_SPOT:
+                    Lo += SpotLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+			roughness, metalColor.r, surfaceColor.xyz, f0);
+                    break;
+                case LIGHT_TYPE_POINT:
+                    Lo += PointLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+			roughness, metalColor.r, surfaceColor.xyz, f0);
+                    break;
+                case LIGHT_TYPE_AREA_RECT:
+                    Lo += RectAreaLightPBR(lights[i], N, V, input.worldPosition, cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
+                    break;
+                case LIGHT_TYPE_AREA_DISK:
+                    Lo += DiskAreaLightPBR(lights[i], N, V, input.worldPosition, cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
+                    break;
+            }
+        }
+    }
 
 	float3 ksIndirect = FresnelRoughness(dot(N, V), f0, roughness);
 

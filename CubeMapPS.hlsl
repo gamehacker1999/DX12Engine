@@ -62,7 +62,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
     float3 dir = normalize(input.worldPos);
 	
-	float3 sunDir = { 0, 3, 2 };
+	float3 sunDir = { 1, 1, 0 };
     
 	return float4(CIEClearSky(dir, normalize(sunDir)), 1.0f);
 }

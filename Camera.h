@@ -28,6 +28,7 @@ public:
 	//getters and setters
 	XMFLOAT4X4 GetViewMatrix();
 	XMFLOAT4X4 GetProjectionMatrix();
+	XMFLOAT4X4 GetInverseProjection();
 
 	//method to create projection matrix
 	void CreateProjectionMatrix(float aspectRatio);
