@@ -164,6 +164,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
 		auto resourceDesc = resource.resource->GetDesc();
 
+
 		if (resourceDesc.DepthOrArraySize > 1)
 		{
 			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
@@ -196,6 +197,12 @@ void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResour
 	{
 		LoadTexture(device, resource.resource, resName, commandQueue,type);
 		CreateShaderResourceView(device.Get(), resource.resource.Get(), GetCPUHandle(lastResourceIndex), isCube);
+
+		auto desc = resource.resource->GetDesc();
+
+		resource.width = desc.Width;
+		resource.height = desc.Height;
+		resource.mipLevels = desc.MipLevels;
 
 		resource.resourceType = resourceType;
 		resource.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;

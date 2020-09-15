@@ -101,3 +101,11 @@ float3 SphericalGaussianIrradianceFitted(SphericalGaussian sg, float3 normal)
 
 	return result * ApproximateSGIntegral(sg);
 }
+
+//Structure that defines the von misses fisher distribution
+struct VMF
+{
+    float3 mu;
+    float kappa;
+    float alpha;
+};

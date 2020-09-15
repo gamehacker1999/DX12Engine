@@ -13,7 +13,6 @@ struct ParticleExternalData
 	XMFLOAT4X4 projection;
 
 	int startIndex;
-
 	XMFLOAT3 acceleration;
 
 	XMFLOAT4 startColor;

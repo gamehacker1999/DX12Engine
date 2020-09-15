@@ -12,6 +12,7 @@
 
 static const float PI = 3.14159265359f;
 
+StructuredBuffer<Light> lights : register(t0, space2);
 
 
 float Attenuate(Light light, float3 worldPos)
@@ -230,7 +231,7 @@ float3 SpotLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPo
 }
 
 float3 RectAreaLightPBR(Light light, float3 normal, float3 view ,float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0, 
-                        float4 ltc1, float4 ltc2, SamplerState samplerState)
+                        float4 ltc1, float4 ltc2, SamplerState samplerState, Texture2D prefilteredTexture)
 {
 	
     Area rect;
@@ -248,11 +249,11 @@ float3 RectAreaLightPBR(Light light, float3 normal, float3 view ,float3 worldPos
 	
     minV = transpose(minV);
     
-    float3 spec = LTC_Evaluate(normal, view, worldPos, minV, points, ltc2,false, samplerState);
+    float3 spec = LTC_Evaluate(normal, view, worldPos, minV, points, ltc2,false, samplerState, prefilteredTexture);
     
     spec *= f0 * (ltc2.x) + (1 - f0) * (ltc2.y);
     
-    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), points, ltc2,false, samplerState);
+    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), points, ltc2,false, samplerState, prefilteredTexture);
     float3 color = light.intensity * light.color * (spec + diffuse*surfaceColor);
 
     return color;

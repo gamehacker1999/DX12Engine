@@ -36,7 +36,6 @@ Texture2D material[]: register(t0);
 TextureCube irradianceMap: register(t0, space1);
 TextureCube prefilteredMap: register(t1, space1);
 
-StructuredBuffer<Light> lights : register(t0, space2);
 StructuredBuffer<uint> LightIndices : register(t1, space2);
 
 float4 main(VertexToPixel input) : SV_TARGET
@@ -103,68 +102,35 @@ float4 main(VertexToPixel input) : SV_TARGET
 	
     bool enableSSS = subsurfaceScattering.enableSSS;
 
+	[loop]
+     for (uint i = 0; i < 1024 && LightIndices[offset + i] != -1; i++)
+     {
+         uint lightIndex = LightIndices[offset + i];
 	
-	if(enableSSS)
-    {
-    
-		[loop]
-        for (uint i = 0; i < 1024 && LightIndices[offset + i] != -1; i++)
-        {
-            uint lightIndex = LightIndices[offset + i];
-		
-            switch (lights[lightIndex].type)
-            {
-                case LIGHT_TYPE_DIR:
-                    Lo += DirectLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
-				roughness, metalColor.r, surfaceColor.xyz, f0);
-                    break;
-                case LIGHT_TYPE_SPOT:
-                    Lo += SpotLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
-				roughness, metalColor.r, surfaceColor.xyz, f0);
-                    break;
-                case LIGHT_TYPE_POINT:
-                    Lo += PointLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
-				roughness, metalColor.r, surfaceColor.xyz, f0);
-                    break;
-                case LIGHT_TYPE_AREA_RECT:
-                    Lo += RectAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
-				cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
-                    break;
-                case LIGHT_TYPE_AREA_DISK:
-                    Lo += DiskAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
-				cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
-                    break;
-            }
-        }
-    }
-    else
-    {
-    
-        for (int i = 0; i < (int) lightCount; i++)
-        {
-            switch (lights[i].type)
-            {
-                case LIGHT_TYPE_DIR:
-                    Lo += DirectLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+         switch (lights[lightIndex].type)
+         {
+            case LIGHT_TYPE_DIR:
+                Lo += DirectLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
 			roughness, metalColor.r, surfaceColor.xyz, f0);
-                    break;
-                case LIGHT_TYPE_SPOT:
-                    Lo += SpotLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+                break;
+            case LIGHT_TYPE_SPOT:
+                Lo += SpotLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
 			roughness, metalColor.r, surfaceColor.xyz, f0);
-                    break;
-                case LIGHT_TYPE_POINT:
-                    Lo += PointLightPBR(lights[i], N, input.worldPosition, cameraPosition,
+                break;
+            case LIGHT_TYPE_POINT:
+                Lo += PointLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
 			roughness, metalColor.r, surfaceColor.xyz, f0);
-                    break;
-                case LIGHT_TYPE_AREA_RECT:
-                    Lo += RectAreaLightPBR(lights[i], N, V, input.worldPosition, cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
-                    break;
-                case LIGHT_TYPE_AREA_DISK:
-                    Lo += DiskAreaLightPBR(lights[i], N, V, input.worldPosition, cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
-                    break;
-            }
-        }
-    }
+                break;
+            case LIGHT_TYPE_AREA_RECT:
+                Lo += RectAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
+			cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler, material[4]);
+                break;
+            case LIGHT_TYPE_AREA_DISK:
+                Lo += DiskAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
+			cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
+                break;
+         }
+     }
 
 	float3 ksIndirect = FresnelRoughness(dot(N, V), f0, roughness);
 

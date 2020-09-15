@@ -167,7 +167,7 @@ float PolygonalClippedFormFactorToHorizonClippedSphereFormFactor(float3 F)
 
 
 float3 LTC_Evaluate(
-    float3 N, float3 V, float3 P, float3x3 Minv, float3 points[4], float4 ltc2, bool twoSided, SamplerState samplerState)
+    float3 N, float3 V, float3 P, float3x3 Minv, float3 points[4], float4 ltc2, bool twoSided, SamplerState samplerState, Texture2D prefilteredTexture)
 {
     // construct orthonormal basis around N
     float3 T1, T2;
@@ -186,7 +186,7 @@ float3 LTC_Evaluate(
 
     // integrate
     float sum = 0.0;
-
+    float3 color = float3(1, 1, 1);
     if (true)
     {
         float3 dir = points[0].xyz - P;
@@ -206,6 +206,9 @@ float3 LTC_Evaluate(
         vsum += IntegrateEdgeVec(L[3], L[0]);
         
         float scale = PolygonalClippedFormFactorToHorizonClippedSphereFormFactor(vsum);
+        
+        float2 textureLookupDir = vsum.xy;
+        color = prefilteredTexture.Sample(basicSampler, textureLookupDir);
    
         sum = scale;
         if (behind && !twoSided)

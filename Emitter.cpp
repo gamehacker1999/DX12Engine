@@ -25,7 +25,6 @@ Emitter::Emitter(int maxParticles, int particlesPerSecond, float lifetime,
 	this->emitterAcceleration = emitterAcceleration; //acceleration of emmiter
 	this->particlePSO = particlePipeline;
 	this->particleRootSig = particleRoot;
-	//this->texture = texture;
 
 	timeSinceEmit = 0;//how long since the last particle was emmited
 	livingParticleCount = 0; //count of how many particles
@@ -54,7 +53,7 @@ Emitter::Emitter(int maxParticles, int particlesPerSecond, float lifetime,
 
 	}
 
-	descriptorHeap.Create(device, 3, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	indexBuffer = CreateIBView(indices, 6 * maxParticles, device, commandList, defaultIndexHeap, uploadIndexHeap);
 
@@ -134,7 +133,7 @@ void Emitter::UpdateParticles(float deltaTime, float currentTime)
 		}
 
 		//if firse alive is ahead
-		else if(firstDeadIndex<firstAliveIndex)
+		else if(firstDeadIndex < firstAliveIndex)
 		{
 			//go from the first alive to end of list
 			for (int i = firstAliveIndex; i < maxParticles; i++)
@@ -149,13 +148,13 @@ void Emitter::UpdateParticles(float deltaTime, float currentTime)
 			}
 		}
 
-		else
-		{
-			for (int i = 0; i < maxParticles; i++)
-			{
-				UpdateSingleParticle(deltaTime, i, currentTime);
-			}
-		}
+		//else
+		//{
+		//	for (int i = 0; i < maxParticles; i++)
+		//	{
+		//		UpdateSingleParticle(deltaTime, i, currentTime);
+		//	}
+		//}
 	}
 
 	timeSinceEmit += deltaTime;
@@ -204,7 +203,7 @@ void Emitter::Draw(ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_pt
 		commandList->DrawIndexedInstanced(livingParticleCount * 6, 1, 0, 0, 0);
 	}
 
-	else
+	else if(firstAliveIndex>firstDeadIndex)
 	{
 		externData.startIndex = 0;
 		memcpy(externDataBegin, &externData, sizeof(externData));

@@ -32,7 +32,6 @@ void RayGen() {
     float2 dims = float2(DispatchRaysDimensions().xy);
     float2 d = (((launchIndex.xy + 0.5f) / dims.xy) * 2.f - 1.f);
 
-    uint rndseed = initRand(launchIndex.x, launchIndex.y);
 
     float3 pos = gPosition[launchIndex].xyz;
     float3 norm = gNormal[launchIndex].xyz;
@@ -52,16 +51,29 @@ void RayGen() {
 
     else
     {
+        uint rndseed = initRand(launchIndex.x , launchIndex.y );
+
         float3 V = normalize(cameraPosition - pos);
         // Do explicit direct lighting to a random light in the scene
         color += DirectLighting(rndseed, pos, norm, V, metalColor.r,
 		albedo, f0, roughness);
 
-        // Do indirect lighting for global illumination
-        color += IndirectLighting(rndseed, pos, norm, V, metalColor.r,
-	    albedo, f0, roughness, 0);
+        float3 indirectLight = float3(0, 0, 0);
+        
+        for (int i = 0; i < 1;i++)
+        {
+            // Do indirect lighting for global illumination
+            indirectLight += IndirectLighting(rndseed, pos, norm, V, metalColor.r,
+	        albedo, f0, roughness, 0);
+        }
+        
+
+        
+        indirectLight /= 1;
+        color += indirectLight;
 
     } 
 
     gOutput[launchIndex] = float4(color, 1.f);
-    }
+    
+}

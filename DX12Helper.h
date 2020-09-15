@@ -87,6 +87,10 @@ struct ManagedResource
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvCPUHandle;
 	D3D12_CPU_DESCRIPTOR_HANDLE dsvCPUHandle;
+
+	float width;
+	float height;
+	float mipLevels;
 };
 
 

@@ -56,3 +56,11 @@ enum LightCullingRootIndices
 	LightCullingExternalDataCBV,
 	LightCullingNumParameters
 };
+
+enum VMFFilterRootIndices
+{
+	NormalRoughnessSRV,
+	OutputMapsUAV,
+	VMFFilterExternDataCBV,
+	VMFFilterNumParameters
+};

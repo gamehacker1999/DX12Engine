@@ -20,7 +20,6 @@ struct SubsurfaceScattering
 ConstantBuffer<SubsurfaceScattering> subsurfaceScattering : register(b2);
 
 ConstantBuffer<Index> entityIndex: register(b0);
-StructuredBuffer<Light> lights : register(t0, space2);
 
 struct VertexToPixel
 {
@@ -82,8 +81,6 @@ float3 CalculateLight(Light light, VertexToPixel input, Texture2D normalMap, Sam
 	N = normalize(N); //normalizing the normal
 	float3 R = reflect(-L, N); //reflect R over N
 	float3 V = normalize(cameraPosition - input.worldPosition); //view vector
-	float4 NdotV = saturate(dot(N, V));
-	float4 rimColor = float4(0.0f, 0.0f, 1.0f, 1.0f);
 	
     float rcpDistFromCamera = 1 / distance(input.worldPosition, cameraPosition);
 	
@@ -103,7 +100,7 @@ float3 CalculateLight(Light light, VertexToPixel input, Texture2D normalMap, Sam
 	//I am calculating the light based on the phong reflection model
 	float cosine = dot(R, V);
 	cosine = saturate(cosine);
-	float shininess = 8.f;
+	float shininess = 128.f;
 	float specularAmount = pow(cosine, shininess); //increase the cosine curve fall off
 
 	float NdotL = dot(N, L);
@@ -114,15 +111,16 @@ float3 CalculateLight(Light light, VertexToPixel input, Texture2D normalMap, Sam
 	float3 diffuse = NdotL;
 	if (enableSSS)
 	{
-        float c1 = clamp(length(fwidth(finalNormalR)), 0, 1) / length(fwidth(input.worldPosition) * rcpDistFromCamera);
-        float c2 = clamp(length(fwidth(finalNormalG)), 0, 1) / length(fwidth(input.worldPosition) * rcpDistFromCamera);
-        float c3 = clamp(length(fwidth(finalNormalB)), 0, 1) / length(fwidth(input.worldPosition) * rcpDistFromCamera);
-		float3 scatterAmount = float3(1.f, 1.f, 1.f);
+        float c1 = clamp(length(fwidth(finalNormalR)), 0, 1) / length(fwidth(input.worldPosition));
+        float c2 = clamp(length(fwidth(finalNormalG)), 0, 1) / length(fwidth(input.worldPosition));
+        float c3 = clamp(length(fwidth(finalNormalB)), 0, 1) / length(fwidth(input.worldPosition));
+		float3 scatterAmount = float3(1.f, 0.15f, 0.1f);
+        float3 lambda = 1 / scatterAmount;
 		//float3 radius = float3(c1, c2, c3);
-		scatterAmount /= radius*radius;
-		SphericalGaussian redKernal = MakeNormalizedSG(L, 1.0f/ (scatterAmount.x));
-		SphericalGaussian greenKernal = MakeNormalizedSG(L, 1.0f/ (scatterAmount.y));
-		SphericalGaussian blueKernal = MakeNormalizedSG(L, 1.0f/ (scatterAmount.z));
+		lambda *= radius*radius;
+		SphericalGaussian redKernal = MakeNormalizedSG(L, lambda.x);
+		SphericalGaussian greenKernal = MakeNormalizedSG(L, lambda.y);
+		SphericalGaussian blueKernal = MakeNormalizedSG(L, lambda.z);
 
 		//convolving the light source with the spherical gaussian kernels 
 		diffuse = float3(SphericalGaussianIrradianceFitted(redKernal, finalNormalR).x, SphericalGaussianIrradianceFitted(greenKernal, finalNormalG).x, SphericalGaussianIrradianceFitted(blueKernal, finalNormalB).x);
@@ -132,7 +130,7 @@ float3 CalculateLight(Light light, VertexToPixel input, Texture2D normalMap, Sam
 	float3 finalLight = light.color*diffuse;
 	finalLight += specularAmount;
 
-    return float3(finalLight);
+    return float3(finalLight)*light.intensity * 2;
 }
 
 Texture2D material[]: register(t0);

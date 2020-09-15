@@ -1,5 +1,7 @@
 #include "Lighting.hlsli"
 
+#define NUM_SAMPLES 1
+
 static const float M_PI = 3.14159265f;
 
 struct Vertex
@@ -28,7 +30,6 @@ cbuffer LightingData : register(b1)
     uint lightCount;
 };
 
-StructuredBuffer<Light> lights : register(t0, space2);
 
 float RadicalInverse_VdC(uint bits)
 {
@@ -132,7 +133,7 @@ float nextRand(inout uint s)
 }
 
 // Get a cosine-weighted random vector centered around a specified normal direction.
-float3 getCosHemisphereSample(inout uint randSeed, float3 hitNorm)
+float3 GetCosHemisphereSample(inout uint randSeed, float3 hitNorm)
 {
 	// Get 2 random numbers to select our sample with
 	float2 randVal = float2(nextRand(randSeed), nextRand(randSeed));
@@ -191,79 +192,94 @@ float3 DirectLighting(float rndseed, float3 pos, float3 norm, float3 V, float me
                              lightCount - 1);
     
     float3 color = float3(0, 0, 0);
-    if (lights[lightToSample].type == LIGHT_TYPE_DIR)
+    if (lights[0].type == LIGHT_TYPE_DIR)
     {
-        color += DirectLightPBR(lights[lightToSample], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+        color += DirectLightPBR(lights[0], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
     }
-    else if (lights[lightToSample].type == LIGHT_TYPE_POINT)
+    else if (lights[0].type == LIGHT_TYPE_POINT)
     {
-        color += PointLightPBR(lights[lightToSample], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+        color += PointLightPBR(lights[0], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
     }
-    else if (lights[lightToSample].type == LIGHT_TYPE_SPOT)
+    else if (lights[0].type == LIGHT_TYPE_SPOT)
     {
-        color += SpotLightPBR(lights[lightToSample], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+        color += SpotLightPBR(lights[0], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
     }
         
-    return color * ShootShadowRays(pos, lights[0].direction, 0.1, 1000000);
+    return color * ShootShadowRays(pos, -lights[0].direction, 0.001, 1000000);
 }
 
-float3 IndirectLighting(float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness, float rayDepth)
+float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness, float rayDepth)
 {
     float probDiffuse = probabilityToSampleDiffuse(surfaceColor, f0);
     float chooseDiffuse = (nextRand(rndseed) < probDiffuse);
+    float3 response = float3(0, 0, 0);
     
     if (chooseDiffuse)
     {
 	// Shoot a randomly selected cosine-sampled diffuse ray.
-        float3 L = getCosHemisphereSample(rndseed, norm);
         
-        HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+        for (int i = 0; i < NUM_SAMPLES;i++)
+        {
+            float3 L = GetCosHemisphereSample(rndseed, norm);
+        
+            HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
        
-        /**/
-        RayDesc ray;
-        ray.Origin = pos;
-        ray.Direction = L;
-        ray.TMin = 0.01;
-        ray.TMax = 100000;
+            RayDesc ray;
+            ray.Origin = pos;
+            ray.Direction = L;
+            ray.TMin = 0.01;
+            ray.TMax = 100000;
         
-        TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+            TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+            
+            response+= giPayload.color * surfaceColor / (probDiffuse);
 
-        return giPayload.color * surfaceColor / probDiffuse;
+        }
+        
+        return response /= NUM_SAMPLES;
+        
     }
     else
     {
-        float2 randVals = Hammersley(1, 4096);
-        float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
-        float3 L = normalize(2 * dot(V, H) * H - V);
+               
+        for (int i = 0; i < NUM_SAMPLES; i++)
+        {
+            float2 randVals = Hammersley(1, 4096);
+            float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
+            float3 L = normalize(2 * dot(V, H) * H - V);
         
-        HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+            HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
        
-        RayDesc ray;
-        ray.Origin = pos;
-        ray.Direction = L;
-        ray.TMin = 0.01;
-        ray.TMax = 100000;
+            RayDesc ray;
+            ray.Origin = pos;
+            ray.Direction = L;
+            ray.TMin = 0.01;
+            ray.TMax = 100000;
        
-        TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+            TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
 		
 	   // Compute some dot products needed for shading
-        float NdotL = saturate(dot(norm, L));
-        float NdotH = saturate(dot(norm, H));
-        float LdotH = saturate(dot(L, H));
-        float NdotV = saturate(dot(norm, V));
+            float NdotL = saturate(dot(norm, L));
+            float NdotH = saturate(dot(norm, H));
+            float LdotH = saturate(dot(L, H));
+            float NdotV = saturate(dot(norm, V));
        
 	    // valuate our BRDF using a microfacet BRDF model
-        float D = SpecularDistribution(roughness, H, norm);
-        float G = GeometricShadowing(norm, V, H, roughness) * GeometricShadowing(norm, L, H, roughness);
-        float3 F = FresnelRoughness(NdotV, f0, roughness);
-        float3 ggxTerm = D * G * F / (4 * NdotL * NdotV);
+            float D = SpecularDistribution(roughness, H, norm);
+            float G = GeometricShadowing(norm, V, H, roughness) * GeometricShadowing(norm, L, H, roughness);
+            float3 F = FresnelRoughness(NdotV, f0, roughness);
+            float3 ggxTerm = D * G * F / (4 * NdotL * NdotV);
         
-        // What's the probability of sampling vector H from getGGXMicrofacet()?
-        float ggxProb = D * NdotH / (4 * LdotH);
+            float ggxProb = D * NdotH / (4 * LdotH);
+            
+            response+= NdotL * giPayload.color * ggxTerm / (ggxProb * (1.0f - probDiffuse));
 
-	    // Accumulate color:  ggx-BRDF * lightIn * NdotL / probability-of-sampling
-	    //    -> Note: Should really cancel and simplify the math above
-        return NdotL * giPayload.color * ggxTerm / (ggxProb * (1.0f - probDiffuse));
+        }
+        
+        response /= NUM_SAMPLES;
+        
+        return response;
+
     }
 }
 

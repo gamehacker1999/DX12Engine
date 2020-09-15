@@ -1,6 +1,5 @@
 #include "Lighting.hlsli"
 
-StructuredBuffer<Light> lights : register(t0);
 Texture2D depthMap : register(t1);
 RWStructuredBuffer<uint> LightIndices : register(u0);
 RWTexture2D<uint2> LightGrid : register(u1);
@@ -159,6 +158,9 @@ uint groupIndex : SV_GroupIndex)
     float fMinDepth = asfloat(minDepth);
     float fMaxDepth = asfloat(maxDepth);
     
+    if(fMaxDepth <= fMinDepth)
+        fMaxDepth = fMinDepth;
+    
         //creating the frustums
     if (groupIndex == 0)
     {
@@ -166,10 +168,10 @@ uint groupIndex : SV_GroupIndex)
        const float3 eyePos = float3(0, 0, 0);
      
        float4 screenSpace[4];
-       screenSpace[0] = float4(dispatchThreadID.xy, 1.0f, 1.0f);
-       screenSpace[1] = float4(float2(dispatchThreadID.x + TILE_SIZE, dispatchThreadID.y), 1.0f, 1.0f);
-       screenSpace[2] = float4(float2(dispatchThreadID.x, dispatchThreadID.y + TILE_SIZE), 1.0f, 1.0f);
-       screenSpace[3] = float4(float2(dispatchThreadID.x + TILE_SIZE, dispatchThreadID.y + TILE_SIZE), 1.0f, 1.0f);
+        screenSpace[0] = float4(groupID.xy * TILE_SIZE, 1.0f, 1.0f);
+        screenSpace[1] = float4(float2(groupID.x + 1, groupID.y) * TILE_SIZE, 1.0f, 1.0f);
+        screenSpace[2] = float4(float2(groupID.x, groupID.y + 1) * TILE_SIZE, 1.0f, 1.0f);
+        screenSpace[3] = float4(float2(groupID.x + 1, groupID.y + 1) * TILE_SIZE, 1.0f, 1.0f);
       
       float3 viewSpace[4];
       for (int i = 0; i < 4; i++)
@@ -255,7 +257,10 @@ uint groupIndex : SV_GroupIndex)
                      
             case LIGHT_TYPE_AREA_DISK:
             {
-               interSects = false;
+                                // Add all rect lights for now    
+                   uint offset;
+                   InterlockedAdd(visibleLightCount, 1, offset);
+                   visibleLightIndices[offset] = lightIndex;
             }
             break;
            

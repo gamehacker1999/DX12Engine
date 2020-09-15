@@ -50,6 +50,8 @@ Game::Game(HINSTANCE hInstance)
 	visibleLightIndices = nullptr;
 	visibleLightIndicesResource = 0;
 
+	lights = nullptr;
+
 }
 
 Game::~Game()
@@ -62,6 +64,11 @@ Game::~Game()
 	if (visibleLightIndices != nullptr)
 	{
 		delete[] visibleLightIndices;
+	}
+
+	if (lights != nullptr)
+	{
+		delete[] lights;
 	}
 
 	//for (int i = 0; i < flockers.size(); i++)
@@ -90,7 +97,7 @@ HRESULT Game::Init()
 	if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
 		isRaytracingAllowed = false;
 	else
-		isRaytracingAllowed = false;
+		isRaytracingAllowed = true;
 
 	frameIndex = this->swapChain->GetCurrentBackBufferIndex();
 
@@ -111,7 +118,7 @@ HRESULT Game::Init()
 	// Create descriptor heaps.
 	{
 
-		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount + 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
 		ThrowIfFailed(dsDescriptorHeap.Create(device, 2, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 
@@ -119,7 +126,6 @@ HRESULT Game::Init()
 
 	// Create frame resources.
 	/**/{
-		//CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart());
 
 		// Create a RTV for each frame.
 		for (UINT n = 0; n < frameCount; n++)
@@ -128,6 +134,7 @@ HRESULT Game::Init()
 			if (FAILED(hr)) return hr;
 			D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
 			device->CreateRenderTargetView(renderTargets[n].resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(n));
+			rtvDescriptorHeap.IncrementLastResourceIndex(1);
 			//rtvHandle.Offset(1, rtvDescriptorSize);
 
 			hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocators[n])));
@@ -138,6 +145,46 @@ HRESULT Game::Init()
 		}
 
 	}
+
+	//creating a final render target
+	D3D12_RESOURCE_DESC renderTexureDesc = {};
+	renderTexureDesc.Width = width;
+	renderTexureDesc.Height = height;
+	renderTexureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	renderTexureDesc.DepthOrArraySize = renderTargets[0].resource->GetDesc().DepthOrArraySize;
+	renderTexureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	renderTexureDesc.MipLevels = renderTargets[0].resource->GetDesc().MipLevels;
+	renderTexureDesc.SampleDesc.Quality = 0;
+	renderTexureDesc.SampleDesc.Count = 1;
+	renderTexureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+	// Background color (Cornflower Blue in this case) for clearing
+	FLOAT color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
+
+	D3D12_CLEAR_VALUE rtvClearVal = {};
+	rtvClearVal.Color[0] = color[0];
+	rtvClearVal.Color[1] = color[1];
+	rtvClearVal.Color[2] = color[2];
+	rtvClearVal.Color[3] = color[3];
+	rtvClearVal.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(finalRenderTarget.resource.GetAddressOf())
+	));
+
+	
+
+	device->CreateRenderTargetView(finalRenderTarget.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	finalRenderTarget.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	finalRenderTarget.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
 
 	//optimized clear value for depth stencil buffer
 	D3D12_CLEAR_VALUE depthClearValue = {};
@@ -213,6 +260,11 @@ HRESULT Game::Init()
 
 	// Helper methods for loading shaders, creating some basic
 	// geometry to draw and some simple camera matrices.
+
+	mainCamera = std::make_shared<Camera>(XMFLOAT3(3.0f, 0.f, -3.0f), XMFLOAT3(-1.0f, 0.0f, 1.0f));
+
+	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
+
 	LoadShaders();
 	CreateMatrices();
 	CreateBasicGeometry();
@@ -245,9 +297,9 @@ HRESULT Game::Init()
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, flame->GetDescriptorHeap());
 	flame->volumeTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 
-	emitter1 = std::make_shared<Emitter>(1000, //max particles
-		50, //particles per second
-		2.f, //lifetime
+	emitter1 = std::make_shared<Emitter>(10000, //max particles
+		100, //particles per second
+		5.f, //lifetime
 		0.8f, //start size
 		0.03f, //end size
 		XMFLOAT4(1, 1.0f, 1.0f, 1.0f), //start color
@@ -259,9 +311,13 @@ HRESULT Game::Init()
 		XMFLOAT4(-2, 2, -2, 2), //rotation around z axis
 		XMFLOAT3(0.f, 1.f, 0.f),  //acceleration	
 		device,commandList,commandQueue,particlesPSO,particleRootSig,L"../../Assets/Textures/particle.jpg");
+	emitters.emplace_back(emitter1);
 
-	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, emitter1->GetDescriptor());
-	emitter1->particleTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+	for (int i = 0; i < emitters.size(); i++)
+	{
+		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, emitters[i]->GetDescriptor());
+		emitters[i]->particleTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+	}
 
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, depthDesc);
 	depthTex.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 1;
@@ -280,10 +336,6 @@ HRESULT Game::Init()
 	skyboxBundle->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
 	skyboxBundle->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 	skyboxBundle->Close();
-
-	mainCamera = std::make_shared<Camera>(XMFLOAT3(3.0f, 0.f, -3.0f), XMFLOAT3(-1.0f, 0.0f, 1.0f));
-
-	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
 
 
 	ID3D12CommandList* commandLists[] = { commandList.Get() };
@@ -595,7 +647,7 @@ void Game::LoadShaders()
 	CD3DX12_DESCRIPTOR_RANGE1 computeRootRanges[1];
 	CD3DX12_ROOT_PARAMETER1 lightCullingRootParams[LightCullingNumParameters];
 	computeRootRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
-	lightCullingRootParams[LightCullingRootIndices::LightListSRV].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+	lightCullingRootParams[LightCullingRootIndices::LightListSRV].InitAsShaderResourceView(0, 2, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
 	lightCullingRootParams[LightCullingRootIndices::DepthMapSRV].InitAsDescriptorTable(1, &computeRootRanges[0]);
 	lightCullingRootParams[LightCullingRootIndices::VisibleLightIndicesUAV].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE);
 	lightCullingRootParams[LightCullingRootIndices::LightCullingExternalDataCBV].InitAsConstantBufferView(0, 0);
@@ -701,19 +753,6 @@ void Game::CreateBasicGeometry()
 	ZeroMemory(&lightData, sizeof(lightData));
 	ZeroMemory(&lightingData, sizeof(lightingData));
 
-	lightData.light1.diffuse = XMFLOAT4(1, 1, 1, 1);
-	lightData.light1.direction = XMFLOAT3(-1, -1, 0);
-	lightData.light1.ambientColor = XMFLOAT4(0.3f, 0.3f, 0.3f, 1.f);
-	lightData.light1.specularity = XMFLOAT4(1, 0, 0, 1);
-
-	lightConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCbufferBegin));
-	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
-
-
-	lightingConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightingCbufferBegin));
-	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
-
-	lightCullingCBVResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCullingExternBegin));
 
 	//creating the light list srv
 	ThrowIfFailed(device->CreateCommittedResource(
@@ -741,6 +780,9 @@ void Game::CreateBasicGeometry()
 	));
 
 	visibleLightIndicesBuffer.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
+	lights = new Light[MAX_LIGHTS];
+
 	ZeroMemory(lights, MAX_LIGHTS * sizeof(Light));
 
 	lights[lightCount].type = LIGHT_TYPE_DIR;
@@ -756,18 +798,29 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].rectLight.rotY = 0;
 	lights[lightCount].rectLight.rotZ = 0;
 	lights[lightCount].rectLight.rotX = 0;
-	lights[lightCount].position = XMFLOAT3(0, -2, 0);
+	lights[lightCount].position = XMFLOAT3(-6, -2, 0);
 	lights[lightCount].intensity = 2;
+	lightCount++;
+
+	lights[lightCount].type = LIGHT_TYPE_AREA_DISK;
+	lights[lightCount].color = XMFLOAT3(1, 1, 1);
+	lights[lightCount].rectLight.height = 2;
+	lights[lightCount].rectLight.width = 2;
+	lights[lightCount].rectLight.rotY = 0;
+	lights[lightCount].rectLight.rotZ = 0;
+	lights[lightCount].rectLight.rotX = 0;
+	lights[lightCount].position = XMFLOAT3(-2, -2, 0);
+	lights[lightCount].intensity = 6;
 	lightCount++;
 
 	lights[lightCount].type = LIGHT_TYPE_POINT;
 	lights[lightCount].color = XMFLOAT3(1, 0, 0);
 	lights[lightCount].range = 20;
 	lights[lightCount].position = XMFLOAT3(3,0,0);
-	lights[lightCount].intensity = 8;
+	lights[lightCount].intensity = 0;
 	lightCount++;
 
-	for (int i = 0; i < 7000; i++)
+	for (int i = 0; i < 2500; i++)
 	{
 		lights[lightCount].type = LIGHT_TYPE_POINT;
 		lights[lightCount].color = GetRandomFloat3(0,1);
@@ -777,6 +830,17 @@ void Game::CreateBasicGeometry()
 		lightCount++;
 	}
 
+	lightConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCbufferBegin));
+	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
+
+	lightingData.cameraPosition = mainCamera->GetPosition();
+	lightingData.lightCount = lightCount;
+
+	lightingConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightingCbufferBegin));
+	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
+
+	lightCullingCBVResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCullingExternBegin));
+
 
 	lightListResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightBufferBegin));
 	memcpy(lightBufferBegin, lights, MAX_LIGHTS * sizeof(Light));
@@ -784,11 +848,13 @@ void Game::CreateBasicGeometry()
 	UINT64 cbufferOffset = 0;
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
 	mesh2 = std::make_shared<Mesh>("../../Assets/Models/cube.obj", device, commandList);
-	mesh3 = std::make_shared<Mesh>("../../Assets/Models/helix.obj", device, commandList);
+	mesh3 = std::make_shared<Mesh>("../../Assets/Models/Cerebrus.obj", device, commandList);
 	sharkMesh = std::make_shared<Mesh>("../../Assets/Models/bird2.obj", device, commandList);
 	faceMesh = std::make_shared<Mesh>("../../Assets/Models/face.obj", device, commandList);
 	skyDome = std::make_shared<Mesh>("../../Assets/Models/sky_dome.obj", device, commandList);
 	rect = std::make_shared<Mesh>("../../Assets/Models/RectLight.obj", device, commandList);
+	disk = std::make_shared<Mesh>("../../Assets/Models/disk.obj", device, commandList);
+
 	
 
 	//creating the vertex buffer
@@ -804,8 +870,8 @@ void Game::CreateBasicGeometry()
 		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
 
 	std::shared_ptr<Material> material3 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, rootSignature,
-		L"../../Assets/Textures/BronzeDiffuse.png", L"../../Assets/Textures/BronzeNormal.png",
-		L"../../Assets/Textures/BronzeRoughness.png", L"../../Assets/Textures/BronzeMetallic.png");
+		L"../../Assets/Textures/CerebrusDiffuse.png", L"../../Assets/Textures/CerebrusNormal.png",
+		L"../../Assets/Textures/CerebrusRoughness.png", L"../../Assets/Textures/CerebrusMetallic.png");
 
 	std::shared_ptr<Material> material4 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, sssPipelineState, rootSignature,
 		L"../../Assets/Textures/Head_Diffuse.png", L"../../Assets/Textures/Head_Normal.png");
@@ -822,25 +888,32 @@ void Game::CreateBasicGeometry()
 
 
 	entity1 = std::make_shared<Entity>(mesh2,material1, registry);
-	entity2 = std::make_shared<Entity>(mesh1,material1, registry);
+	entity2 = std::make_shared<Entity>(mesh1,material2, registry);
 	entity3 = std::make_shared<Entity>(mesh1,material2, registry);
-	entity4 = std::make_shared<Entity>(mesh3,material1, registry);
+	entity4 = std::make_shared<Entity>(mesh2,material1, registry);
 	entity6 = std::make_shared<Entity>(faceMesh, material4, registry);
-	
-	
-	
+	diskEntity = std::make_shared<Entity>(disk, material4, registry);
 
+	
 	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
 	entity1->SetScale(XMFLOAT3(100, 10, 100));
 	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
 	entity3->SetPosition(XMFLOAT3(-3, 0, 1.f));
 	entity4->SetPosition(XMFLOAT3(8, -8, 1.f));
 	entity6->SetPosition(XMFLOAT3(-3,0,0));
+	diskEntity->SetPosition(XMFLOAT3(-1, 0, 0));
 
-	//auto initialRot = entity6->GetRotation();
-	//XMVECTOR finalRot = XMQuaternionRotationRollPitchYaw(lightingData.lights[1].rectLight.rotX * 3.14159f / 180, lightingData.lights[1].rectLight.rotY * 3.14159f / 180, lightingData.lights[1].rectLight.rotZ * 3.14159f / 180);
-	//XMStoreFloat4(&initialRot, finalRot);
-	//entity6->SetRotation(initialRot);
+	auto initialRot = entity6->GetRotation();
+	XMVECTOR finalRot = XMQuaternionRotationRollPitchYaw(lights[1].rectLight.rotX * 3.14159f / 180, lights[1].rectLight.rotY * 3.14159f / 180, lights[1].rectLight.rotZ * 3.14159f / 180);
+	XMStoreFloat4(&initialRot, finalRot);
+	entity6->SetRotation(initialRot);
+	entity6->SetPosition(lights[1].position);
+
+	 initialRot = diskEntity->GetRotation();
+	 finalRot = XMQuaternionRotationRollPitchYaw(lights[2].rectLight.rotX * 3.14159f / 180, lights[2].rectLight.rotY * 3.14159f / 180, lights[2].rectLight.rotZ * 3.14159f / 180);
+	XMStoreFloat4(&initialRot, finalRot);
+	diskEntity->SetRotation(initialRot);
+	diskEntity->SetPosition(lights[2].position);
 
 
 	entity1->PrepareConstantBuffers(device,residencyManager,residencySet);
@@ -848,6 +921,8 @@ void Game::CreateBasicGeometry()
 	entity3->PrepareConstantBuffers(device,residencyManager,residencySet);
 	entity4->PrepareConstantBuffers(device,residencyManager,residencySet);
 	entity6->PrepareConstantBuffers(device, residencyManager, residencySet);
+	diskEntity->PrepareConstantBuffers(device, residencyManager, residencySet);
+
 
 
 	entities.emplace_back(entity1);
@@ -855,14 +930,24 @@ void Game::CreateBasicGeometry()
 	entities.emplace_back(entity3);
 	entities.emplace_back(entity4);
 	entities.emplace_back(entity6);
+	//entity6->SetScale(XMFLOAT3(lights[1].rectLight.width, lights[1].rectLight.height, 1));
+	cerebrus = std::make_shared<Entity>(mesh3, material3, registry);
+	cerebrus->SetScale(XMFLOAT3(0.3, 0.3, 0.3));
+	cerebrus->SetPosition(GetRandomFloat3(0, 4));
+	cerebrus->PrepareConstantBuffers(device, residencyManager, residencySet);
+	entities.emplace_back(cerebrus);
+	entities.emplace_back(diskEntity);
 
-	for (int i = 0; i < 1; i++)
-	{
-		entities.emplace_back(std::make_shared<Entity>(mesh2, material2, registry));
-		entities[entities.size() - 1]->SetScale(XMFLOAT3(1, 1, 1));
-		entities[entities.size() - 1]->SetPosition(GetRandomFloat3(-30,30));
-		entities[entities.size() - 1]->PrepareConstantBuffers(device, residencyManager, residencySet);
-	}
+
+	//for (int i = 0; i < 1; i++)
+	//{
+	//	cerebrus = std::make_shared<Entity>(mesh2, material2, registry);
+	//	cerebrus->SetScale(XMFLOAT3(0.3, 0.3, 0.3));
+	//	cerebrus->SetPosition(GetRandomFloat3(0,4));
+	//	cerebrus->PrepareConstantBuffers(device, residencyManager, residencySet);
+	//	entities.emplace_back(cerebrus);
+	//
+	//}
 
 	//for (int i = 0; i < 10; i++)
 	//{
@@ -963,7 +1048,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox1.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox3.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 
@@ -1609,7 +1694,12 @@ void Game::Update(float deltaTime, float totalTime)
 		CreateTopLevelAS(bottomLevelBufferInstances, true);
 	}
 
-	emitter1->UpdateParticles(deltaTime, totalTime);
+	for (int i = 0; i < emitters.size(); i++)
+	{
+		emitters[i]->UpdateParticles(deltaTime, totalTime);
+	}
+
+
 
 	//if (!raster)
 	//{
@@ -1771,17 +1861,19 @@ void Game::PopulateCommandList()
 			D3D12_RESOURCE_STATE_PRESENT,
 			D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);//(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart(),
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(finalRenderTarget.rtvCPUHandle);//(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart(),
 		//frameIndex,rtvDescriptorSize);
 	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
 	commandList->ClearDepthStencilView(dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(visibleLightIndicesBuffer.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
-	visibleLightIndicesBuffer.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		/**/
-
 	if (raster)
 	{
+		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+		commandList->ResourceBarrier(1, &transition);
+
 			//record commands
 		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
@@ -1832,7 +1924,33 @@ void Game::PopulateCommandList()
 		commandList->IASetVertexBuffers(0, 1, &flame->GetMesh()->GetVertexBuffer());
 		commandList->IASetIndexBuffer(&flame->GetMesh()->GetIndexBuffer());
 		commandList->DrawIndexedInstanced(flame->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-		emitter1->Draw(commandList, gpuHeapRingBuffer, mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), totalTime);
+
+		for (int i = 0; i < emitters.size(); i++)
+		{
+			emitter1->Draw(commandList, gpuHeapRingBuffer, mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), totalTime);
+		}
+
+		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_DEST);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		commandList->CopyResource(renderTargets[frameIndex].resource.Get(),
+			finalRenderTarget.resource.Get());
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		commandList->ResourceBarrier(1, &transition);
+
 	}
 
 	else if(!raster&&isRaytracingAllowed)
@@ -1846,6 +1964,7 @@ void Game::PopulateCommandList()
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		rtOutPut.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 		commandList->ResourceBarrier(1, &transition);
+
 
 		const float clearColor[] = { 0.6f, 0.8f, 0.4f, 1.0f };
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
@@ -2008,10 +2127,10 @@ void Game::CreateLTCTexture()
 	//
 	//device->CreateShaderResourceView(ltcLUT.resource.Get(),&srvDesc,ltcDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart());
 
-	ltcDescriptorHeap.Create(device, 2, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	ltcDescriptorHeap.Create(device, 3 + 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcLUT, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
 	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_2.png", ltcLUT2, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
-	//ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
 
 
 	if (gpuHeapRingBuffer != nullptr)
@@ -2022,9 +2141,84 @@ void Game::CreateLTCTexture()
 		//device->CopyDescriptorsSimple(1, cpuHandle, otherCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 		//gpuHeapRingBuffer->IncrementNumStaticResources(1);
 
-		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 2, ltcDescriptorHeap);
-		ltcLUT.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 2;
+		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 3, ltcDescriptorHeap);
+		ltcLUT.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 3;
 	}
+}
+
+void Game::PrefilterLTCTextures()
+{
+	D3D12_RESOURCE_DESC prefilterMapDesc = {};
+	prefilterMapDesc.DepthOrArraySize = 1;
+	prefilterMapDesc.MipLevels = 5;
+	prefilterMapDesc.Format = ltcTexture.resource->GetDesc().Format;
+	prefilterMapDesc.Width = ltcTexture.width;
+	prefilterMapDesc.Height = ltcTexture.height;
+	prefilterMapDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	prefilterMapDesc.SampleDesc.Count = 1;
+	prefilterMapDesc.SampleDesc.Quality = 0;
+	prefilterMapDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+	FLOAT color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
+	
+	D3D12_CLEAR_VALUE rtvClearVal = {};
+	rtvClearVal.Color[0] = color[0];
+	rtvClearVal.Color[1] = color[1];
+	rtvClearVal.Color[2] = color[2];
+	rtvClearVal.Color[3] = color[3];
+	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	
+	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE,
+		&prefilterMapDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &rtvClearVal, IID_PPV_ARGS(ltcPrefilterTexture.resource.GetAddressOf())));
+	
+	ltcPrefilterTexture.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	//
+	////creating the srv
+	ltcDescriptorHeap.CreateDescriptor(ltcPrefilterTexture, RESOURCE_TYPE_SRV, device, 0, 0, 0, 0, 5);
+	//
+	commandList->SetGraphicsRootSignature(prefilteredRootSignature.Get());
+	commandList->SetPipelineState(prefilteredMapPSO.Get());
+	//
+	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+	//commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	
+	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(ltcPrefilterTexture.resource.Get(), ltcPrefilterTexture.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	ltcPrefilterTexture.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	commandList->SetGraphicsRootConstantBufferView(EnvironmentRootIndices::EnvironmentTexturesData, constantBufferResource->GetGPUVirtualAddress());
+	
+	
+	D3D12_VIEWPORT viewPort = {};
+	viewPort.Height = (float)ltcTexture.width;
+	viewPort.Width =  (float)ltcTexture.height;
+	viewPort.MaxDepth = 1.f;
+	viewPort.MinDepth = 0.0f;
+	viewPort.TopLeftX = 0.f;
+	viewPort.TopLeftY = 0.0f;
+	
+	scissorRect = {};
+	scissorRect.bottom = (long)ltcTexture.width;
+	scissorRect.right = (LONG)ltcTexture.height;
+	scissorRect.left = 0;
+	scissorRect.top = 0;
+	
+	commandList->RSSetViewports(1, &viewPort);
+	commandList->RSSetScissorRects(1, &scissorRect);
+	
+	prefilterRTVHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+	for (int i = 0; i < 5; i++)
+	{
+		prefilterRTVHeap.CreateDescriptor(ltcPrefilterTexture, RESOURCE_TYPE_RTV, device, 0, width, height, 0, i);
+		commandList->ClearRenderTargetView(ltcPrefilterTexture.rtvCPUHandle, clearColor, 0, 0);
+		commandList->OMSetRenderTargets(1, &ltcPrefilterTexture.rtvCPUHandle, FALSE, nullptr);
+	
+		commandList->DrawInstanced(3, 1, 0, 0);
+	}
+
+
+	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(ltcPrefilterTexture.resource.Get(), ltcPrefilterTexture.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+	ltcPrefilterTexture.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 }
 
 

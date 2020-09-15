@@ -18,7 +18,6 @@ struct Index
 };
 
 ConstantBuffer<Index> entityIndex: register(b0);
-StructuredBuffer<Light> lights : register(t0, space2);
 StructuredBuffer<uint> LightIndices : register(t1, space2);
 
 struct VertexToPixel

@@ -24,7 +24,7 @@ Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& materi
 
 	useRigidBody = false;
 
-	 entityID = registry.create();
+	 //entityID = registry.create();
 }
 
 Entity::~Entity()

@@ -117,6 +117,7 @@ public:
 	void CreateGBufferRays();
 
 	void CreateLTCTexture();
+	void PrefilterLTCTextures();
 
 	//----------------------------------------------------------------
 
@@ -189,7 +190,7 @@ private:
 	ComPtr<ID3D12Resource> lightingConstantBufferResource;
 	UINT8* lightingCbufferBegin;
 	LightingData lightingData;
-	Light lights[MAX_LIGHTS];
+	Light* lights;
 	UINT8* lightBufferBegin;
 	ComPtr<ID3D12Resource> lightListResource;
 	UINT lightCount;
@@ -197,6 +198,16 @@ private:
 	ManagedResource visibleLightIndicesBuffer;
 	UINT8* visibleLightIndicesResource;
 	UINT* visibleLightIndices;
+
+	//decals
+	ComPtr<ID3D12Resource> decalConstanceBufferResource;
+	UINT8* decalsCBufferBegin;
+	Decal decals[256];
+	UINT8* decalSBufferBegin;
+	ComPtr<ID3D12Resource> decalListResource;
+	UINT decalCount;
+
+	ManagedResource visibleDecalIndicesBuffer;
 
 	LightCullingExternalData lightCullingExternData;
 	UINT8* lightCullingExternBegin;
@@ -213,6 +224,10 @@ private:
 	//ComPtr<ID3D12DescriptorHeap> dsDescriptorHeap;
 	DescriptorHeapWrapper dsDescriptorHeap;
 
+	//post processing
+	ManagedResource finalRenderTarget;
+	DescriptorHeapWrapper renderTargetSRVHeap;
+
 	std::shared_ptr<Camera> mainCamera;
 
 	std::shared_ptr<Mesh> mesh1;
@@ -223,11 +238,14 @@ private:
 	std::shared_ptr<Mesh> sharkMesh;
 	std::shared_ptr<Mesh> faceMesh;
 	std::shared_ptr<Mesh> rect;
+	std::shared_ptr<Mesh> disk;
 	std::shared_ptr<Entity> entity2;
 	std::shared_ptr<Entity> entity3;
 	std::shared_ptr<Entity> entity4;
 	std::shared_ptr<Entity> entity5;
 	std::shared_ptr<Entity> entity6;
+	std::shared_ptr<Entity> diskEntity;
+	std::shared_ptr<Entity> cerebrus;
 	std::shared_ptr<Material> material1;
 	std::shared_ptr<Material> material2;
 	std::shared_ptr<Material> skinMat;
@@ -331,6 +349,9 @@ private:
 	ManagedResource ltcLUT;
 	ManagedResource ltcLUT2;
 	ManagedResource ltcTexture;
+	ManagedResource ltcPrefilterTexture;
+
+	DescriptorHeapWrapper prefilterRTVHeap;
 	
 	//-------------------------------------------------------
 
@@ -378,6 +399,7 @@ private:
 	ComPtr<ID3D12RootSignature> particleRootSig;
 
 	std::shared_ptr<Emitter> emitter1;
+	std::vector<std::shared_ptr<Emitter>> emitters;
 
 	//ECS variables
 	entt::registry registry;

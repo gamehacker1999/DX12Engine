@@ -2,7 +2,7 @@
 
 GPUHeapRingBuffer::GPUHeapRingBuffer(ComPtr<ID3D12Device> device)
 {
-	maxDesc = 10000;
+	maxDesc = 100000;
 	//creating the descriptor heap that will be used like a ring buffer
 	ThrowIfFailed(descriptorHeap.Create(device, maxDesc, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 	head = 1000;

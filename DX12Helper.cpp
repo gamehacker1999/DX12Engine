@@ -110,19 +110,9 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 		//copy triangle data to vertex buffer
 		//UINT8* vertexDataBegin;
 		CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
-		//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
-		//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
-		//vbufferUpload->Unmap(0, nullptr);
 
-		/*commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-			D3D12_RESOURCE_STATE_COPY_DEST));
-		commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*/
 		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(indexBufferHeap.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
 			D3D12_RESOURCE_STATE_INDEX_BUFFER));
-
-		//command lists are created in record state but since there is nothing to record yet
-		//close it for the main loop
-		//WaitToFlushGPU
 
 		D3D12_INDEX_BUFFER_VIEW indexBufferView = {};
 		indexBufferView.BufferLocation = indexBufferHeap->GetGPUVirtualAddress();

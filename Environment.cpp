@@ -111,11 +111,21 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	irradienaceTextureDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	irradienaceTextureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
+
+	FLOAT color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
+
+	D3D12_CLEAR_VALUE rtvClearVal = {};
+	rtvClearVal.Color[0] = color[0];
+	rtvClearVal.Color[1] = color[1];
+	rtvClearVal.Color[2] = color[2];
+	rtvClearVal.Color[3] = color[3];
+	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+
 	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		&irradienaceTextureDesc,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		nullptr,
+		&rtvClearVal,
 		IID_PPV_ARGS(irradienceMapTexture.resource.GetAddressOf())));
 
 	irradienceMapTexture.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -149,6 +159,7 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(irradienceMapTexture.resource.Get(), irradienceMapTexture.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET));
 	irradienceMapTexture.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
 
 	for (int i = 0; i < 6; i++)
 	{
@@ -189,8 +200,18 @@ void Environment::CreateBRDFLut(ComPtr<ID3D12Device> device, ComPtr<ID3D12Graphi
 	integrationLUTTexture.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	integrationLUTTexture.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
+
+	FLOAT color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
+
+	D3D12_CLEAR_VALUE rtvClearVal = {};
+	rtvClearVal.Color[0] = color[0];
+	rtvClearVal.Color[1] = color[1];
+	rtvClearVal.Color[2] = color[2];
+	rtvClearVal.Color[3] = color[3];
+	rtvClearVal.Format = DXGI_FORMAT_R32G32_FLOAT;
+
 	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE,
-		&integrationLUTTexture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, nullptr, IID_PPV_ARGS(environmentBRDFLUT.resource.GetAddressOf())));
+		&integrationLUTTexture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &rtvClearVal, IID_PPV_ARGS(environmentBRDFLUT.resource.GetAddressOf())));
 
 	environmentBRDFLUT.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
@@ -248,8 +269,17 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 	prefilterMapDesc.SampleDesc.Quality = 0;
 	prefilterMapDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
+	FLOAT color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
+
+	D3D12_CLEAR_VALUE rtvClearVal = {};
+	rtvClearVal.Color[0] = color[0];
+	rtvClearVal.Color[1] = color[1];
+	rtvClearVal.Color[2] = color[2];
+	rtvClearVal.Color[3] = color[3];
+	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+
 	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE,
-		&prefilterMapDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, nullptr, IID_PPV_ARGS(prefilteredMapTextures.resource.GetAddressOf())));
+		&prefilterMapDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &rtvClearVal, IID_PPV_ARGS(prefilteredMapTextures.resource.GetAddressOf())));
 
 	prefilteredMapTextures.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
@@ -268,13 +298,13 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 	commandList->SetGraphicsRootConstantBufferView(EnvironmentRootIndices::EnvironmentTexturesData, constantBufferResource->GetGPUVirtualAddress());
 
 
-	for (size_t mip = 0; mip < 5; mip++)
+	for (UINT mip = 0; mip < 5; mip++)
 	{
 		double width = 128 * pow(0.5, mip);
 		double height = 128 * pow(0.5, mip);
 
 		viewPort = {};
-		viewPort.Height = (float)width;
+		viewPort.Height = (float)height;
 		viewPort.Width = (float)width;
 		viewPort.MaxDepth = 1.f;
 		viewPort.MinDepth = 0.0f;
@@ -282,8 +312,8 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 		viewPort.TopLeftY = 0.0f;
 
 		scissorRect = {};
-		scissorRect.bottom = width;
-		scissorRect.right = height;
+		scissorRect.bottom = (long)width;
+		scissorRect.right = (LONG)height;
 		scissorRect.left = 0;
 		scissorRect.top = 0;
 

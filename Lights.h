@@ -1,5 +1,5 @@
 #define TILE_SIZE 16
-#define MAX_LIGHTS 7500
+#define MAX_LIGHTS 20000
 
 #ifdef __cplusplus
 #pragma once
