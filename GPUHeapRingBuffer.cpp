@@ -18,6 +18,7 @@ void GPUHeapRingBuffer::AllocateStaticDescriptors(ComPtr<ID3D12Device> device, U
 	auto otherCPUHandle = otherDescHeap.GetCPUHandle(0);
 	numStaticResources += numDescriptors;
 	device->CopyDescriptorsSimple(numDescriptors, cpuHandle, otherCPUHandle, otherDescHeap.GetDescriptorHeapType());
+	descriptorHeap.IncrementLastResourceIndex(numDescriptors);
 }
 
 void GPUHeapRingBuffer::AddDescriptor(ComPtr<ID3D12Device> device, UINT numDescriptors, DescriptorHeapWrapper otherDescHeap, UINT frameIndex)
@@ -60,7 +61,7 @@ DescriptorHeapWrapper& GPUHeapRingBuffer::GetDescriptorHeap()
 
 void GPUHeapRingBuffer::IncrementNumStaticResources(UINT num)
 {
-	numStaticResources++;
+	numStaticResources += num;
 }
 
 UINT GPUHeapRingBuffer::GetNumStaticResources()

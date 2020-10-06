@@ -70,6 +70,7 @@ public:
 	void SetOriginalRotation(XMFLOAT4 rotation);
 	void SetScale(XMFLOAT3 scale);
 	void SetModelMatrix(XMFLOAT4X4 matrix);
+	void Draw();
 	//void SetRigidBody(std::shared_ptr<RigidBody> body);
 	//std::shared_ptr<RigidBody> GetRigidBody();
 	void UseRigidBody();

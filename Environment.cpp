@@ -278,8 +278,13 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 	rtvClearVal.Color[3] = color[3];
 	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE,
-		&prefilterMapDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &rtvClearVal, IID_PPV_ARGS(prefilteredMapTextures.resource.GetAddressOf())));
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), 
+		D3D12_HEAP_FLAG_NONE,
+		&prefilterMapDesc, 
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, 
+		&rtvClearVal, 
+		IID_PPV_ARGS(prefilteredMapTextures.resource.GetAddressOf())));
 
 	prefilteredMapTextures.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 

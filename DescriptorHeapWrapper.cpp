@@ -36,6 +36,11 @@ ComPtr<ID3D12DescriptorHeap>& DescriptorHeapWrapper::GetHeap()
 	return descriptorHeap;
 }
 
+ID3D12DescriptorHeap* DescriptorHeapWrapper::GetHeapPtr()
+{
+	return GetHeap().Get();
+}
+
 CD3DX12_CPU_DESCRIPTOR_HANDLE DescriptorHeapWrapper::GetCPUHandle(UINT index)
 {
 	CD3DX12_CPU_DESCRIPTOR_HANDLE offsettedDescHandle(cpuHandle, index, handleIncrementSize);
@@ -117,7 +122,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 		if (resource.resource->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D)
 		{
 			uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-			uavDesc.Texture2D.MipSlice = 0;
+			uavDesc.Texture2D.MipSlice = mipLevel;
 		}
 		uavDesc.Format = resource.resource->GetDesc().Format;
 		device->CreateUnorderedAccessView(resource.resource.Get(), nullptr, &uavDesc, GetCPUHandle(lastResourceIndex));

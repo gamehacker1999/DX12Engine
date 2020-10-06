@@ -20,6 +20,7 @@ public:
 	HRESULT Create(ComPtr<ID3D12Device> device, UINT numDesc, bool isShaderVis, D3D12_DESCRIPTOR_HEAP_TYPE heapType);
 	D3D12_DESCRIPTOR_HEAP_TYPE GetDescriptorHeapType();
 	ComPtr<ID3D12DescriptorHeap>& GetHeap();
+	ID3D12DescriptorHeap* GetHeapPtr();
 	CD3DX12_CPU_DESCRIPTOR_HANDLE GetCPUHandle(UINT index);
 	CD3DX12_GPU_DESCRIPTOR_HANDLE GetGPUHandle(UINT index);
 	UINT GetLastResourceIndex();

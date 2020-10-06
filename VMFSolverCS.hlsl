@@ -12,7 +12,6 @@ cbuffer externalData : register(b0)
     float2 outputSize;
     float2 textureSize;
     uint mipLevel;
-    float scaleFactor;
 };
 
 float3 FetchNormal(uint2 samplePos)
@@ -30,6 +29,8 @@ void SolveVMF(float2 samplePosition, float sampleRadius, inout VMF vmfDist, inou
         vmfDist.mu = FetchNormal(uint2(samplePosition)).xyz,
         vmfDist.alpha = 1.0f;
         vmfDist.kappa = 10000.0f;
+        float roughness = roughnessMap[samplePosition].r;
+        vmfRoughness = roughness;
 
     }
     
@@ -70,7 +71,6 @@ void SolveVMF(float2 samplePosition, float sampleRadius, inout VMF vmfDist, inou
     }
 }
 
-
 #define GROUP_SIZE 16
 
 [numthreads(GROUP_SIZE, GROUP_SIZE, 1)]
@@ -93,7 +93,7 @@ uint groupIndex : SV_GroupIndex)
         SolveVMF(samplePosition, sampleRadius, vmfDist, vmfRoughness);
         
         outputVMFMap[outputPos] = float4(vmfDist.mu.x, vmfDist.mu.y, 1.0f, 1.0 / vmfDist.kappa);
-        outputRoughnessMaps[outputPos] = sqrt(float4(vmfRoughness, vmfRoughness, vmfRoughness, vmfRoughness));
+        outputRoughnessMaps[outputPos] = (float4(vmfRoughness, vmfRoughness, vmfRoughness, vmfRoughness));
 
     }
 

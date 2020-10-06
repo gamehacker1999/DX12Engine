@@ -88,6 +88,9 @@ public:
 	void InitComputeEngine();
 	HRESULT InitEnvironment();
 	void OnResize();
+	void ExecuteAndResetGraphicsCommandList(ComPtr<ID3D12GraphicsCommandList> commandList,
+		ComPtr<ID3D12CommandAllocator> commandAllocator[], ComPtr<ID3D12PipelineState> pipelineState,
+		ComPtr<ID3D12CommandQueue> aCommandQueue);
 
 	//------------------Raytracing Functions--------------------------
 
@@ -164,6 +167,10 @@ private:
 	ComPtr<ID3D12PipelineState> computePipelineState;
 	ComPtr<ID3D12Fence> computeFence;
 	//
+
+	//normal map filtering
+	ComPtr<ID3D12PipelineState> vmfSolverPSO;
+	ComPtr<ID3D12RootSignature> vmfSofverRootSignature;
 
 	ComPtr<ID3D12GraphicsCommandList> skyboxBundle;
 	ComPtr<ID3D12CommandAllocator> bundleAllocator;

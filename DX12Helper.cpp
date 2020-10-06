@@ -183,3 +183,10 @@ void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter)
 
 	*ppAdapter = adapter.Detach();
 }
+
+UINT DispatchSize(UINT tgSize, UINT numElements)
+{
+	UINT dispatchSize = numElements / tgSize;
+	dispatchSize += numElements % tgSize > 0 ? 1 : 0;
+	return dispatchSize;
+}

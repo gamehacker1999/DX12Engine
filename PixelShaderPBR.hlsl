@@ -36,6 +36,9 @@ Texture2D material[]: register(t0);
 TextureCube irradianceMap: register(t0, space1);
 TextureCube prefilteredMap: register(t1, space1);
 
+Texture2D prefilteredRoughnessMap: register(t0, space3);
+Texture2D vmfMap: register(t1, space3);
+
 StructuredBuffer<uint> LightIndices : register(t1, space2);
 
 float4 main(VertexToPixel input) : SV_TARGET
@@ -76,6 +79,10 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float roughness = material[index + 2].Sample(basicSampler, input.uv).x;
     float3 diffuseColor = surfaceColor.rgb * (1 - metalColor);
 
+	float newRoughness = prefilteredRoughnessMap.Sample(basicSampler, input.uv).x;
+
+	float vmf = vmfMap.Sample(basicSampler, input.uv).x;
+
 	//step 1 --- Solving the radiance integral for direct lighting, the integral is just the number of light sources
 	// the solid angle on the hemisphere in infinitely small, so the wi is just a direction vector
 	//for now radiance is just the color of the direction light, the diffuse part is lambertian*c/pi
@@ -101,6 +108,9 @@ float4 main(VertexToPixel input) : SV_TARGET
     uint offset = tileIndex * 1024;
 	
     bool enableSSS = subsurfaceScattering.enableSSS;
+
+	newRoughness *= newRoughness;
+	roughness = newRoughness;
 
 	[loop]
      for (uint i = 0; i < 1024 && LightIndices[offset + i] != -1; i++)

@@ -134,3 +134,6 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
 void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter);
 
 ComPtr<ID3D12PipelineState> CreatePipelineState();
+
+// Computes a compute shader dispatch size given a thread group size, and number of elements to process
+UINT DispatchSize(UINT tgSize, UINT numElements);

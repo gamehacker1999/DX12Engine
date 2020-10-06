@@ -107,6 +107,8 @@ HRESULT Game::Init()
 
 	InitComputeEngine();
 
+	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>(device);
+
 
 	//residencyManager = std::make_shared<D3DX12Residency::ResidencyManager>();
 	residencyManager.Initialize(device.Get(), 0, adapter.Get(), frameCount);
@@ -275,13 +277,40 @@ HRESULT Game::Init()
 		CreateAccelerationStructures();
 
 	//allocate volumes and skyboxes here
-
-	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>(device);
-
 	for (size_t i = 0; i < materials.size(); i++)
 	{
 		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, materials[i]->GetDescriptorHeap());
 		materials[i]->materialIndex = (UINT)i*4;
+	}
+
+	auto numStaticResources = gpuHeapRingBuffer->GetNumStaticResources();
+	for (int i = 0; i < materials.size(); i++)
+	{
+		materials[i]->GenerateMaps(device, vmfSolverPSO, vmfSofverRootSignature,
+			computeCommandList, commandList, gpuHeapRingBuffer);
+		materials[i]->prefilteredMapIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+	}
+
+	computeCommandList->Close();
+	ID3D12CommandList* computeCommandLists[] = { computeCommandList.Get() };
+	computeCommandQueue->ExecuteCommandLists(_countof(computeCommandLists), computeCommandLists);
+	auto lol = device->GetDeviceRemovedReason();
+	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
+
+	ThrowIfFailed(computeCommandQueue->Signal(computeFence.Get(), fenceValues[frameIndex]));
+
+	ThrowIfFailed(commandQueue->Wait(computeFence.Get(), fenceValues[frameIndex]));
+
+	{
+		commandList->Close();
+		ID3D12CommandList* pcommandLists[] = { commandList.Get() };
+		D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
+		commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+
+		WaitForPreviousFrame();
+
+		ThrowIfFailed(
+			commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 	}
 
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
@@ -381,16 +410,18 @@ void Game::LoadShaders()
 {
 
 	//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[4];
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[5];
 	CD3DX12_ROOT_PARAMETER1 rootParams[EntityRootIndices::EntityNumRootIndices]; // specifies the descriptor table
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 3, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+	ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 3);
 	rootParams[EntityRootIndices::EntityVertexCBV].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[EntityRootIndices::EntityIndex].InitAsConstants(1, 2, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityPixelCBV].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityMaterials].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParams[EntityRootIndices::EntityRoughnessVMFMapSRV].InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityLightListSRV].InitAsShaderResourceView(0, 2, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityLightIndices].InitAsShaderResourceView(1, 2, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityMaterialIndex].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -643,35 +674,68 @@ void Game::LoadShaders()
 	psoDescParticle.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescParticle, IID_PPV_ARGS(particlesPSO.GetAddressOf())));
 
-	//Creating the light culling root signature and pipeline state
-	CD3DX12_DESCRIPTOR_RANGE1 computeRootRanges[1];
-	CD3DX12_ROOT_PARAMETER1 lightCullingRootParams[LightCullingNumParameters];
-	computeRootRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
-	lightCullingRootParams[LightCullingRootIndices::LightListSRV].InitAsShaderResourceView(0, 2, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
-	lightCullingRootParams[LightCullingRootIndices::DepthMapSRV].InitAsDescriptorTable(1, &computeRootRanges[0]);
-	lightCullingRootParams[LightCullingRootIndices::VisibleLightIndicesUAV].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE);
-	lightCullingRootParams[LightCullingRootIndices::LightCullingExternalDataCBV].InitAsConstantBufferView(0, 0);
+	//Light culling setup
+	{
+
+		//Creating the light culling root signature and pipeline state
+		CD3DX12_DESCRIPTOR_RANGE1 computeRootRanges[1];
+		CD3DX12_ROOT_PARAMETER1 lightCullingRootParams[LightCullingNumParameters];
+		computeRootRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+		lightCullingRootParams[LightCullingRootIndices::LightListSRV].InitAsShaderResourceView(0, 2, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+		lightCullingRootParams[LightCullingRootIndices::DepthMapSRV].InitAsDescriptorTable(1, &computeRootRanges[0]);
+		lightCullingRootParams[LightCullingRootIndices::VisibleLightIndicesUAV].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE);
+		lightCullingRootParams[LightCullingRootIndices::LightCullingExternalDataCBV].InitAsConstantBufferView(0, 0);
 
 
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
-	computeRootSignatureDesc.Init_1_1(_countof(lightCullingRootParams), lightCullingRootParams);
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+		computeRootSignatureDesc.Init_1_1(_countof(lightCullingRootParams), lightCullingRootParams);
 
-	ComPtr<ID3DBlob> computeSignature;
-	ComPtr<ID3DBlob> computeError;
+		ComPtr<ID3DBlob> computeSignature;
+		ComPtr<ID3DBlob> computeError;
 
-	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
-	ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature)));
+		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
+		ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature)));
 
-	ComPtr<ID3DBlob> lightCullingCS;
+		ComPtr<ID3DBlob> lightCullingCS;
 
-	ThrowIfFailed(D3DReadFileToBlob(L"LightCullingCS.cso", lightCullingCS.GetAddressOf()));
+		ThrowIfFailed(D3DReadFileToBlob(L"LightCullingCS.cso", lightCullingCS.GetAddressOf()));
 
-	D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
-	computePSODesc.pRootSignature = computeRootSignature.Get();
-	computePSODesc.CS = CD3DX12_SHADER_BYTECODE(lightCullingCS.Get());
+		D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
+		computePSODesc.pRootSignature = computeRootSignature.Get();
+		computePSODesc.CS = CD3DX12_SHADER_BYTECODE(lightCullingCS.Get());
 
-	ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(computePipelineState.GetAddressOf())));
+		ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(computePipelineState.GetAddressOf())));
+	}
 
+	//vmf solver set up
+	{
+		CD3DX12_ROOT_PARAMETER1 rootParams[VMFFilterRootIndices::VMFFilterNumParameters];
+		CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0);
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0, 0);
+		rootParams[VMFFilterRootIndices::OutputRoughnessVMFUAV].InitAsDescriptorTable(1,&ranges[1]);
+		rootParams[VMFFilterRootIndices::NormalRoughnessSRV].InitAsDescriptorTable(1, &ranges[0]);
+		rootParams[VMFFilterRootIndices::VMFFilterExternDataCBV].InitAsConstantBufferView(0,0);
+
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+		computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams);
+
+		ComPtr<ID3DBlob> computeSignature;
+		ComPtr<ID3DBlob> computeError;
+
+		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
+		ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&vmfSofverRootSignature)));
+
+		ComPtr<ID3DBlob> vmfSolverBlob;
+		ThrowIfFailed(D3DReadFileToBlob(L"VMFSolverCS.cso", vmfSolverBlob.GetAddressOf()));
+
+		D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
+		computePSODesc.pRootSignature = vmfSofverRootSignature.Get();
+		computePSODesc.CS = CD3DX12_SHADER_BYTECODE(vmfSolverBlob.Get());
+
+		ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(vmfSolverPSO.GetAddressOf())));
+
+	}
 
 }
 
@@ -820,7 +884,7 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].intensity = 0;
 	lightCount++;
 
-	for (int i = 0; i < 2500; i++)
+	for (int i = 0; i < 1000; i++)
 	{
 		lights[lightCount].type = LIGHT_TYPE_POINT;
 		lights[lightCount].color = GetRandomFloat3(0,1);
@@ -862,22 +926,26 @@ void Game::CreateBasicGeometry()
 	float aspectRatio = static_cast<float>(width / height);
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
-	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, pbrPipelineState,rootSignature,
+	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, pbrPipelineState,rootSignature, commandList,
 		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
 		L"../../Assets/Textures/GoldRoughness.png",L"../../Assets/Textures/GoldMetallic.png");
-	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, rootSignature,
+	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, rootSignature, commandList,
 		L"../../Assets/Textures/LayeredDiffuse.png",L"../../Assets/Textures/LayeredNormal.png",
 		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
 
-	std::shared_ptr<Material> material3 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, rootSignature,
+	std::shared_ptr<Material> material3 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, 
+		rootSignature, commandList,
 		L"../../Assets/Textures/CerebrusDiffuse.png", L"../../Assets/Textures/CerebrusNormal.png",
 		L"../../Assets/Textures/CerebrusRoughness.png", L"../../Assets/Textures/CerebrusMetallic.png");
 
-	std::shared_ptr<Material> material4 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, sssPipelineState, rootSignature,
+	std::shared_ptr<Material> material4 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, 
+		sssPipelineState, rootSignature, commandList,
 		L"../../Assets/Textures/Head_Diffuse.png", L"../../Assets/Textures/Head_Normal.png");
 
-	std::shared_ptr<Material> material5 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, sssPipelineState, rootSignature,
-		L"../../Assets/Textures/GoldMetallic.png", L"../../Assets/Textures/GoldNormal.png", L"../../Assets/Textures/DefaultRoughness.png", 
+	std::shared_ptr<Material> material5 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, 
+		sssPipelineState, rootSignature, commandList,
+		L"../../Assets/Textures/GoldMetallic.png", L"../../Assets/Textures/GoldNormal.png", 
+		L"../../Assets/Textures/DefaultRoughness.png", 
 		L"../../Assets/Textures/LayeredMetallic.png");
 
 	materials.emplace_back(material1);
@@ -886,6 +954,17 @@ void Game::CreateBasicGeometry()
 	materials.emplace_back(material4);
 	materials.emplace_back(material5);
 
+	{
+		commandList->Close();
+		ID3D12CommandList* pcommandLists[] = { commandList.Get() };
+		D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
+		commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+
+		WaitForPreviousFrame();
+
+		ThrowIfFailed(
+			commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
+	}
 
 	entity1 = std::make_shared<Entity>(mesh2,material1, registry);
 	entity2 = std::make_shared<Entity>(mesh1,material2, registry);
@@ -922,8 +1001,6 @@ void Game::CreateBasicGeometry()
 	entity4->PrepareConstantBuffers(device,residencyManager,residencySet);
 	entity6->PrepareConstantBuffers(device, residencyManager, residencySet);
 	diskEntity->PrepareConstantBuffers(device, residencyManager, residencySet);
-
-
 
 	entities.emplace_back(entity1);
 	entities.emplace_back(entity2);
@@ -1283,6 +1360,18 @@ void Game::OnResize()
 	XMStoreFloat4x4(&projectionMatrix, XMMatrixTranspose(P)); // Transpose for HLSL!
 
 
+}
+
+void Game::ExecuteAndResetGraphicsCommandList(ComPtr<ID3D12GraphicsCommandList> aCommandList,
+	ComPtr<ID3D12CommandAllocator> aCommandAllocator[], ComPtr<ID3D12PipelineState> aPipelineState,
+	ComPtr<ID3D12CommandQueue> aCommandQueue)
+{
+	aCommandList->Close();
+	ID3D12CommandList* commandLists[] = { aCommandList.Get() };
+	aCommandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+	WaitForPreviousFrame();
+	auto lol = device->GetDeviceRemovedReason();
+	ThrowIfFailed(computeCommandList->Reset(aCommandAllocator[frameIndex].Get(), aPipelineState.Get()));
 }
 
 AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vertexBuffers)
@@ -1782,11 +1871,14 @@ void Game::DepthPrePass()
 
 		gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
 
+		auto matIndex = entities[i]->GetMaterialIndex();
 		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, gpuHeapRingBuffer->GetDynamicResourceOffset());
 		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityIndex, enableSSS, 0);
-		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, entities[i]->GetMaterialIndex(), 0);
+		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, matIndex, 0);
 		commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
 		commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightListSRV, lightListResource->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityRoughnessVMFMapSRV, 
+			gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(materials[matIndex/4]->prefilteredMapIndex));
 
 		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
 		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityLTCSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(ltcLUT.heapOffset));
@@ -1893,14 +1985,18 @@ void Game::PopulateCommandList()
 
 			gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
 
+			auto matIdx = entities[i]->GetMaterialIndex();
 			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, gpuHeapRingBuffer->GetDynamicResourceOffset());
 			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityIndex, enableSSS, 0);
-			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, entities[i]->GetMaterialIndex(), 0);
+			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, matIdx, 0);
 			commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightListSRV, lightListResource->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightIndices, visibleLightIndicesBuffer.resource->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
 			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityLTCSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(ltcLUT.heapOffset));
+			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityRoughnessVMFMapSRV,
+				gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(materials[matIdx / 4]->prefilteredMapIndex));
+
 
 			D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
 			auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();

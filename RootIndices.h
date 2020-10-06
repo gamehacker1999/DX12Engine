@@ -8,6 +8,7 @@ enum EntityRootIndices
 	EntityLightIndices,
 	EntityMaterials,
 	EntityMaterialIndex,
+	EntityRoughnessVMFMapSRV,
 	EntityEnvironmentSRV,
 	EntityLTCSRV,
 	EntityNumRootIndices,
@@ -60,7 +61,7 @@ enum LightCullingRootIndices
 enum VMFFilterRootIndices
 {
 	NormalRoughnessSRV,
-	OutputMapsUAV,
+	OutputRoughnessVMFUAV,
 	VMFFilterExternDataCBV,
 	VMFFilterNumParameters
 };

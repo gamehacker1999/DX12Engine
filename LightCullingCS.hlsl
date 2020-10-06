@@ -184,9 +184,6 @@ uint groupIndex : SV_GroupIndex)
       frustum.frustumPlanes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
       frustum.frustumPlanes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);
       frustum.frustumPlanes[3] = ComputePlane(eyePos, viewSpace[3], viewSpace[2]);
-        
-        //viewFrustum = CreateFrustum(tileID, fMinDepth, fMaxDepth);
-
 
     }
     
@@ -287,65 +284,5 @@ uint groupIndex : SV_GroupIndex)
         }
     
     }
-    
-   //uint listOffset = 1024 * index;
-   //
-   //for (uint i = groupIndex; i < lightCount && visibleLightCount < 1024; i += TILE_SIZE)
-   //{
-   //    switch (lights[i].type)
-   //    {
-   //        case LIGHT_TYPE_DIR:
-   //        {
-   //            uint offset;
-   //            InterlockedAdd(visibleLightCount, 1, offset);
-   //            LightIndices[listOffset + offset] = i;
-   //        }
-   //        break;
-   //
-   //        case LIGHT_TYPE_SPOT:
-   //        {
-   //         
-   //        }
-   //        break;
-   //
-   //        case LIGHT_TYPE_POINT:
-   //        {      
-   //
-   //           if (IsCollided(lights[i],viewFrustum))
-   //           {
-   //               uint offset;
-   //               InterlockedAdd(visibleLightCount, 1, offset);
-   //                   LightIndices[listOffset + offset] = i;
-   //           }
-   //       }
-   //       break;
-   //
-   //       case LIGHT_TYPE_AREA_RECT:
-   //        {
-   //            //Add all rect lights for now    
-   //           uint offset;
-   //           InterlockedAdd(visibleLightCount, 1, offset);
-   //           LightIndices[listOffset + offset] = i;
-   //        }
-   //        break;
-   //        
-   //       case LIGHT_TYPE_AREA_DISK:
-   //       {
-   //       }
-   //       break;
-   //
-   //    }
-   //}
-   //
-   //GroupMemoryBarrierWithGroupSync();
-   //
-   //if(groupIndex == 0)
-   //{   
-   //    if (visibleLightCount != 1024)
-   //    {
-   //        LightIndices[listOffset + visibleLightCount] = -1;
-   //    }
-   //
-   //}
 
 }
