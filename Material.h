@@ -34,9 +34,9 @@ class Material
 	ManagedResource vmfMap;
 
 	//cbuffer
-	GenerateMapExternData generateMapData;
-	ComPtr<ID3D12Resource> generateMapDataResource;
-	UINT8* generateMapDataCbufferBegin;
+	std::vector<GenerateMapExternData> generateMapData;
+	std::vector<ComPtr<ID3D12Resource>> generateMapDataResource;
+	std::vector<UINT8*> generateMapDataCbufferBegin;
 
 public:
 	Material(ComPtr<ID3D12Device> device,ComPtr<ID3D12CommandQueue>& commandQueue,DescriptorHeapWrapper& mainBufferHeap, 

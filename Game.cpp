@@ -288,7 +288,7 @@ HRESULT Game::Init()
 	{
 		materials[i]->GenerateMaps(device, vmfSolverPSO, vmfSofverRootSignature,
 			computeCommandList, commandList, gpuHeapRingBuffer);
-		materials[i]->prefilteredMapIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+		materials[i]->prefilteredMapIndex = gpuHeapRingBuffer->GetNumStaticResources() - 2;
 	}
 
 	computeCommandList->Close();
@@ -709,13 +709,14 @@ void Game::LoadShaders()
 
 	//vmf solver set up
 	{
-		CD3DX12_ROOT_PARAMETER1 rootParams[VMFFilterRootIndices::VMFFilterNumParameters];
+		CD3DX12_ROOT_PARAMETER1 rootParams[VMFFilterRootIndices::VMFFilterNumParameters + 1];
 		CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
 		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0);
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0, 0);
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 		rootParams[VMFFilterRootIndices::OutputRoughnessVMFUAV].InitAsDescriptorTable(1,&ranges[1]);
 		rootParams[VMFFilterRootIndices::NormalRoughnessSRV].InitAsDescriptorTable(1, &ranges[0]);
-		rootParams[VMFFilterRootIndices::VMFFilterExternDataCBV].InitAsConstantBufferView(0,0);
+		rootParams[VMFFilterRootIndices::VMFFilterExternDataCBV].InitAsConstantBufferView(0,0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE);
+		rootParams[VMFFilterNumParameters].InitAsConstants(1, 1, 0);
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
 		computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams);
@@ -935,8 +936,8 @@ void Game::CreateBasicGeometry()
 
 	std::shared_ptr<Material> material3 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, 
 		rootSignature, commandList,
-		L"../../Assets/Textures/CerebrusDiffuse.png", L"../../Assets/Textures/CerebrusNormal.png",
-		L"../../Assets/Textures/CerebrusRoughness.png", L"../../Assets/Textures/CerebrusMetallic.png");
+		L"../../Assets/Textures/CerebrusDiffuse.jpg", L"../../Assets/Textures/CerebrusNormal.jpg",
+		L"../../Assets/Textures/CerebrusRoughness.jpg", L"../../Assets/Textures/CerebrusMetalness.jpg");
 
 	std::shared_ptr<Material> material4 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, 
 		sssPipelineState, rootSignature, commandList,

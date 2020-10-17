@@ -6,7 +6,7 @@ Material::Material(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& comm
 	ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig,
 	ComPtr<ID3D12GraphicsCommandList> commandList,
 	std::wstring diffuse, std::wstring normal, std::wstring roughness,
-	std::wstring metallnes)
+	std::wstring metalness)
 {
 
 	ThrowIfFailed(descriptorHeap.Create(device, 4, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
@@ -52,9 +52,9 @@ Material::Material(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& comm
 		numTextures++;
 	}
 
-	if (metallnes != L"default")
+	if (metalness != L"default")
 	{
-		descriptorHeap.CreateDescriptor(metallnes, metallnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(metalness, metallnessTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
 		materialOffset = metallnessTexture.heapOffset;
 		numTextures++;
 	}
@@ -104,22 +104,37 @@ void Material::GenerateMaps(ComPtr<ID3D12Device> device,
 		IID_PPV_ARGS(vmfMap.resource.GetAddressOf())
 	));
 
+	for (int i = 0; i < roughnessTexture.mipLevels; i++)
+	{
 
-	//creating the cbuffer
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(generateMapDataResource.GetAddressOf())
-	));
+		ComPtr<ID3D12Resource> resource;
+		//creating the cbuffer
+		ThrowIfFailed(device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(resource.GetAddressOf())
+		));
 
-	ZeroMemory(&generateMapData, sizeof(GenerateMapExternData));
-	generateMapDataResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&generateMapDataCbufferBegin));
+		generateMapDataResource.emplace_back(resource);
 
-	generateMapData.outputSize = XMFLOAT2(roughnessTexture.width, roughnessTexture.height);
-	generateMapData.textureSize = XMFLOAT2(roughnessTexture.width, roughnessTexture.width);
+		GenerateMapExternData mapData = {};
+
+		mapData.outputSize = XMFLOAT2(roughnessTexture.width, roughnessTexture.height);
+		mapData.textureSize = XMFLOAT2(roughnessTexture.width, roughnessTexture.height);
+
+		generateMapData.emplace_back(mapData);
+
+		//ZeroMemory(&generateMapData[i], sizeof(GenerateMapExternData));
+
+		UINT8* bufferBegin = 0;
+		generateMapDataResource[i]->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&bufferBegin));
+
+		generateMapDataCbufferBegin.emplace_back(bufferBegin);
+
+	}
 
 	device->CopyDescriptorsSimple(2, generateMapDescriptorHeap.GetCPUHandle(0), descriptorHeap.GetCPUHandle(1), 
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -131,38 +146,40 @@ void Material::GenerateMaps(ComPtr<ID3D12Device> device,
 	ID3D12DescriptorHeap* ppHeaps[] = { generateMapDescriptorHeap.GetHeapPtr() };
 	computeCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(generatedRoughnessMap, RESOURCE_TYPE_SRV, device, 0, roughnessTexture.width,
-		roughnessTexture.height, 0, roughnessTexture.mipLevels);
-	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(vmfMap, RESOURCE_TYPE_SRV, device, 0, roughnessTexture.width,
-		roughnessTexture.height, 0, roughnessTexture.mipLevels);
-
-	gpuRingBuffer->IncrementNumStaticResources(2);
+	computeCommandList->SetComputeRootSignature(vmfRootSig.Get());
+	computeCommandList->SetPipelineState(vmfSolverPSO.Get());
 
 	for (int i = 0; i < roughnessTexture.mipLevels; i++)
 	{
-		generateMapData.mipLevel = i;
-		generateMapData.outputSize = XMFLOAT2(texWidth, texHeight);
+		generateMapData[i].mipLevel = i;
+		generateMapData[i].outputSize = XMFLOAT2(texWidth, texHeight);
 
+		generateMapDescriptorHeap.CreateDescriptor(vmfMap, RESOURCE_TYPE_UAV, device, 0,
+			roughnessTexture.width, roughnessTexture.height,
+			0, i);
 		generateMapDescriptorHeap.CreateDescriptor(generatedRoughnessMap, RESOURCE_TYPE_UAV, device, 0, 
 			roughnessTexture.width, roughnessTexture.height,
 			0, i);
-		generateMapDescriptorHeap.CreateDescriptor(vmfMap, RESOURCE_TYPE_UAV, device, 0, 
-			roughnessTexture.width, roughnessTexture.height,
-			0, i);
-		memcpy(generateMapDataCbufferBegin, &generateMapData, sizeof(generateMapData));
-
-		computeCommandList->SetComputeRootSignature(vmfRootSig.Get());
-		computeCommandList->SetPipelineState(vmfSolverPSO.Get());
+		memcpy(generateMapDataCbufferBegin[i], &generateMapData[i], sizeof(generateMapData[i]));
 
 		computeCommandList->SetComputeRootDescriptorTable(VMFFilterRootIndices::NormalRoughnessSRV, generateMapDescriptorHeap.GetGPUHandle(0));
-		computeCommandList->SetComputeRootDescriptorTable(VMFFilterRootIndices::OutputRoughnessVMFUAV, generateMapDescriptorHeap.GetGPUHandle(i*2 + 2));
-		computeCommandList->SetComputeRootConstantBufferView(VMFFilterRootIndices::VMFFilterExternDataCBV, generateMapDataResource->GetGPUVirtualAddress());
+		computeCommandList->SetComputeRootDescriptorTable(VMFFilterRootIndices::OutputRoughnessVMFUAV, vmfMap.uavGPUHandle);
+		computeCommandList->SetComputeRootConstantBufferView(VMFFilterRootIndices::VMFFilterExternDataCBV, generateMapDataResource[i]->GetGPUVirtualAddress());
+		computeCommandList->SetComputeRoot32BitConstant(VMFFilterRootIndices::VMFFilterNumParameters, i, 0);
+
 
 		computeCommandList->Dispatch(DispatchSize(16, texWidth), DispatchSize(16, texHeight), 1);
 
 		texWidth = std::max<UINT>(texWidth / 2, 1);
 		texHeight = std::max<UINT>(texHeight / 2, 1);
 	}
+
+	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(vmfMap, RESOURCE_TYPE_SRV, device, 0, roughnessTexture.width,
+		roughnessTexture.height, 0, roughnessTexture.mipLevels);
+	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(generatedRoughnessMap, RESOURCE_TYPE_SRV, device, 0, roughnessTexture.width,
+		roughnessTexture.height, 0, roughnessTexture.mipLevels);
+
+	gpuRingBuffer->IncrementNumStaticResources(2);
 
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(generatedRoughnessMap.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));

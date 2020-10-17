@@ -14,6 +14,11 @@ cbuffer externalData : register(b0)
     uint mipLevel;
 };
 
+cbuffer externalData : register(b1)
+{
+    uint mip;
+};
+
 float3 FetchNormal(uint2 samplePos)
 {
     float3 normal = normalize(normalMap[samplePos].xyz * 2.0f - 1.0f);
@@ -93,7 +98,7 @@ uint groupIndex : SV_GroupIndex)
         SolveVMF(samplePosition, sampleRadius, vmfDist, vmfRoughness);
         
         outputVMFMap[outputPos] = float4(vmfDist.mu.x, vmfDist.mu.y, 1.0f, 1.0 / vmfDist.kappa);
-        outputRoughnessMaps[outputPos] = (float4(vmfRoughness, vmfRoughness, vmfRoughness, vmfRoughness));
+        outputRoughnessMaps[outputPos] = sqrt(float4(vmfRoughness, vmfRoughness, vmfRoughness, vmfRoughness));
 
     }
 
