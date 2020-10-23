@@ -58,7 +58,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 skyboxColor = skyboxTexture.Sample(basicSampler,input.worldPos).rgb;
 	
 	//return the color
-	return float4(skyboxColor, 1.0f);
+	return float4(skyboxColor, 1.0f)*2;
 
     float3 dir = normalize(input.worldPos);
 	

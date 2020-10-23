@@ -152,7 +152,7 @@ HRESULT Game::Init()
 	D3D12_RESOURCE_DESC renderTexureDesc = {};
 	renderTexureDesc.Width = width;
 	renderTexureDesc.Height = height;
-	renderTexureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	renderTexureDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	renderTexureDesc.DepthOrArraySize = renderTargets[0].resource->GetDesc().DepthOrArraySize;
 	renderTexureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 	renderTexureDesc.MipLevels = renderTargets[0].resource->GetDesc().MipLevels;
@@ -168,7 +168,7 @@ HRESULT Game::Init()
 	rtvClearVal.Color[1] = color[1];
 	rtvClearVal.Color[2] = color[2];
 	rtvClearVal.Color[3] = color[3];
-	rtvClearVal.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
 
 	ThrowIfFailed(device->CreateCommittedResource(
@@ -186,6 +186,9 @@ HRESULT Game::Init()
 	finalRenderTarget.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	finalRenderTarget.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
+	renderTargetSRVHeap.Create(device, 3, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	renderTargetSRVHeap.CreateDescriptor(finalRenderTarget, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
 
 
 	//optimized clear value for depth stencil buffer
@@ -495,7 +498,7 @@ void Game::LoadShaders()
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	psoDesc.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
 
@@ -514,7 +517,7 @@ void Game::LoadShaders()
 	psoDescPBR.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDescPBR.NumRenderTargets = 1;
 	psoDescPBR.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDescPBR.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDescPBR.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	psoDescPBR.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescPBR, IID_PPV_ARGS(pbrPipelineState.GetAddressOf())));
 
@@ -531,7 +534,7 @@ void Game::LoadShaders()
 	sssDescPBR.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	sssDescPBR.NumRenderTargets = 1;
 	sssDescPBR.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	sssDescPBR.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	sssDescPBR.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	sssDescPBR.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&sssDescPBR, IID_PPV_ARGS(sssPipelineState.GetAddressOf())));
 
@@ -605,7 +608,7 @@ void Game::LoadShaders()
 	psoDescVolume.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDescVolume.NumRenderTargets = 1;
 	psoDescVolume.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDescVolume.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDescVolume.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	psoDescVolume.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescVolume, IID_PPV_ARGS(volumePSO.GetAddressOf())));
 
@@ -670,7 +673,7 @@ void Game::LoadShaders()
 	psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDescParticle.NumRenderTargets = 1;
 	psoDescParticle.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	psoDescParticle.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescParticle, IID_PPV_ARGS(particlesPSO.GetAddressOf())));
 
@@ -735,6 +738,61 @@ void Game::LoadShaders()
 		computePSODesc.CS = CD3DX12_SHADER_BYTECODE(vmfSolverBlob.Get());
 
 		ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(vmfSolverPSO.GetAddressOf())));
+
+	}
+
+	//setting up post processing shaders
+	{
+
+		//creating particle root sig and pso
+		CD3DX12_DESCRIPTOR_RANGE1 toneMappingDescriptorRange[1];
+		CD3DX12_ROOT_PARAMETER1 tonemappingRootParams[2];
+
+		//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+		toneMappingDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+
+		//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+		tonemappingRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
+		tonemappingRootParams[1].InitAsDescriptorTable(1, &toneMappingDescriptorRange[0],D3D12_SHADER_VISIBILITY_PIXEL);
+
+		ComPtr<ID3DBlob> tonemappingSignature;
+		ComPtr<ID3DBlob> tonemappingError;
+
+		CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+		staticSamplers[0].Init(0);
+
+		rootSignatureDesc.Init_1_1(_countof(tonemappingRootParams), tonemappingRootParams,
+			_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+			tonemappingSignature.GetAddressOf(), tonemappingError.GetAddressOf()));
+
+		ThrowIfFailed(device->CreateRootSignature(0, tonemappingSignature->GetBufferPointer(), tonemappingSignature->GetBufferSize(),
+			IID_PPV_ARGS(toneMappingRootSig.GetAddressOf())));
+
+		ComPtr<ID3DBlob> fullcreenVS;
+		ComPtr<ID3DBlob> tonemappingPS;
+
+		ThrowIfFailed(D3DReadFileToBlob(L"TonemappingPS.cso", tonemappingPS.GetAddressOf()));
+		ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+		//creating a tonemapping pipeline state
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC toneMappingPSODesc = {};
+		toneMappingPSODesc.InputLayout = { };
+		toneMappingPSODesc.pRootSignature = toneMappingRootSig.Get();
+		toneMappingPSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+		toneMappingPSODesc.PS = CD3DX12_SHADER_BYTECODE(tonemappingPS.Get());
+		toneMappingPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		toneMappingPSODesc.DepthStencilState.DepthEnable = false;
+		toneMappingPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+		toneMappingPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+		toneMappingPSODesc.SampleMask = UINT_MAX;
+		toneMappingPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		toneMappingPSODesc.NumRenderTargets = 1;
+		toneMappingPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		toneMappingPSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		toneMappingPSODesc.SampleDesc.Count = 1;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&toneMappingPSODesc, IID_PPV_ARGS(toneMappingPSO.GetAddressOf())));
 
 	}
 
@@ -864,7 +922,7 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].rectLight.rotZ = 0;
 	lights[lightCount].rectLight.rotX = 0;
 	lights[lightCount].position = XMFLOAT3(-6, -2, 0);
-	lights[lightCount].intensity = 2;
+	lights[lightCount].intensity = 100;
 	lightCount++;
 
 	lights[lightCount].type = LIGHT_TYPE_AREA_DISK;
@@ -875,7 +933,7 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].rectLight.rotZ = 0;
 	lights[lightCount].rectLight.rotX = 0;
 	lights[lightCount].position = XMFLOAT3(-2, -2, 0);
-	lights[lightCount].intensity = 6;
+	lights[lightCount].intensity = 10;
 	lightCount++;
 
 	lights[lightCount].type = LIGHT_TYPE_POINT;
@@ -1120,7 +1178,7 @@ void Game::CreateEnvironment()
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	psoDesc.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(skyboxPSO.GetAddressOf())));
 
@@ -2027,26 +2085,28 @@ void Game::PopulateCommandList()
 			emitter1->Draw(commandList, gpuHeapRingBuffer, mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), totalTime);
 		}
 
-		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
+		RenderPostProcessing();
 
-		commandList->ResourceBarrier(1, &transition);
-
-
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_COPY_DEST);
-
-		commandList->ResourceBarrier(1, &transition);
-
-		commandList->CopyResource(renderTargets[frameIndex].resource.Get(),
-			finalRenderTarget.resource.Get());
-
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-		commandList->ResourceBarrier(1, &transition);
+		//transition = CD3DX12_RESOURCE_BARRIER::Transition(
+		//	finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+		//	D3D12_RESOURCE_STATE_COPY_SOURCE);
+		//
+		//ommandList->ResourceBarrier(1, &transition);
+		//
+		//
+		//ransition = CD3DX12_RESOURCE_BARRIER::Transition(
+		//	renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+		//	D3D12_RESOURCE_STATE_COPY_DEST);
+		//
+		//ommandList->ResourceBarrier(1, &transition);
+		//
+		//ommandList->CopyResource(renderTargets[frameIndex].resource.Get(),
+		//	finalRenderTarget.resource.Get());
+		//
+		//transition = CD3DX12_RESOURCE_BARRIER::Transition(
+		//	renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+		//	D3D12_RESOURCE_STATE_RENDER_TARGET);
+		//commandList->ResourceBarrier(1, &transition);
 
 	}
 
@@ -2127,8 +2187,46 @@ void Game::PopulateCommandList()
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
+
+
 	commandList->Close();
 	residencySet->Close();
+
+}
+
+void Game::RenderPostProcessing()
+{
+	//transition render target to readable texture and then transition it back to render target
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
+		finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+	commandList->ResourceBarrier(1, &transition);
+
+	ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+
+	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	auto rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);
+
+	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	commandList->SetGraphicsRootSignature(toneMappingRootSig.Get());
+	commandList->SetPipelineState(toneMappingPSO.Get());
+
+	commandList->SetGraphicsRootDescriptorTable(1, finalRenderTarget.srvGPUHandle);
+
+	commandList->DrawInstanced(3, 1, 0, 0);
+
+	//transition render target to readable texture and then transition it back to render target
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(
+		finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+	commandList->ResourceBarrier(1, &transition);
 
 }
 

@@ -137,6 +137,7 @@ public:
 	void Update(float deltaTime, float totalTime);
 	void Draw(float deltaTime, float totalTime);
 	void PopulateCommandList();
+	void RenderPostProcessing();
 	void WaitForPreviousFrame();
 	void MoveToNextFrame();
 
@@ -288,6 +289,10 @@ private:
 	ComPtr<ID3D12RootSignature> volumeRootSignature;
 	ComPtr<ID3D12PipelineState> volumePSO;
 	std::shared_ptr<RaymarchedVolume> flame;
+
+	//tonemapping variables
+	ComPtr<ID3D12RootSignature> toneMappingRootSig;
+	ComPtr<ID3D12PipelineState> toneMappingPSO;
 
 	//---------------------Raytracing vars-------------------
 

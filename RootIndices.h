@@ -65,3 +65,8 @@ enum VMFFilterRootIndices
 	VMFFilterExternDataCBV,
 	VMFFilterNumParameters
 };
+
+enum TonemappingRootIndices
+{
+		
+};
