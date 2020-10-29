@@ -135,3 +135,15 @@ void RaymarchedVolume::PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3
 
 	memcpy(volumeBufferBegin, &volumeData, sizeof(volumeData));
 }
+
+void RaymarchedVolume::Render(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, 
+	std::shared_ptr<GPUHeapRingBuffer> ringBuffer)
+{
+	commandList->SetPipelineState(GetPipelineState().Get());
+	commandList->SetGraphicsRootSignature(GetRootSignature().Get());
+	commandList->SetGraphicsRootConstantBufferView(0, GetConstantBuffer()->GetGPUVirtualAddress());
+	commandList->SetGraphicsRootDescriptorTable(1, ringBuffer->GetDescriptorHeap().GetGPUHandle(volumeTextureIndex));
+	commandList->IASetVertexBuffers(0, 1, &GetMesh()->GetVertexBuffer());
+	commandList->IASetIndexBuffer(&GetMesh()->GetIndexBuffer());
+	commandList->DrawIndexedInstanced(GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+}

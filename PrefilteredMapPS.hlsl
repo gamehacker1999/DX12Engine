@@ -1,3 +1,4 @@
+#include "Utils.hlsli"
 
 //struct to represent the vertex shader input
 struct VertexToPixel
@@ -18,9 +19,7 @@ cbuffer FaceIndex: register(b1)
 
 ConstantBuffer<RoughnessData> roughnessData: register(b0);
 
-static const float PI = 3.141592653f;
-
-TextureCube skybox : register(t0);
+Texture2D skybox : register(t0);
 SamplerState basicSampler: register(s0);
 //function to generate the van der corpus sequence
 float RadicalInverse_VdC(uint bits)
@@ -102,7 +101,10 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 		float NdotL = saturate(dot(N, L));
 
-		prefilteredColor += skybox.Sample(basicSampler, L).rgb * NdotL;
+
+		float2 uv = DirectionToLatLongUV(L);
+
+		prefilteredColor += skybox.Sample(basicSampler, uv).rgb * NdotL;
 		totalWeight += NdotL;
 	}
 

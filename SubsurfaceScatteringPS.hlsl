@@ -106,10 +106,8 @@ float3 CalculateLight(Light light, VertexToPixel input, Texture2D normalMap, Sam
 	float NdotL = dot(N, L);
 	NdotL = saturate(NdotL); //this is the light amount, we need to clamp it to 0 and 1.0
 
-	bool enableSSS = subsurfaceScattering.enableSSS;
-
 	float3 diffuse = NdotL;
-	if (enableSSS)
+	if (true)
 	{
         float c1 = clamp(length(fwidth(finalNormalR)), 0, 1) / length(fwidth(input.worldPosition));
         float c2 = clamp(length(fwidth(finalNormalG)), 0, 1) / length(fwidth(input.worldPosition));

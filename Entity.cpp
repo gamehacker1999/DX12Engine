@@ -24,7 +24,7 @@ Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& materi
 
 	useRigidBody = false;
 
-	 //entityID = registry.create();
+	 entityID = registry.create();
 }
 
 Entity::~Entity()
@@ -56,6 +56,28 @@ void Entity::SetScale(XMFLOAT3 scale)
 void Entity::SetModelMatrix(XMFLOAT4X4 matrix)
 {
 	this->modelMatrix = matrix;
+}
+
+void Entity::Draw(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer)
+{
+	commandList->SetGraphicsRootSignature(GetRootSignature().Get());
+
+	ringBuffer->AddDescriptor(device, 1, GetDescriptorHeap(), 0);
+
+	auto matIdx = GetMaterialIndex();
+	commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, matIdx, 0);
+	commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, ringBuffer->GetDynamicResourceOffset());
+	commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityRoughnessVMFMapSRV,
+		ringBuffer->GetDescriptorHeap().GetGPUHandle(material->prefilteredMapIndex));
+
+
+	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = GetMesh()->GetVertexBuffer();
+	auto indexBuffer = GetMesh()->GetIndexBuffer();
+
+	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+	commandList->IASetIndexBuffer(&indexBuffer);
+
+	commandList->DrawIndexedInstanced(GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 }
 
 /*void Entity::SetRigidBody(std::shared_ptr<RigidBody> body)

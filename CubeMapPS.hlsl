@@ -1,3 +1,4 @@
+#include "Utils.hlsli"
 
 struct VertexToPixel
 {
@@ -6,7 +7,7 @@ struct VertexToPixel
 };
 
 //variables for the textures
-TextureCube skyboxTexture: register(t0);
+Texture2D skyboxTexture: register(t0);
 SamplerState basicSampler: register(s0);
 
 float AngleBetween(in float3 dir0, in float3 dir1)
@@ -54,8 +55,11 @@ float3 CIEClearSky(in float3 dir, in float3 sunDir)
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
+
+	float2 uv = DirectionToLatLongUV(input.worldPos);
+
 	//sample the skybox color
-	float3 skyboxColor = skyboxTexture.Sample(basicSampler,input.worldPos).rgb;
+	float3 skyboxColor = skyboxTexture.Sample(basicSampler, uv).rgb;
 	
 	//return the color
 	return float4(skyboxColor, 1.0f)*2;

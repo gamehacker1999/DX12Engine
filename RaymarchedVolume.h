@@ -1,6 +1,7 @@
 #pragma once
 #include"DX12Helper.h"
 #include"DescriptorHeapWrapper.h"
+#include "GPUHeapRingBuffer.h"
 #include<WICTextureLoader.h>
 #include<DDSTextureLoader.h>
 #include<fstream>
@@ -54,6 +55,8 @@ public:
 	std::shared_ptr<Mesh>& GetMesh();
 
 	void PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition,float totalTime);
+
+	void Render(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer);
 
 	UINT volumeTextureIndex;
 };

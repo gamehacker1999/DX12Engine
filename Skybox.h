@@ -40,7 +40,7 @@ class Skybox
 public:
 	Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& skyboxPSO,
 		ComPtr<ID3D12RootSignature> skyboxRoot, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& commandQueue,
-		DescriptorHeapWrapper& mainBufferHeap);
+		DescriptorHeapWrapper& mainBufferHeap, bool isCubeMap = true);
 
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();

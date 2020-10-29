@@ -26,6 +26,7 @@ class Game;
 typedef enum TEXTURE_TYPES
 {
 	TEXTURE_TYPE_DDS,
+	TEXTURE_TYPE_HDR,
 	TEXTURE_TYPE_DEAULT	
 }TEXTURE_TYPES;
 
@@ -137,3 +138,5 @@ ComPtr<ID3D12PipelineState> CreatePipelineState();
 
 // Computes a compute shader dispatch size given a thread group size, and number of elements to process
 UINT DispatchSize(UINT tgSize, UINT numElements);
+
+

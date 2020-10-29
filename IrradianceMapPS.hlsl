@@ -1,3 +1,5 @@
+#include "Utils.hlsli"
+
 //struct to represent the vertex shader input
 struct VertexToPixel
 {
@@ -10,7 +12,7 @@ cbuffer FaceIndex: register(b1)
 	int faceIndex;
 };
 
-TextureCube skybox : register(t0);
+Texture2D skybox : register(t0);
 SamplerState basicSampler: register(s0);
 
 float4 main(VertexToPixel input) :SV_TARGET
@@ -60,8 +62,10 @@ float4 main(VertexToPixel input) :SV_TARGET
 			//connverting from tangent space to world space
 			float3 sampleVector = (cartesian.x * right) + (cartesian.y * up) + (cartesian.z * normal);
 
+			float2 uv = DirectionToLatLongUV(sampleVector);
+
 			//adding all the texure values
-			irradiance += skybox.Sample(basicSampler, sampleVector).rgb * sin(theta) * cos(theta);
+			irradiance += skybox.Sample(basicSampler, uv).rgb * sin(theta) * cos(theta);
 
 			numOfSamples++;
 		}

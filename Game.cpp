@@ -71,10 +71,10 @@ Game::~Game()
 		delete[] lights;
 	}
 
-	//for (int i = 0; i < flockers.size(); i++)
-	//{
-	//	registry.destroy(flockers[i]->GetEntityID());
-	//}
+	for (int i = 0; i < flockers.size(); i++)
+	{
+		registry.destroy(flockers[i]->GetEntityID());
+	}
 	
 	//delete[] denoised_pixels;
 	//inputBuffer->destroy();
@@ -1085,24 +1085,24 @@ void Game::CreateBasicGeometry()
 	//
 	//}
 
-	//for (int i = 0; i < 10; i++)
-	//{
-	//	flockers.emplace_back(std::make_shared<Entity>(sharkMesh, material2, registry));
-	//	flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
-	//	const auto enttID = flockers[i]->GetEntityID();
-	//
-	//	flockers[i]->SetPosition(XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f));
-	//	//registry.assign<Flocker>(enttID, XMFLOAT3(i+2,i-2,0), 2 ,XMFLOAT3(0,0,0), 10,XMFLOAT3(0,0,0),1);
-	//	auto valid = registry.valid(enttID);
-	//
-	//	auto &flocker = registry.assign<Flocker>(enttID);
-	//	flocker.pos = XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f);
-	//	flocker.vel = XMFLOAT3(0, 0, 0);
-	//	flocker.acceleration = XMFLOAT3(0, 0, 0);
-	//	flocker.mass = 2;
-	//	flocker.maxSpeed = 2;
-	//	flocker.safeDistance = 1;
-	//}
+	for (int i = 0; i < 10; i++)
+	{
+		flockers.emplace_back(std::make_shared<Entity>(sharkMesh, material2, registry));
+		flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
+		const auto enttID = flockers[i]->GetEntityID();
+	
+		flockers[i]->SetPosition(XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f));
+		//registry.assign<Flocker>(enttID, XMFLOAT3(i+2,i-2,0), 2 ,XMFLOAT3(0,0,0), 10,XMFLOAT3(0,0,0),1);
+		auto valid = registry.valid(enttID);
+	
+		auto &flocker = registry.assign<Flocker>(enttID);
+		flocker.pos = XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f);
+		flocker.vel = XMFLOAT3(0, 0, 0);
+		flocker.acceleration = XMFLOAT3(0, 0, 0);
+		flocker.mass = 2;
+		flocker.maxSpeed = 2;
+		flocker.safeDistance = 1;
+	}
 
 }
 
@@ -1184,7 +1184,8 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox3.dds", mesh2, skyboxPSO, skyboxRootSignature, device, commandQueue, mainBufferHeap);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/beach.dds", mesh1, skyboxPSO, skyboxRootSignature, 
+		device, commandQueue, mainBufferHeap, false);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 
@@ -1855,7 +1856,7 @@ void Game::Update(float deltaTime, float totalTime)
 		//rtDescriptorHeap.UpdateRaytracingAccelerationStruct(device, topLevelAsBuffers);
 	//}
 
-	//FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
+	FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
 
 }
 
@@ -1923,33 +1924,18 @@ void Game::DepthPrePass()
 
 	for (UINT i = 0; i < entities.size(); i++)
 	{
-		commandList->SetGraphicsRootSignature(entities[i]->GetRootSignature().Get());
-		commandList->SetPipelineState(depthPrePassPipelineState.Get());
-
 		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
-
-		gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
-
-		auto matIndex = entities[i]->GetMaterialIndex();
-		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, gpuHeapRingBuffer->GetDynamicResourceOffset());
-		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityIndex, enableSSS, 0);
-		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, matIndex, 0);
-		commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
-		commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightListSRV, lightListResource->GetGPUVirtualAddress());
-		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityRoughnessVMFMapSRV, 
-			gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(materials[matIndex/4]->prefilteredMapIndex));
-
-		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
-		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityLTCSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(ltcLUT.heapOffset));
-
-		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
-		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
-
-		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-		commandList->IASetIndexBuffer(&indexBuffer);
-
-		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+		commandList->SetPipelineState(depthPrePassPipelineState.Get());
+		entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
 	}
+
+	for (UINT i = 0; i < flockers.size(); i++)
+	{
+		flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+		commandList->SetPipelineState(depthPrePassPipelineState.Get());
+		flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
+	}
+
 
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 	depthTex.currentState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
@@ -2035,36 +2021,24 @@ void Game::PopulateCommandList()
 		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityMaterials, gpuCBVSRVUAVHandle);
 		gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetStaticDescriptorOffset();
 
+		commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightListSRV, lightListResource->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightIndices, visibleLightIndicesBuffer.resource->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
+		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityLTCSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(ltcLUT.heapOffset));
+
 		for (UINT i = 0; i < entities.size(); i++)
 		{
-			commandList->SetGraphicsRootSignature(entities[i]->GetRootSignature().Get());
-			commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
-
 			entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+			commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
+			entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
+		}
 
-			gpuHeapRingBuffer->AddDescriptor(device, 1, entities[i]->GetDescriptorHeap(), 0);
-
-			auto matIdx = entities[i]->GetMaterialIndex();
-			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, gpuHeapRingBuffer->GetDynamicResourceOffset());
-			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityIndex, enableSSS, 0);
-			commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, matIdx, 0);
-			commandList->SetGraphicsRootConstantBufferView(EntityRootIndices::EntityPixelCBV, lightingConstantBufferResource->GetGPUVirtualAddress());
-			commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightListSRV, lightListResource->GetGPUVirtualAddress());
-			commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightIndices, visibleLightIndicesBuffer.resource->GetGPUVirtualAddress());
-			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
-			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityLTCSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(ltcLUT.heapOffset));
-			commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityRoughnessVMFMapSRV,
-				gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(materials[matIdx / 4]->prefilteredMapIndex));
-
-
-			D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
-			auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
-
-			commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-			commandList->IASetIndexBuffer(&indexBuffer);
-
-			commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-
+		for (UINT i = 0; i < flockers.size(); i++)
+		{
+			flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+			commandList->SetPipelineState(flockers[i]->GetPipelineState().Get());
+			flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
 		}
 
 		skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
@@ -2072,13 +2046,7 @@ void Game::PopulateCommandList()
 		commandList->ExecuteBundle(skyboxBundle.Get());
 
 		flame->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition(), totalTime);
-		commandList->SetPipelineState(flame->GetPipelineState().Get());
-		commandList->SetGraphicsRootSignature(flame->GetRootSignature().Get());
-		commandList->SetGraphicsRootConstantBufferView(0, flame->GetConstantBuffer()->GetGPUVirtualAddress());
-		commandList->SetGraphicsRootDescriptorTable(1, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(flame->volumeTextureIndex));
-		commandList->IASetVertexBuffers(0, 1, &flame->GetMesh()->GetVertexBuffer());
-		commandList->IASetIndexBuffer(&flame->GetMesh()->GetIndexBuffer());
-		commandList->DrawIndexedInstanced(flame->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+		flame->Render(device, commandList, gpuHeapRingBuffer);
 
 		for (int i = 0; i < emitters.size(); i++)
 		{

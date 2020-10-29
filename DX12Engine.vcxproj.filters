@@ -362,5 +362,8 @@
     <None Include="LTCLighting.hlsli">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Utils.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

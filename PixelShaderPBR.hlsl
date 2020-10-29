@@ -108,9 +108,6 @@ float4 main(VertexToPixel input) : SV_TARGET
     float4 envBRDF = brdfLUT.Sample(basicSampler, float2(ndotv, roughness));
 	
     uint offset = tileIndex * 1024;
-	
-    bool enableSSS = subsurfaceScattering.enableSSS;
-
 	[loop]
      for (uint i = 0; i < 1024 && LightIndices[offset + i] != -1; i++)
      {
