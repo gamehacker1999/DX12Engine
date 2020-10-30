@@ -1184,7 +1184,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/beach.dds", mesh1, skyboxPSO, skyboxRootSignature, 
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/beach.dds", mesh2, skyboxPSO, skyboxRootSignature, 
 		device, commandQueue, mainBufferHeap, false);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));

@@ -62,11 +62,11 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 skyboxColor = skyboxTexture.Sample(basicSampler, uv).rgb;
 	
 	//return the color
-	return float4(skyboxColor, 1.0f)*2;
+	return float4(skyboxColor, 1.0f);
 
-    float3 dir = normalize(input.worldPos);
-	
-	float3 sunDir = { 1, 1, 0 };
-    
-	return float4(CIEClearSky(dir, normalize(sunDir)), 1.0f);
+    //float3 dir = normalize(input.worldPos);
+	//
+	//float3 sunDir = { 1, 1, 0 };
+    //
+	//return float4(CIEClearSky(dir, normalize(sunDir)), 1.0f);
 }
