@@ -30,6 +30,8 @@ class Skybox
 	//ManagedResource constantBufferResource;
 	SkyboxData skyboxData;
 
+	ComPtr<ID3D12Resource> textureUpload;
+
 	//skybox environment for image based lighting
 	bool hasEnvironmentMaps;
 	std::unique_ptr<Environment> environment;
@@ -40,6 +42,7 @@ class Skybox
 public:
 	Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& skyboxPSO,
 		ComPtr<ID3D12RootSignature> skyboxRoot, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& commandQueue,
+		ComPtr<ID3D12GraphicsCommandList> commandList,
 		DescriptorHeapWrapper& mainBufferHeap, bool isCubeMap = true);
 
 	ComPtr<ID3D12RootSignature>& GetRootSignature();

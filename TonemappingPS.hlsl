@@ -20,7 +20,7 @@ float3 uncharted2_tonemap_partial(float3 x)
 
 float3 uncharted2_filmic(float3 v)
 {
-	float exposure_bias = 2.0f;
+	float exposure_bias = 0.5f;
 	float3 curr = uncharted2_tonemap_partial(v * exposure_bias);
 
 	float3 W = float3(11.2f, 11.2f, 11.2f);
@@ -33,16 +33,16 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float gamma = 2.2;
 	float3 hdrColor = hdrTarget.Sample(basicSampler, input.uv).rgb;
     // reinhard tone mapping
-	float3 mapped = hdrColor / (hdrColor + float3(1.0, 1.0, 1.0));
+	float3 mapped = float3(1.0, 1.0, 1.0) - exp(-hdrColor * 0.75);
 	// gamma correction 
 
 	float exposureBias = 2.0f;
 	float3 curr = uncharted2_tonemap_partial(hdrColor);
 
-	float gammaFactor = 1.0 / gamma;
-	mapped = pow(mapped, gammaFactor.xxx);
 
 	float3 finalCol = uncharted2_filmic(hdrColor);
+	float gammaFactor = 1.0 / gamma;
+	finalCol = pow(finalCol, gammaFactor.xxx);
 	
 	return float4(finalCol, 1.0);
 }

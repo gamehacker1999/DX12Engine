@@ -130,7 +130,10 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIndices, ComPtr<ID3D12Device> device,
 	ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource>& indexBufferHeap, ComPtr<ID3D12Resource>& uploadIndexHeap);
 
-void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, ComPtr<ID3D12CommandQueue>& commandQueue,TEXTURE_TYPES type=TEXTURE_TYPE_DEAULT);
+void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, 
+	ComPtr<ID3D12CommandQueue>& commandQueue,
+	ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, ID3D12Resource* uploadRes = nullptr,
+	TEXTURE_TYPES type=TEXTURE_TYPE_DEAULT);
 
 void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter);
 
@@ -138,5 +141,8 @@ ComPtr<ID3D12PipelineState> CreatePipelineState();
 
 // Computes a compute shader dispatch size given a thread group size, and number of elements to process
 UINT DispatchSize(UINT tgSize, UINT numElements);
+
+float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* height);
+
 
 

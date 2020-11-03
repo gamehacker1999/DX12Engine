@@ -159,7 +159,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     float3 color = Lo;
 	color += ambientIndirect;
 
-	color = pow(abs(color), 1.f / 2.2f);
+	color = pow(abs(color), 1.f / 1);
 
 	return float4(color, surfaceColor.w);
 }

@@ -297,11 +297,7 @@ HRESULT Game::Init()
 	computeCommandList->Close();
 	ID3D12CommandList* computeCommandLists[] = { computeCommandList.Get() };
 	computeCommandQueue->ExecuteCommandLists(_countof(computeCommandLists), computeCommandLists);
-	auto lol = device->GetDeviceRemovedReason();
-	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
-
 	ThrowIfFailed(computeCommandQueue->Signal(computeFence.Get(), fenceValues[frameIndex]));
-
 	ThrowIfFailed(commandQueue->Wait(computeFence.Get(), fenceValues[frameIndex]));
 
 	{
@@ -309,12 +305,14 @@ HRESULT Game::Init()
 		ID3D12CommandList* pcommandLists[] = { commandList.Get() };
 		D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
 		commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
-
-		WaitForPreviousFrame();
-
-		ThrowIfFailed(
-			commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 	}
+
+	WaitForPreviousFrame();
+	
+	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
+
+	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
+
 
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
 	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources()-1;
@@ -1184,8 +1182,8 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/beach.dds", mesh2, skyboxPSO, skyboxRootSignature, 
-		device, commandQueue, mainBufferHeap, false);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox4.hdr", mesh1, skyboxPSO, skyboxRootSignature, 
+		device, commandQueue, commandList, mainBufferHeap, false);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 
@@ -1214,7 +1212,7 @@ void Game::CreateEnvironment()
 	irradiancePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	irradiancePsoDesc.NumRenderTargets = 1;
 	irradiancePsoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-	irradiancePsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	irradiancePsoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	irradiancePsoDesc.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&irradiancePsoDesc, IID_PPV_ARGS(irradiencePSO.GetAddressOf())));
 
@@ -1239,7 +1237,7 @@ void Game::CreateEnvironment()
 	prefiltermapPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	prefiltermapPSODesc.NumRenderTargets = 1;
 	prefiltermapPSODesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-	prefiltermapPSODesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	prefiltermapPSODesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	prefiltermapPSODesc.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&prefiltermapPSODesc, IID_PPV_ARGS(prefilteredMapPSO.GetAddressOf())));
 

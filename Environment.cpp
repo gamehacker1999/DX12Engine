@@ -108,7 +108,7 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	irradienaceTextureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 	irradienaceTextureDesc.SampleDesc.Count = 1;
 	irradienaceTextureDesc.SampleDesc.Quality = 0;
-	irradienaceTextureDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	irradienaceTextureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	irradienaceTextureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
 
@@ -119,7 +119,7 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	rtvClearVal.Color[1] = color[1];
 	rtvClearVal.Color[2] = color[2];
 	rtvClearVal.Color[3] = color[3];
-	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	rtvClearVal.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
 	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
@@ -261,9 +261,9 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 	D3D12_RESOURCE_DESC prefilterMapDesc = {};
 	prefilterMapDesc.DepthOrArraySize = 6;
 	prefilterMapDesc.MipLevels = 5;
-	prefilterMapDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	prefilterMapDesc.Width = 128;
-	prefilterMapDesc.Height = 128;
+	prefilterMapDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	prefilterMapDesc.Width = 2048;
+	prefilterMapDesc.Height = 2048;
 	prefilterMapDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 	prefilterMapDesc.SampleDesc.Count = 1;
 	prefilterMapDesc.SampleDesc.Quality = 0;
@@ -276,7 +276,7 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 	rtvClearVal.Color[1] = color[1];
 	rtvClearVal.Color[2] = color[2];
 	rtvClearVal.Color[3] = color[3];
-	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	rtvClearVal.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), 
@@ -305,8 +305,8 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 
 	for (UINT mip = 0; mip < 5; mip++)
 	{
-		double width = 128 * pow(0.5, mip);
-		double height = 128 * pow(0.5, mip);
+		double width = 2048 * pow(0.5, mip);
+		double height = 2048 * pow(0.5, mip);
 
 		viewPort = {};
 		viewPort.Height = (float)height;
@@ -331,8 +331,8 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 		{
 			rtvDescriptorHeap.CreateDescriptor(prefilteredMapTextures, RESOURCE_TYPE_RTV, device, 0, width, height, i, mip);
 			commandList->ClearRenderTargetView(rtvDescriptorHeap.GetCPUHandle(prefilteredMapTextures.heapOffset), clearColor, 0, 0);
-			commandList->OMSetRenderTargets(1, &rtvDescriptorHeap.GetCPUHandle(prefilteredMapTextures.heapOffset), FALSE, &depthStencilHandle);
-			commandList->ClearDepthStencilView(depthStencilHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, 0);
+			commandList->OMSetRenderTargets(1, &rtvDescriptorHeap.GetCPUHandle(prefilteredMapTextures.heapOffset), FALSE, nullptr);
+			//commandList->ClearDepthStencilView(depthStencilHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, 0);
 
 			XMStoreFloat4x4(&environmentData.world, XMMatrixIdentity());
 			//environmentData.view = cubemapViews[i];

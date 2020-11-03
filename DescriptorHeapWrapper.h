@@ -30,7 +30,8 @@ public:
 		ComPtr<ID3D12Device> device,size_t cbufferSize=0,UINT width = 0, UINT height = 0,UINT firstArraySlice = -1,UINT mipLevel = 0);
 	void CreateDescriptor(std::wstring resName, ManagedResource& resource,
 		RESOURCE_TYPE resourceType, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue,
-		TEXTURE_TYPES type, bool isCube = false);
+		TEXTURE_TYPES type = TEXTURE_TYPE_DEAULT, bool isCube = false, ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, 
+		ComPtr<ID3D12Resource> uploadRes = nullptr);
 	void CreateStructuredBuffer(ManagedResource& resource, ComPtr<ID3D12Device> device, UINT numElements, UINT stride, UINT bufferSize);
 	void CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer);
 	void UpdateRaytracingAccelerationStruct(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer);

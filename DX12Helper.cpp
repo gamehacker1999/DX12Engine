@@ -1,6 +1,9 @@
 #include "DX12Helper.h"
 #include <fstream>
 
+
+float* pixels;
+
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence> fence, UINT64 fenceValue, HANDLE fenceEvent)
 {
 	//signal and increment the fence
@@ -124,7 +127,8 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 	}
 }
 
-void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, ComPtr<ID3D12CommandQueue>& commandQueue, TEXTURE_TYPES type)
+void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, ComPtr<ID3D12CommandQueue>& commandQueue, 
+    ComPtr<ID3D12GraphicsCommandList> commandList, ID3D12Resource* uploadRes, TEXTURE_TYPES type)
 {
 
 	if (type == TEXTURE_TYPE_DDS)
@@ -138,6 +142,49 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
 
 		uploadResourceFinish.wait();
 	}
+
+    else if (type == TEXTURE_TYPE_HDR)
+    {
+        unsigned int width = 0;
+        unsigned int height = 0;
+        pixels = ReadHDR(textureName.c_str(), &width, &height);
+
+        D3D12_RESOURCE_DESC textDesc = {};
+        ThrowIfFailed(device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height),
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(tex.GetAddressOf())
+        ));
+
+        const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.Get(), 0, 1);
+
+        ThrowIfFailed(device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&uploadRes)));
+
+        // Copy data to the intermediate upload heap and the
+        // from the upload heap to the Texture2D
+
+        D3D12_SUBRESOURCE_DATA textureData = {};
+        textureData.pData = pixels;
+        textureData.RowPitch = width * 16;
+        textureData.SlicePitch = textureData.RowPitch * height;
+
+        UpdateSubresources<1>(commandList.Get(), tex.Get(), uploadRes, 0, 0, 1, &textureData);
+
+        delete[] pixels;
+
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+    }
 
 	else
 	{
@@ -375,6 +422,9 @@ float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* he
             pixels[i * 4 + 3] = 1.0f;
         }
     }
+
+    auto lol = pixels[2400];
+
     // Clean up
     delete[] data;
     // Success

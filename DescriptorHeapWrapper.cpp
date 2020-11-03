@@ -196,11 +196,11 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 
 void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResource& resource, 
 	RESOURCE_TYPE resourceType, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue,
-	TEXTURE_TYPES type, bool isCube)
+	TEXTURE_TYPES type, bool isCube, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource> uploadRes)
 {
 	if (resourceType == RESOURCE_TYPE_SRV)
 	{
-		LoadTexture(device, resource.resource, resName, commandQueue,type);
+		LoadTexture(device, resource.resource, resName, commandQueue, commandList, uploadRes.Get(), type);
 		CreateShaderResourceView(device.Get(), resource.resource.Get(), GetCPUHandle(lastResourceIndex), isCube);
 
 		auto desc = resource.resource->GetDesc();
