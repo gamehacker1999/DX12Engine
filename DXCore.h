@@ -12,7 +12,7 @@
 #include"DX12Helper.h"
 #include <dxcapi.h>
 #include <vector>
-
+#include"DescriptorHeapWrapper.h"
 #include "TopLevelASGenerator.h"
 #include "BottomLevelASGenerator.h"
 #include "RaytracingPipelineGenerator.h"

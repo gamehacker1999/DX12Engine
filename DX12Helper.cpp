@@ -3,11 +3,12 @@
 
 
 float* pixels;
+ApplicationResources appResources;
+
 
 void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12GraphicsCommandList> computeCommandList,
     ComPtr<ID3D12CommandQueue> graphicsQueue, ComPtr<ID3D12CommandAllocator> commandAllocators[3],
-    ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3],
-    std::shared_ptr<GPUHeapRingBuffer> gpuHeapRingBuffer)
+    ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3])
 {
     appResources = {};
     appResources.device = device;
@@ -17,9 +18,8 @@ void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList
     appResources.computeQueue = computeQueue;
     appResources.graphicsQueue = graphicsQueue;
     appResources.commandAllocators = commandAllocators;
-    appResources.gpuHeapRingBuffer = gpuHeapRingBuffer;
 
-    appResources.srvUavCBVDescriptorHeap.Create(device, 600, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    D3D12_DESCRIPTOR_HEAP_DESC heapDesc;
 
     //generating mip maps
     {
@@ -305,16 +305,16 @@ float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* he
     // Read the signature
     file.read(buffer, HeaderSigSize);
     if (strcmp(HeaderSignature, buffer) != 0)
-        return false;
+        return nullptr;
     // Skip comment until we find FORMAT
     do {
         file.getline(buffer, sizeof(buffer));
     } while (!file.eof() && strncmp(buffer, "FORMAT", 6));
     // Did we hit the end of the file already?
-    if (file.eof()) return false;
+    if (file.eof()) return nullptr;
     // Invalid format!
     if (strcmp(buffer, HeaderFormat) != 0)
-        return false;
+        return nullptr;
     // Check for Y inversion
     int x = 0;
     do {
@@ -325,7 +325,7 @@ float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* he
         strncmp(buffer, "+Y", 2))
         );
     // End of file while looking?
-    if (file.eof()) return false;
+    if (file.eof()) return nullptr;
     // Inverted?
     if (strncmp(buffer, "-Y", 2) == 0) invY = true;
     // Loop through buffer until X
@@ -333,14 +333,14 @@ float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* he
     while ((counter < sizeof(buffer)) && buffer[counter] != 'X')
         counter++;
     // No X?
-    if (counter == sizeof(buffer)) return false;
+    if (counter == sizeof(buffer)) return nullptr;
     // Flipped X?
     if (buffer[counter - 1] == '-') invX = true;
     // Grab dimensions from current buffer line
     sscanf_s(buffer, "%*s %u %*s %u", height, width);
     // Got real dimensions?
     if ((*width) == 0 || (*height) == 0)
-        return false;
+        return nullptr;
     // ACTUAL DATA ------------------------------
     unsigned int dataSize = (*width) * (*height) * 4;
     unsigned char* data = new unsigned char[dataSize];
@@ -476,4 +476,9 @@ float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* he
     delete[] data;
     // Success
     return pixels;
+}
+
+ApplicationResources GetAppResources()
+{
+    return appResources;
 }

@@ -1,7 +1,5 @@
 #pragma once
 #include<d3dcompiler.h>
-#include"DescriptorHeapWrapper.h"
-#include"GPUHeapRingBuffer.h"
 #include<random>
 #include"ResourceUploadBatch.h"
 #include <WICTextureLoader.h>
@@ -35,16 +33,13 @@ struct ApplicationResources
 	ComPtr<ID3D12CommandAllocator>* computeAllocator;
 	ComPtr<ID3D12GraphicsCommandList> commandList;
 	ComPtr<ID3D12GraphicsCommandList> computeCommandList;
-	std::shared_ptr<GPUHeapRingBuffer> gpuHeapRingBuffer;
 	UINT frameIndex;
 
 	//Utitlity Resources
 	ComPtr<ID3D12PipelineState> generateMipMapsPSO;
 	ComPtr<ID3D12RootSignature> generateMipMapsRootSig;
-	DescriptorHeapWrapper srvUavCBVDescriptorHeap;
+	ComPtr<ID3D12DescriptorHeap> srvUavCBVDescriptorHeap;
 };
-
-ApplicationResources appResources;
 
 typedef enum TEXTURE_TYPES
 {
@@ -145,8 +140,7 @@ inline XMFLOAT3 GetRandomFloat3(float minRange, float maxRange)
 
 void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12GraphicsCommandList> computeCommandList,
 ComPtr<ID3D12CommandQueue> graphicsQueue, ComPtr<ID3D12CommandAllocator> commandAllocators[3],
-ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3],
-std::shared_ptr<GPUHeapRingBuffer> gpuHeapRingBuffer);
+ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3]);
 
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue,ComPtr<ID3D12Fence> fence, UINT64 fenceValue,HANDLE fenceEvent);
 
@@ -173,6 +167,8 @@ ComPtr<ID3D12PipelineState> CreatePipelineState();
 UINT DispatchSize(UINT tgSize, UINT numElements);
 
 float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* height);
+
+ApplicationResources GetAppResources();
 
 
 
