@@ -4,6 +4,53 @@
 
 float* pixels;
 
+void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12GraphicsCommandList> computeCommandList,
+    ComPtr<ID3D12CommandQueue> graphicsQueue, ComPtr<ID3D12CommandAllocator> commandAllocators[3],
+    ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3],
+    std::shared_ptr<GPUHeapRingBuffer> gpuHeapRingBuffer)
+{
+    appResources = {};
+    appResources.device = device;
+    appResources.commandList = commandList;
+    appResources.computeCommandList = computeCommandList;
+    appResources.computeAllocator = computeAllocator;
+    appResources.computeQueue = computeQueue;
+    appResources.graphicsQueue = graphicsQueue;
+    appResources.commandAllocators = commandAllocators;
+    appResources.gpuHeapRingBuffer = gpuHeapRingBuffer;
+
+    appResources.srvUavCBVDescriptorHeap.Create(device, 600, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    //generating mip maps
+    {
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0);
+
+        CD3DX12_ROOT_PARAMETER1 rootParams[2];
+        rootParams[0].InitAsDescriptorTable(1, &ranges[0]);
+        rootParams[1].InitAsDescriptorTable(1, &ranges[1]);
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+        computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams);
+
+        ComPtr<ID3DBlob> computeSignature;
+        ComPtr<ID3DBlob> computeError;
+
+        ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
+        ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&appResources.generateMipMapsRootSig)));
+
+        ComPtr<ID3DBlob> vmfSolverBlob;
+        ThrowIfFailed(D3DReadFileToBlob(L"VMFSolverCS.cso", vmfSolverBlob.GetAddressOf()));
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
+        computePSODesc.pRootSignature = appResources.generateMipMapsRootSig.Get();
+        computePSODesc.CS = CD3DX12_SHADER_BYTECODE(vmfSolverBlob.Get());
+
+        ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(appResources.generateMipMapsPSO.GetAddressOf())));
+    }
+}
+
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence> fence, UINT64 fenceValue, HANDLE fenceEvent)
 {
 	//signal and increment the fence

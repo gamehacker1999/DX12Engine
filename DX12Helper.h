@@ -1,4 +1,7 @@
 #pragma once
+#include<d3dcompiler.h>
+#include"DescriptorHeapWrapper.h"
+#include"GPUHeapRingBuffer.h"
 #include<random>
 #include"ResourceUploadBatch.h"
 #include <WICTextureLoader.h>
@@ -22,6 +25,26 @@ using namespace Microsoft::WRL;
 using namespace DirectX;
 
 class Game;
+
+struct ApplicationResources
+{
+	ComPtr<ID3D12Device> device;
+	ComPtr<ID3D12CommandQueue> graphicsQueue;
+	ComPtr<ID3D12CommandAllocator>* commandAllocators;
+	ComPtr<ID3D12CommandQueue> computeQueue;
+	ComPtr<ID3D12CommandAllocator>* computeAllocator;
+	ComPtr<ID3D12GraphicsCommandList> commandList;
+	ComPtr<ID3D12GraphicsCommandList> computeCommandList;
+	std::shared_ptr<GPUHeapRingBuffer> gpuHeapRingBuffer;
+	UINT frameIndex;
+
+	//Utitlity Resources
+	ComPtr<ID3D12PipelineState> generateMipMapsPSO;
+	ComPtr<ID3D12RootSignature> generateMipMapsRootSig;
+	DescriptorHeapWrapper srvUavCBVDescriptorHeap;
+};
+
+ApplicationResources appResources;
 
 typedef enum TEXTURE_TYPES
 {
@@ -120,6 +143,11 @@ inline XMFLOAT3 GetRandomFloat3(float minRange, float maxRange)
 	return XMFLOAT3(dist(randomGenerator), dist(randomGenerator), dist(randomGenerator));
 }
 
+void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12GraphicsCommandList> computeCommandList,
+ComPtr<ID3D12CommandQueue> graphicsQueue, ComPtr<ID3D12CommandAllocator> commandAllocators[3],
+ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3],
+std::shared_ptr<GPUHeapRingBuffer> gpuHeapRingBuffer);
+
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue,ComPtr<ID3D12Fence> fence, UINT64 fenceValue,HANDLE fenceEvent);
 
 using namespace Microsoft::WRL;
@@ -136,6 +164,8 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
 	TEXTURE_TYPES type=TEXTURE_TYPE_DEAULT);
 
 void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter);
+
+void GenerateMipMaps(ComPtr<ID3D12Resource> texture);
 
 ComPtr<ID3D12PipelineState> CreatePipelineState();
 

@@ -103,8 +103,8 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	D3D12_RESOURCE_DESC irradienaceTextureDesc = {};
 	irradienaceTextureDesc.DepthOrArraySize = 6;
 	irradienaceTextureDesc.MipLevels = 1;
-	irradienaceTextureDesc.Width = (UINT64)64;
-	irradienaceTextureDesc.Height = (UINT64)64;
+	irradienaceTextureDesc.Width = 512;
+	irradienaceTextureDesc.Height = 512;
 	irradienaceTextureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 	irradienaceTextureDesc.SampleDesc.Count = 1;
 	irradienaceTextureDesc.SampleDesc.Quality = 0;
@@ -131,19 +131,19 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	irradienceMapTexture.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
 	//creating the irradiance srv
-	srvDescriptorHeap.CreateDescriptor(irradienceMapTexture, RESOURCE_TYPE_SRV, device, 0, 64, 64, 0, 1);
+	srvDescriptorHeap.CreateDescriptor(irradienceMapTexture, RESOURCE_TYPE_SRV, device, 0, 512, 512, 0, 1);
 
 	viewPort = {};
-	viewPort.Height = 64.f;
-	viewPort.Width = 64.f;
+	viewPort.Height = 512.f;
+	viewPort.Width = 512.f;
 	viewPort.MaxDepth = 1.f;
 	viewPort.MinDepth = 0.0f;
 	viewPort.TopLeftX = 0.f;
 	viewPort.TopLeftY = 0.0f;
 
 	scissorRect = {};
-	scissorRect.bottom = 64;
-	scissorRect.right = 64;
+	scissorRect.bottom = 512;
+	scissorRect.right = 512;
 	scissorRect.left = 0;
 	scissorRect.top = 0;
 
@@ -163,7 +163,7 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 
 	for (int i = 0; i < 6; i++)
 	{
-		rtvDescriptorHeap.CreateDescriptor(irradienceMapTexture, RESOURCE_TYPE_RTV, device, 0, 64, 64, i, 0);
+		rtvDescriptorHeap.CreateDescriptor(irradienceMapTexture, RESOURCE_TYPE_RTV, device, 0, 512, 512, i, 0);
 		commandList->ClearRenderTargetView(rtvDescriptorHeap.GetCPUHandle(irradienceMapTexture.heapOffset), clearColor, 0, 0);
 		commandList->OMSetRenderTargets(1, &rtvDescriptorHeap.GetCPUHandle(irradienceMapTexture.heapOffset), FALSE, &depthStencilHandle);
 		commandList->ClearDepthStencilView(depthStencilHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, 0);

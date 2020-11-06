@@ -152,7 +152,7 @@ HRESULT Game::Init()
 	D3D12_RESOURCE_DESC renderTexureDesc = {};
 	renderTexureDesc.Width = width;
 	renderTexureDesc.Height = height;
-	renderTexureDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	renderTexureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	renderTexureDesc.DepthOrArraySize = renderTargets[0].resource->GetDesc().DepthOrArraySize;
 	renderTexureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 	renderTexureDesc.MipLevels = renderTargets[0].resource->GetDesc().MipLevels;
@@ -168,7 +168,7 @@ HRESULT Game::Init()
 	rtvClearVal.Color[1] = color[1];
 	rtvClearVal.Color[2] = color[2];
 	rtvClearVal.Color[3] = color[3];
-	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	rtvClearVal.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
 
 	ThrowIfFailed(device->CreateCommittedResource(
@@ -292,27 +292,28 @@ HRESULT Game::Init()
 		materials[i]->GenerateMaps(device, vmfSolverPSO, vmfSofverRootSignature,
 			computeCommandList, commandList, gpuHeapRingBuffer);
 		materials[i]->prefilteredMapIndex = gpuHeapRingBuffer->GetNumStaticResources() - 2;
+
+	
 	}
+	
 
 	computeCommandList->Close();
 	ID3D12CommandList* computeCommandLists[] = { computeCommandList.Get() };
 	computeCommandQueue->ExecuteCommandLists(_countof(computeCommandLists), computeCommandLists);
+	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
+
 	ThrowIfFailed(computeCommandQueue->Signal(computeFence.Get(), fenceValues[frameIndex]));
 	ThrowIfFailed(commandQueue->Wait(computeFence.Get(), fenceValues[frameIndex]));
 
-	{
-		commandList->Close();
-		ID3D12CommandList* pcommandLists[] = { commandList.Get() };
-		D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
-		commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
-	}
+	commandList->Close();
+	ID3D12CommandList* pcommandLists[] = { commandList.Get() };
+	D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
+	commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+
 
 	WaitForPreviousFrame();
-	
+
 	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
-
-	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
-
 
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
 	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources()-1;
@@ -496,7 +497,7 @@ void Game::LoadShaders()
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	psoDesc.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
 
@@ -515,7 +516,7 @@ void Game::LoadShaders()
 	psoDescPBR.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDescPBR.NumRenderTargets = 1;
 	psoDescPBR.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDescPBR.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	psoDescPBR.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	psoDescPBR.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescPBR, IID_PPV_ARGS(pbrPipelineState.GetAddressOf())));
 
@@ -532,7 +533,7 @@ void Game::LoadShaders()
 	sssDescPBR.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	sssDescPBR.NumRenderTargets = 1;
 	sssDescPBR.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	sssDescPBR.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	sssDescPBR.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	sssDescPBR.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&sssDescPBR, IID_PPV_ARGS(sssPipelineState.GetAddressOf())));
 
@@ -606,7 +607,7 @@ void Game::LoadShaders()
 	psoDescVolume.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDescVolume.NumRenderTargets = 1;
 	psoDescVolume.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDescVolume.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	psoDescVolume.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	psoDescVolume.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescVolume, IID_PPV_ARGS(volumePSO.GetAddressOf())));
 
@@ -671,7 +672,7 @@ void Game::LoadShaders()
 	psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDescParticle.NumRenderTargets = 1;
 	psoDescParticle.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	psoDescParticle.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescParticle, IID_PPV_ARGS(particlesPSO.GetAddressOf())));
 
@@ -1176,7 +1177,7 @@ void Game::CreateEnvironment()
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	psoDesc.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(skyboxPSO.GetAddressOf())));
 
@@ -2327,7 +2328,7 @@ void Game::PrefilterLTCTextures()
 	rtvClearVal.Color[1] = color[1];
 	rtvClearVal.Color[2] = color[2];
 	rtvClearVal.Color[3] = color[3];
-	rtvClearVal.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	rtvClearVal.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	
 	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE,
 		&prefilterMapDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &rtvClearVal, IID_PPV_ARGS(ltcPrefilterTexture.resource.GetAddressOf())));

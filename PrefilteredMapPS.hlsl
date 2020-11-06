@@ -32,6 +32,28 @@ float RadicalInverse_VdC(uint bits)
 	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
 
+// Generates a seed for a random number generator from 2 inputs plus a backoff
+uint initRand(uint val0, uint val1, uint backoff = 16)
+{
+    uint v0 = val0, v1 = val1, s0 = 0;
+
+	[unroll]
+    for (uint n = 0; n < backoff; n++)
+    {
+        s0 += 0x9e3779b9;
+        v0 += ((v1 << 4) + 0xa341316c) ^ (v1 + s0) ^ ((v1 >> 5) + 0xc8013ea4);
+        v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e);
+    }
+    return v0;
+}
+
+// Takes our seed, updates it, and returns a pseudorandom float in [0..1]
+float nextRand(inout uint s)
+{
+    s = (1664525u * s + 1013904223u);
+    return float(s & 0x00FFFFFF) / float(0x01000000);
+}
+
 //function to generate a hammersly low discrepency sequence for importance sampling
 float2 Hammersley(uint i, uint N)
 {
@@ -63,6 +85,12 @@ float3 ImportanceSamplingGGX(float2 xi, float3 N, float roughness)
 	return normalize(sampleVec);
 }
 
+float rand(float3 value, float mutator = 0.546)
+{
+    float random = frac(sin(value + mutator) * 143758.5453);
+    return random;
+}
+
 float4 main(VertexToPixel input) : SV_TARGET
 {
 
@@ -89,14 +117,20 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 R = N;
 	float3 V = R;
 
-	uint sampleCount = 4096;
+	uint sampleCount = 6000;
 	float totalWeight = 0.0;
 	float3 prefilteredColor = float3(0.0, 0.0, 0.0);
-
+	
+    float gr = (sqrt(5.0) + 1.0) / 2.0; // golden ratio = 1.6180339887498948482
+    float ga = (2.0 - gr) * (2.0 * 3.151592); // golden angle = 2.39996322972865332
+	
 	for (uint i = 0; i < sampleCount; i++)
 	{
+		
+        float2 xi2 = float2(rand(zDir, i), rand(zDir, i));
+		
 		float2 xi = Hammersley(i, sampleCount);
-		float3 H = ImportanceSamplingGGX(xi, N, roughnessData.roughness);
+		float3 H = ImportanceSamplingGGX(xi2, N, roughnessData.roughness);
 		float3 L = normalize(2 * dot(V, H) * H - V);
 
 		float NdotL = saturate(dot(N, L));
@@ -105,6 +139,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 		float2 uv = DirectionToLatLongUV(L);
 
 		prefilteredColor += skybox.Sample(basicSampler, uv).rgb * NdotL;
+
 		totalWeight += NdotL;
 	}
 

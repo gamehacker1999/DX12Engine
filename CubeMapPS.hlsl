@@ -61,6 +61,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	//sample the skybox color
 	float3 skyboxColor = skyboxTexture.Sample(basicSampler, uv).rgb;
 	
+	skyboxColor = pow(skyboxColor, 2.2);
 	//return the color
 	return float4(skyboxColor, 1.0f);
 

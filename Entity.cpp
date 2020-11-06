@@ -67,8 +67,8 @@ void Entity::Draw(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList>
 	auto matIdx = GetMaterialIndex();
 	commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, matIdx, 0);
 	commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, ringBuffer->GetDynamicResourceOffset());
-	commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityRoughnessVMFMapSRV,
-		ringBuffer->GetDescriptorHeap().GetGPUHandle(material->prefilteredMapIndex));
+	//commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityRoughnessVMFMapSRV,
+	//	ringBuffer->GetDescriptorHeap().GetGPUHandle(material->prefilteredMapIndex));
 
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = GetMesh()->GetVertexBuffer();

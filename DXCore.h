@@ -3,8 +3,6 @@
 #include <Windows.h>
 #include <windowsx.h>
 #include <d3d12.h>
-#include<d3dcompiler.h>
-#include"DescriptorHeapWrapper.h"
 #include<dxgi1_6.h>
 #include<exception>
 #include <string>
@@ -95,6 +93,9 @@ protected:
 	ComPtr<ID3D12PipelineState> pipelineState;
 	ComPtr<ID3D12GraphicsCommandList4> commandList;
 	UINT rtvDescriptorSize;	
+
+	ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dredSettings;
+
 
 	//synchronization objects
 	UINT frameIndex;

@@ -194,7 +194,7 @@ HRESULT DXCore::InitDirectX()
 	}
 
 
-	ComPtr<IDXGIFactory4> factory;
+	ComPtr<IDXGIFactory6> factory;
 	auto hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
 
 	if (FAILED(hr)) return hr;
@@ -205,12 +205,18 @@ HRESULT DXCore::InitDirectX()
 
 		hr = D3D12CreateDevice(
 			hardwareAdapter.Get(),
-			D3D_FEATURE_LEVEL_12_0,
+			D3D_FEATURE_LEVEL_12_1,
 			IID_PPV_ARGS(&device)
 		);
 
 		ThrowIfFailed(hardwareAdapter.As(&adapter));
 		if (FAILED(hr)) return hr;
+
+		(D3D12GetDebugInterface(IID_PPV_ARGS(&dredSettings)));
+
+		// Turn on AutoBreadcrumbs and Page Fault reporting
+		dredSettings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+		dredSettings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
 	}
 
 	// Describe and create the command queue.

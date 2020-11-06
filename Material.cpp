@@ -72,9 +72,9 @@ Material::Material(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& comm
 
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(normalTexture.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-
+	
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(roughnessTexture.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+	 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 
 }
 
@@ -173,6 +173,7 @@ void Material::GenerateMaps(ComPtr<ID3D12Device> device,
 		texWidth = std::max<UINT>(texWidth / 2, 1);
 		texHeight = std::max<UINT>(texHeight / 2, 1);
 	}
+
 
 	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(vmfMap, RESOURCE_TYPE_SRV, device, 0, roughnessTexture.width,
 		roughnessTexture.height, 0, roughnessTexture.mipLevels);

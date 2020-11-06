@@ -82,7 +82,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float newRoughness = prefilteredRoughnessMap.Sample(basicSampler, input.uv).x;
 	float vmf = vmfMap.Sample(basicSampler, input.uv).x;
 
-	roughness = newRoughness * newRoughness;
+	//roughness = newRoughness * newRoughness;
 
 
 	//step 1 --- Solving the radiance integral for direct lighting, the integral is just the number of light sources
