@@ -5,18 +5,19 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 {
 	volumeBufferBegin = 0;
 
+	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(1024 * 64);
 	//creating the volume data resource
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(volumeDataResource.GetAddressOf())
 	));
 
 
-	volumeDataResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&volumeBufferBegin));
+	volumeDataResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&volumeBufferBegin));
 	memcpy(volumeBufferBegin, &volumeData, sizeof(volumeData));
 
 	ThrowIfFailed(descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
@@ -44,10 +45,11 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 	ifile.close();
 
 	//creating the texture resource description
+	auto texDesc = CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R8G8B8A8_UNORM, 256, 256, 256);
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R8G8B8A8_UNORM,256,256,256),
+		&texDesc,
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
 		IID_PPV_ARGS(volumeTexResource.resource.GetAddressOf())
@@ -58,11 +60,12 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(volumeTexResource.resource.Get(), 0, 1);
 
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
 	//create the gpu upload buffer
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(textureUpload.GetAddressOf())
@@ -75,7 +78,8 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 	UpdateSubresources<1>(commandList.Get(), volumeTexResource.resource.Get(), textureUpload.Get(), 0, 0, 1, &textureData);
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(volumeTexResource.resource.Get(), volumeTexResource.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(volumeTexResource.resource.Get(), volumeTexResource.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	commandList->ResourceBarrier(1, &transition);
 
 	volumeTexResource.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
@@ -143,7 +147,9 @@ void RaymarchedVolume::Render(ComPtr<ID3D12Device> device, ComPtr<ID3D12Graphics
 	commandList->SetGraphicsRootSignature(GetRootSignature().Get());
 	commandList->SetGraphicsRootConstantBufferView(0, GetConstantBuffer()->GetGPUVirtualAddress());
 	commandList->SetGraphicsRootDescriptorTable(1, ringBuffer->GetDescriptorHeap().GetGPUHandle(volumeTextureIndex));
-	commandList->IASetVertexBuffers(0, 1, &GetMesh()->GetVertexBuffer());
-	commandList->IASetIndexBuffer(&GetMesh()->GetIndexBuffer());
+	auto vBuff = GetMesh()->GetVertexBuffer();
+	auto iBuff = GetMesh()->GetIndexBuffer();
+	commandList->IASetVertexBuffers(0, 1, &vBuff);
+	commandList->IASetIndexBuffer(&iBuff);
 	commandList->DrawIndexedInstanced(GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 }

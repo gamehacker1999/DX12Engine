@@ -60,6 +60,24 @@ float2 Hammersley(uint i, uint N)
 	return float2(float(i) / float(N), RadicalInverse_VdC(i));
 }
 
+//function for the GGX normal distribution of microfacets
+float SpecularDistribution(float roughness, float3 h, float3 n)
+{
+	//remapping the roughness
+    float a = pow(roughness, 2);
+    float a2 = a * a;
+
+    float NdotHSquared = saturate(dot(n, h));
+    NdotHSquared *= NdotHSquared;
+
+    float denom = NdotHSquared * (a2 - 1) + 1;
+    denom *= denom;
+    denom *= PI;
+
+    return a2 / denom;
+
+}
+
 //importance sampling
 float3 ImportanceSamplingGGX(float2 xi, float3 N, float roughness)
 {
@@ -117,7 +135,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 R = N;
 	float3 V = R;
 
-	uint sampleCount = 6000;
+	uint sampleCount = 4096;
 	float totalWeight = 0.0;
 	float3 prefilteredColor = float3(0.0, 0.0, 0.0);
 	
@@ -130,15 +148,26 @@ float4 main(VertexToPixel input) : SV_TARGET
         float2 xi2 = float2(rand(zDir, i), rand(zDir, i));
 		
 		float2 xi = Hammersley(i, sampleCount);
-		float3 H = ImportanceSamplingGGX(xi2, N, roughnessData.roughness);
+		float3 H = ImportanceSamplingGGX(xi, N, roughnessData.roughness);
 		float3 L = normalize(2 * dot(V, H) * H - V);
 
 		float NdotL = saturate(dot(N, L));
+		
+        float HdotV = saturate(dot(H, V));
+        float NdotH = saturate(dot(N, H));
 
 
 		float2 uv = DirectionToLatLongUV(L);
+		
+        float D = SpecularDistribution(roughnessData.roughness, N, H);
+        float pdf = (D * NdotH / (4 * HdotV)) + 0.0001f;
+             
+        float saTexel = 4.0f * 3.141592 / (6.0f * 2048 * 2048);
+        float saSample = 1.0f / (sampleCount * pdf + 0.00001f);
+             
+        float mipLevel = roughnessData.roughness == 0.0f ? 0.0f : 0.5f * log2(saSample / saTexel);
 
-		prefilteredColor += skybox.Sample(basicSampler, uv).rgb * NdotL;
+        prefilteredColor += skybox.SampleLevel(basicSampler, uv, mipLevel).rgb * NdotL;
 
 		totalWeight += NdotL;
 	}

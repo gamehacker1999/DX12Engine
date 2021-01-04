@@ -52,5 +52,5 @@ float4 main(VertexToPixel input) : SV_TARGET
     
     color /= sampleRadius * sampleRadius;
     
-    return (1, 0, 0, 1);
+    return float4(1, 0, 0, 1);
 }

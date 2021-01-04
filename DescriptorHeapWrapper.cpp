@@ -72,12 +72,17 @@ UINT DescriptorHeapWrapper::GetDescriptorIncrementSize()
 void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,
 	ComPtr<ID3D12Device> device, size_t cbufferSize, UINT width, UINT height, UINT firstArraySlice, UINT mipLevel)
 {
+
+
+	auto uploadHeapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(cbufferSize);
 	if (resourceType == RESOURCE_TYPE_CBV)
 	{
 		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			&uploadHeapProp,
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(cbufferSize),
+			&bufferDesc,
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
 			IID_PPV_ARGS(resource.resource.GetAddressOf())
@@ -221,10 +226,13 @@ void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResour
 void DescriptorHeapWrapper::CreateStructuredBuffer(ManagedResource& resource, ComPtr<ID3D12Device> device, 
 	UINT numElements, UINT stride, UINT bufferSize)
 {
+
+	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
+
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(resource.resource.GetAddressOf())

@@ -1,6 +1,7 @@
 #pragma once
 //#include "optix_world.h"
 #include "DXCore.h"
+#include"Renderer.h"
 #include <DXRHelper.h>
 #include "Camera.h"
 #include"Mesh.h"
@@ -46,6 +47,17 @@ struct LightCullingExternalData
 	XMFLOAT3 cameraPosition;
 	int lightCount;
 };
+
+struct VelocityConstantBuffer
+{
+	XMFLOAT4X4 view;
+	XMFLOAT4X4 projection;
+	XMFLOAT4X4 world;
+	XMFLOAT4X4 prevView;
+	XMFLOAT4X4 prevProjection;
+	XMFLOAT4X4 prevWorld;
+};
+
 
 inline ID3D12Resource* CreateRBBuffer(ID3D12Resource* buffer, ID3D12Device* device, UINT bufferSize)
 {
@@ -133,6 +145,7 @@ public:
 	//---------------------------------------------------------------
 
 	void DepthPrePass();
+	void RenderVelocityBuffer();
 	void LightCullingPass();
 	void Update(float deltaTime, float totalTime);
 	void Draw(float deltaTime, float totalTime);
@@ -221,6 +234,13 @@ private:
 	UINT8* lightCullingExternBegin;
 	ComPtr<ID3D12Resource> lightCullingCBVResource;
 
+	//velocity pass
+	VelocityConstantBuffer velocityBufferData;
+	std::vector<UINT8*> velocityDataBegin;
+	std::vector<ComPtr<ID3D12Resource>> velocityCBVData;
+	ManagedResource velocityBuffer;
+
+
 	//Light culling variables
 	ComPtr<ID3D12Resource> visibleLightList;
 	ComPtr<ID3D12Resource> lightGrid;
@@ -233,8 +253,12 @@ private:
 	DescriptorHeapWrapper dsDescriptorHeap;
 
 	//post processing
-	ManagedResource finalRenderTarget;
 	DescriptorHeapWrapper renderTargetSRVHeap;
+	ManagedResource finalRenderTarget;
+	ManagedResource taaInput;
+	ManagedResource taaHistoryBuffer;
+	UINT numFrames;
+	XMFLOAT2* jitters;
 
 	std::shared_ptr<Camera> mainCamera;
 
@@ -293,6 +317,14 @@ private:
 	//tonemapping variables
 	ComPtr<ID3D12RootSignature> toneMappingRootSig;
 	ComPtr<ID3D12PipelineState> toneMappingPSO;
+
+	//taa vars
+	ComPtr<ID3D12RootSignature> taaRootSig;
+	ComPtr<ID3D12PipelineState> taaPSO;
+
+	//veloity vars
+	ComPtr<ID3D12RootSignature> velRootSig;
+	ComPtr<ID3D12PipelineState> velPSO;
 
 	//---------------------Raytracing vars-------------------
 

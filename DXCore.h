@@ -46,6 +46,7 @@ public:
 
 	// Initialization and game-loop related methods
 	HRESULT InitWindow();
+	void EnableShaderBasedValidation();
 	HRESULT InitDirectX();
 	HRESULT Run();
 	void Quit();

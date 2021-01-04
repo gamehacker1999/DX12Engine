@@ -34,6 +34,9 @@ protected:
 	//model matrix of the entity
 	XMFLOAT4X4 modelMatrix;
 
+	//model matrix of the entity
+	XMFLOAT4X4 prevModelMatrix;
+
 	bool recalculateMatrix; // boolean to check if any transform has changed
 
 	std::shared_ptr<Mesh> mesh; //mesh associated with this entity
@@ -83,6 +86,7 @@ public:
 	XMFLOAT3 GetScale();
 	XMFLOAT4 GetRotation();
 	XMFLOAT4X4 GetModelMatrix();
+	XMFLOAT4X4 GetPrevModelMatrix();
 	XMMATRIX GetRawModelMatrix();
 
 	entt::entity GetEntityID();

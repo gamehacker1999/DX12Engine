@@ -30,7 +30,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	h0TexDesc.SampleDesc.Quality = 0;
 	h0TexDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(h0Texture.resource.GetAddressOf())));
 
 	h0Texture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -40,7 +40,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(h0Texture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the h0minus texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(h0MinusTexture.resource.GetAddressOf())));
 
 	h0MinusTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -50,7 +50,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(h0MinusTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the hty texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(htyTexture.resource.GetAddressOf())));
 
 	htyTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -60,7 +60,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(htyTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the htx texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(htxTexture.resource.GetAddressOf())));
 	htxTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
@@ -69,7 +69,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(htxTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the hty texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(htzTexture.resource.GetAddressOf())));
 	htzTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
@@ -81,7 +81,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	int bits = (int)(log(texSize), log(2));
 	h0TexDesc.Width = bits;
 
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(twiddleTexture.resource.GetAddressOf())));
 	twiddleTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
@@ -92,7 +92,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	h0TexDesc.Width = texSize;
 
 	//creating the pingpong 0 texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(pingpong0Texture.resource.GetAddressOf())));
 
 	pingpong0Texture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -102,7 +102,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(pingpong0Texture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the dy texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(dyTexture.resource.GetAddressOf())));
 	dyTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
@@ -111,7 +111,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(dyTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the dx texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(dxTexture.resource.GetAddressOf())));
 	dxTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
@@ -120,7 +120,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(dxTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the dz texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(dzTexture.resource.GetAddressOf())));
 	dzTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
@@ -129,7 +129,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(dzTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the normal texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(normalMapTexture.resource.GetAddressOf())));
 	normalMapTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
@@ -138,7 +138,7 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	srvcbvuavDescriptorHeap.CreateDescriptor(normalMapTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
 
 	//creating the folding map texture
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &h0TexDesc,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(foldingMapTexture.resource.GetAddressOf())));
 	foldingMapTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 

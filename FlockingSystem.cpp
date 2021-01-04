@@ -9,8 +9,10 @@ void FlockingSystem::CalculateFlockCenterAndDirection(std::vector<std::shared_pt
 
 	for (int i = 0; i < flockers.size(); i++)
 	{
-		auto tempDir = XMLoadFloat3(&flockers[i]->GetForward());
-		auto tempPos = XMLoadFloat3(&flockers[i]->GetPosition());
+		auto forward = flockers[i]->GetForward();
+		auto tempDir = XMLoadFloat3(&forward);
+		auto pos = flockers[i]->GetPosition();
+		auto tempPos = XMLoadFloat3(&pos);
 		flockDirection += tempDir;
 		flockCenter += tempPos;
 	}
@@ -46,7 +48,9 @@ XMVECTOR FlockingSystem::Seperation(std::vector<std::shared_ptr<Entity>> flocker
 
 	for (int i = 0; i < flockers.size(); i++)
 	{
-		auto diff = XMLoadFloat3(&flockers[flockerID]->GetPosition()) - XMLoadFloat3(&flockers[i]->GetPosition());
+		auto pos1 = flockers[flockerID]->GetPosition();
+		auto pos2 = flockers[i]->GetPosition();
+		auto diff = XMLoadFloat3(&pos1) - XMLoadFloat3(&pos2);
 		float distance = sqrtf(XMVector3Dot(diff, diff).m128_f32[0]); //getting the distance between the two flockers
 
 		if (i != 10 -

@@ -58,7 +58,7 @@ XMFLOAT4X4 Camera::GetProjectionMatrix()
 
 XMFLOAT4X4 Camera::GetInverseProjection()
 {
-	XMMATRIX inverseProjTemp = XMLoadFloat4x4(&GetProjectionMatrix());
+	XMMATRIX inverseProjTemp = XMLoadFloat4x4(&projectionMatrix);
 	inverseProjTemp = XMMatrixInverse(nullptr, inverseProjTemp);
 
 	XMFLOAT4X4 invP;

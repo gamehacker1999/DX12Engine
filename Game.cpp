@@ -43,6 +43,7 @@ Game::Game(HINSTANCE hInstance)
 	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
 	memset(&lightingData, 0, sizeof(LightingData));
 	memset(&lightCullingExternData, 0, sizeof(LightCullingExternalData));
+	memset(&velocityBufferData, 0, sizeof(VelocityConstantBuffer));
 
 	isRaytracingAllowed = false;
 	rtToggle = true;
@@ -75,7 +76,7 @@ Game::~Game()
 	{
 		registry.destroy(flockers[i]->GetEntityID());
 	}
-	
+
 	//delete[] denoised_pixels;
 	//inputBuffer->destroy();
 	//normalBuffer->destroy();
@@ -97,37 +98,28 @@ HRESULT Game::Init()
 	if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
 		isRaytracingAllowed = false;
 	else
-		isRaytracingAllowed = true;
+		isRaytracingAllowed = false;
 
 	frameIndex = this->swapChain->GetCurrentBackBufferIndex();
 
 	HRESULT hr;
 
-	InitOptix();
+	numFrames = -1;
 
-	InitComputeEngine();
+	jitters = GenerateHaltonJitters();
 
-	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>(device);
-
-
-	//residencyManager = std::make_shared<D3DX12Residency::ResidencyManager>();
-	residencyManager.Initialize(device.Get(), 0, adapter.Get(), frameCount);
-	residencySet = std::shared_ptr<D3DX12Residency::ResidencySet>(residencyManager.CreateResidencySet());
-
-	residencySet->Open();
-
-	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer));
 	// Create descriptor heaps.
 	{
 
-		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount + 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
 		ThrowIfFailed(dsDescriptorHeap.Create(device, 2, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 
 	}
 
+
 	// Create frame resources.
-	/**/{
+	{
 
 		// Create a RTV for each frame.
 		for (UINT n = 0; n < frameCount; n++)
@@ -147,6 +139,42 @@ HRESULT Game::Init()
 		}
 
 	}
+
+	InitComputeEngine();
+
+
+	//create synchronization object and wait till the objects have been passed to the gpu
+	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
+	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(computeFence.GetAddressOf())));
+	fenceValues[frameIndex]++;
+	//fence event handle for synchronization
+	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+	if (fenceEvent == nullptr)
+	{
+		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+	}
+
+	//create command list
+	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[frameIndex].Get(), pipelineState.Get(),
+		IID_PPV_ARGS(commandList.GetAddressOf())));
+	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, computeCommandAllocator[frameIndex].Get(), computePipelineState.Get(), IID_PPV_ARGS(&computeCommandList)));
+
+	InitResources(device, commandList, computeCommandList, commandQueue, commandAllocators,
+		computeCommandQueue, computeCommandAllocator, fence, computeFence, fenceValues, fenceEvent);
+
+
+
+	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>(device);
+
+	//residencyManager = std::make_shared<D3DX12Residency::ResidencyManager>();
+	residencyManager.Initialize(device.Get(), 0, adapter.Get(), frameCount);
+	residencySet = std::shared_ptr<D3DX12Residency::ResidencySet>(residencyManager.CreateResidencySet());
+
+	residencySet->Open();
+
+	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer));
+
 
 	//creating a final render target
 	D3D12_RESOURCE_DESC renderTexureDesc = {};
@@ -170,9 +198,8 @@ HRESULT Game::Init()
 	rtvClearVal.Color[3] = color[3];
 	rtvClearVal.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
-
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
 		&renderTexureDesc,
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
@@ -180,14 +207,70 @@ HRESULT Game::Init()
 		IID_PPV_ARGS(finalRenderTarget.resource.GetAddressOf())
 	));
 
-	
+	finalRenderTarget.resource->SetName(L"final target");
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(taaInput.resource.GetAddressOf())
+	));
+
+	taaInput.resource->SetName(L"taa input");
+
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(taaHistoryBuffer.resource.GetAddressOf())
+	));
+
+	taaHistoryBuffer.resource->SetName(L"taa history");
+
+
+	rtvClearVal.Format = DXGI_FORMAT_R32G32_FLOAT;
+	renderTexureDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(velocityBuffer.resource.GetAddressOf())
+	));
+
+	velocityBuffer.resource->SetName(L"velocity");
+
 
 	device->CreateRenderTargetView(finalRenderTarget.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
 	finalRenderTarget.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	finalRenderTarget.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	rtvDescriptorHeap.IncrementLastResourceIndex(1);
 
-	renderTargetSRVHeap.Create(device, 3, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	device->CreateRenderTargetView(taaInput.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	taaInput.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	taaInput.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
+	device->CreateRenderTargetView(velocityBuffer.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	velocityBuffer.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	velocityBuffer.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
+	device->CreateRenderTargetView(taaHistoryBuffer.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	taaHistoryBuffer.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	taaHistoryBuffer.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
+	renderTargetSRVHeap.Create(device, 100, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	renderTargetSRVHeap.CreateDescriptor(taaInput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(taaHistoryBuffer, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(finalRenderTarget, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
 
 
@@ -198,10 +281,11 @@ HRESULT Game::Init()
 	depthClearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
 	//creating the default resource heap for the depth stencil
+	auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R24G8_TYPELESS, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R24G8_TYPELESS, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
+		&texDesc,
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
 		&depthClearValue,
 		IID_PPV_ARGS(depthStencilBuffer.resource.GetAddressOf())
@@ -224,7 +308,7 @@ HRESULT Game::Init()
 
 	//creating the default resource heap for the depth stencil
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
 		&depthTexDesc,
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
@@ -238,30 +322,12 @@ HRESULT Game::Init()
 	depthDesc.Create(device, 2, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	depthDesc.CreateDescriptor(depthTex, RESOURCE_TYPE_SRV, device, 0, 0, 0, 0, 1);
 
-	//create command list
-	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[frameIndex].Get(), pipelineState.Get(),
-		IID_PPV_ARGS(commandList.GetAddressOf())));
-	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, computeCommandAllocator[frameIndex].Get(), computePipelineState.Get(), IID_PPV_ARGS(&computeCommandList)));
-
 
 	//creating the skybox bundle
 	ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(bundleAllocator.GetAddressOf())));
 
 	//memcpy(constantBufferBegin, &constantBufferData, sizeof(constantBufferData));
 	//memcpy(constantBufferBegin+sceneConstantBufferAlignmentSize, &constantBufferData, sizeof(constantBufferData));
-
-	
-	//create synchronization object and wait till the objects have been passed to the gpu
-	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
-	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(computeFence.GetAddressOf())));
-	fenceValues[frameIndex]++;
-	//fence event handle for synchronization
-	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-
-	if (fenceEvent == nullptr)
-	{
-		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-	}
 
 	// Helper methods for loading shaders, creating some basic
 	// geometry to draw and some simple camera matrices.
@@ -270,32 +336,36 @@ HRESULT Game::Init()
 
 	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
 
+	velocityBufferData.view = mainCamera->GetViewMatrix();
+	velocityBufferData.projection = mainCamera->GetProjectionMatrix();
+	velocityBufferData.prevProjection = mainCamera->GetProjectionMatrix();
+	velocityBufferData.prevView = mainCamera->GetViewMatrix();
+
 	LoadShaders();
 	CreateMatrices();
 	CreateBasicGeometry();
 	CreateEnvironment();
 
 
-	if(isRaytracingAllowed)
+	if (isRaytracingAllowed)
 		CreateAccelerationStructures();
 
 	//allocate volumes and skyboxes here
 	for (size_t i = 0; i < materials.size(); i++)
 	{
 		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, materials[i]->GetDescriptorHeap());
-		materials[i]->materialIndex = (UINT)i*4;
+		materials[i]->materialIndex = (UINT)i * 4;
 	}
 
 	auto numStaticResources = gpuHeapRingBuffer->GetNumStaticResources();
-	for (int i = 0; i < materials.size(); i++)
-	{
-		materials[i]->GenerateMaps(device, vmfSolverPSO, vmfSofverRootSignature,
-			computeCommandList, commandList, gpuHeapRingBuffer);
-		materials[i]->prefilteredMapIndex = gpuHeapRingBuffer->GetNumStaticResources() - 2;
+	//for (int i = 0; i < materials.size(); i++)
+	//{
+	//	materials[i]->GenerateMaps(vmfSolverPSO, vmfSofverRootSignature, gpuHeapRingBuffer);
+	//	materials[i]->prefilteredMapIndex = gpuHeapRingBuffer->GetNumStaticResources() - 2;
+	//
+	//
+	//}
 
-	
-	}
-	
 
 	computeCommandList->Close();
 	ID3D12CommandList* computeCommandLists[] = { computeCommandList.Get() };
@@ -316,15 +386,15 @@ HRESULT Game::Init()
 	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
-	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources()-1;
+	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 	skybox->CreateEnvironment(commandList, device, skyboxRootSignature, skyboxRootSignature, irradiencePSO, prefilteredMapPSO, brdfLUTPSO, dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 3, skybox->GetEnvironmentHeap());
-	skybox->environmentTexturesIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1-2;
+	skybox->environmentTexturesIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1 - 2;
 
 	CreateLTCTexture();
 
-	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds",mesh2,volumePSO,
-		volumeRootSignature,device,commandQueue,mainBufferHeap,commandList);
+	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds", mesh2, volumePSO,
+		volumeRootSignature, device, commandQueue, mainBufferHeap, commandList);
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, flame->GetDescriptorHeap());
 	flame->volumeTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 
@@ -341,7 +411,7 @@ HRESULT Game::Init()
 		XMFLOAT3(0.1f, 0.1f, 0.1f), //position deviation range
 		XMFLOAT4(-2, 2, -2, 2), //rotation around z axis
 		XMFLOAT3(0.f, 1.f, 0.f),  //acceleration	
-		device,commandList,commandQueue,particlesPSO,particleRootSig,L"../../Assets/Textures/particle.jpg");
+		device, commandList, commandQueue, particlesPSO, particleRootSig, L"../../Assets/Textures/particle.jpg");
 	emitters.emplace_back(emitter1);
 
 	for (int i = 0; i < emitters.size(); i++)
@@ -363,8 +433,10 @@ HRESULT Game::Init()
 	skyboxBundle->SetGraphicsRootSignature(skybox->GetRootSignature().Get());
 	skyboxBundle->SetGraphicsRootConstantBufferView(EnvironmentRootIndices::EnvironmentVertexCBV, skybox->GetConstantBuffer()->GetGPUVirtualAddress());
 	skyboxBundle->SetGraphicsRootDescriptorTable(EnvironmentRootIndices::EnvironmentTextureSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->skyboxTextureIndex));
-	skyboxBundle->IASetVertexBuffers(0, 1, &skybox->GetMesh()->GetVertexBuffer());
-	skyboxBundle->IASetIndexBuffer(&skybox->GetMesh()->GetIndexBuffer());
+	auto vertexBuffer = skybox->GetMesh()->GetVertexBuffer();
+	auto indexBuf = skybox->GetMesh()->GetIndexBuffer();
+	skyboxBundle->IASetVertexBuffers(0, 1, &vertexBuffer);
+	skyboxBundle->IASetIndexBuffer(&indexBuf);
 	skyboxBundle->DrawIndexedInstanced(skybox->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 	skyboxBundle->Close();
 
@@ -571,10 +643,10 @@ void Game::LoadShaders()
 
 	rootSignatureDesc.Init_1_1(_countof(volumeRootParams), volumeRootParams, _countof(staticSamplersVolume), staticSamplersVolume, rootSignatureFlags);
 
-	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc,D3D_ROOT_SIGNATURE_VERSION_1_1,volumeSignature.GetAddressOf(),volumeError.GetAddressOf()));
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, volumeSignature.GetAddressOf(), volumeError.GetAddressOf()));
 
 	ThrowIfFailed(device->CreateRootSignature(0, volumeSignature->GetBufferPointer(), volumeSignature->GetBufferSize(), IID_PPV_ARGS(volumeRootSignature.GetAddressOf())));
-	
+
 	ComPtr<ID3DBlob> rayMarchedVolumeVS;
 	ComPtr<ID3DBlob> raymarcedVolumePS;
 
@@ -630,13 +702,13 @@ void Game::LoadShaders()
 	CD3DX12_STATIC_SAMPLER_DESC staticSamplersParticle[1];//(0, D3D12_FILTER_ANISOTROPIC);
 	staticSamplersParticle[0].Init(0);
 
-	rootSignatureDesc.Init_1_1(_countof(particleRootParams), particleRootParams, 
+	rootSignatureDesc.Init_1_1(_countof(particleRootParams), particleRootParams,
 		_countof(staticSamplersParticle), staticSamplersParticle, rootSignatureFlags);
 
-	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, 
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
 		particleSignature.GetAddressOf(), particleError.GetAddressOf()));
 
-	ThrowIfFailed(device->CreateRootSignature(0, particleSignature->GetBufferPointer(), particleSignature->GetBufferSize(), 
+	ThrowIfFailed(device->CreateRootSignature(0, particleSignature->GetBufferPointer(), particleSignature->GetBufferSize(),
 		IID_PPV_ARGS(particleRootSig.GetAddressOf())));
 
 	ComPtr<ID3DBlob> particleVS;
@@ -715,9 +787,9 @@ void Game::LoadShaders()
 		CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
 		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0);
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-		rootParams[VMFFilterRootIndices::OutputRoughnessVMFUAV].InitAsDescriptorTable(1,&ranges[1]);
+		rootParams[VMFFilterRootIndices::OutputRoughnessVMFUAV].InitAsDescriptorTable(1, &ranges[1]);
 		rootParams[VMFFilterRootIndices::NormalRoughnessSRV].InitAsDescriptorTable(1, &ranges[0]);
-		rootParams[VMFFilterRootIndices::VMFFilterExternDataCBV].InitAsConstantBufferView(0,0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE);
+		rootParams[VMFFilterRootIndices::VMFFilterExternDataCBV].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE);
 		rootParams[VMFFilterNumParameters].InitAsConstants(1, 1, 0);
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
@@ -740,59 +812,157 @@ void Game::LoadShaders()
 
 	}
 
-	//setting up post processing shaders
+	//velocity setup
 	{
+		CD3DX12_ROOT_PARAMETER1 velocityRootParams[1];
+		velocityRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_VERTEX);
 
-		//creating particle root sig and pso
-		CD3DX12_DESCRIPTOR_RANGE1 toneMappingDescriptorRange[1];
-		CD3DX12_ROOT_PARAMETER1 tonemappingRootParams[2];
 
-		//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
-		toneMappingDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+		ComPtr<ID3DBlob> velocitySignature;
+		ComPtr<ID3DBlob> velocityError;
 
-		//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
-		tonemappingRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
-		tonemappingRootParams[1].InitAsDescriptorTable(1, &toneMappingDescriptorRange[0],D3D12_SHADER_VISIBILITY_PIXEL);
-
-		ComPtr<ID3DBlob> tonemappingSignature;
-		ComPtr<ID3DBlob> tonemappingError;
-
-		CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
-		staticSamplers[0].Init(0);
-
-		rootSignatureDesc.Init_1_1(_countof(tonemappingRootParams), tonemappingRootParams,
-			_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+		rootSignatureDesc.Init_1_1(_countof(velocityRootParams), velocityRootParams,
+			0, nullptr, rootSignatureFlags);
 
 		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
-			tonemappingSignature.GetAddressOf(), tonemappingError.GetAddressOf()));
+			velocitySignature.GetAddressOf(), velocityError.GetAddressOf()));
 
-		ThrowIfFailed(device->CreateRootSignature(0, tonemappingSignature->GetBufferPointer(), tonemappingSignature->GetBufferSize(),
-			IID_PPV_ARGS(toneMappingRootSig.GetAddressOf())));
+		ThrowIfFailed(device->CreateRootSignature(0, velocitySignature->GetBufferPointer(), velocitySignature->GetBufferSize(),
+			IID_PPV_ARGS(velRootSig.GetAddressOf())));
 
-		ComPtr<ID3DBlob> fullcreenVS;
-		ComPtr<ID3DBlob> tonemappingPS;
+		ComPtr<ID3DBlob> velocityWriteVS;
+		ComPtr<ID3DBlob> velocityWritePS;
 
-		ThrowIfFailed(D3DReadFileToBlob(L"TonemappingPS.cso", tonemappingPS.GetAddressOf()));
-		ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+		ThrowIfFailed(D3DReadFileToBlob(L"VelocityBufferPS.cso", velocityWritePS.GetAddressOf()));
+		ThrowIfFailed(D3DReadFileToBlob(L"VelocityBufferVS.cso", velocityWriteVS.GetAddressOf()));
 
-		//creating a tonemapping pipeline state
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC toneMappingPSODesc = {};
-		toneMappingPSODesc.InputLayout = { };
-		toneMappingPSODesc.pRootSignature = toneMappingRootSig.Get();
-		toneMappingPSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
-		toneMappingPSODesc.PS = CD3DX12_SHADER_BYTECODE(tonemappingPS.Get());
-		toneMappingPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-		toneMappingPSODesc.DepthStencilState.DepthEnable = false;
-		toneMappingPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
-		toneMappingPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
-		toneMappingPSODesc.SampleMask = UINT_MAX;
-		toneMappingPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		toneMappingPSODesc.NumRenderTargets = 1;
-		toneMappingPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-		toneMappingPSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-		toneMappingPSODesc.SampleDesc.Count = 1;
-		ThrowIfFailed(device->CreateGraphicsPipelineState(&toneMappingPSODesc, IID_PPV_ARGS(toneMappingPSO.GetAddressOf())));
+		//creating a pipeline state object
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC velocityDesc = {};
+		velocityDesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+		velocityDesc.pRootSignature = velRootSig.Get();
+		velocityDesc.VS = CD3DX12_SHADER_BYTECODE(velocityWriteVS.Get());
+		velocityDesc.PS = CD3DX12_SHADER_BYTECODE(velocityWritePS.Get());
+		velocityDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		velocityDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+		velocityDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+		velocityDesc.SampleMask = UINT_MAX;
+		velocityDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		velocityDesc.NumRenderTargets = 1;
+		velocityDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		velocityDesc.RTVFormats[0] = DXGI_FORMAT_R32G32_FLOAT;
+		velocityDesc.SampleDesc.Count = 1;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&velocityDesc, IID_PPV_ARGS(velPSO.GetAddressOf())));
+	}
 
+	//setting up post processing shaders
+	{
+		//Tone mapping
+		{
+			CD3DX12_DESCRIPTOR_RANGE1 toneMappingDescriptorRange[1];
+			CD3DX12_ROOT_PARAMETER1 tonemappingRootParams[2];
+
+			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+			toneMappingDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+
+			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+			tonemappingRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
+			tonemappingRootParams[1].InitAsDescriptorTable(1, &toneMappingDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+
+			ComPtr<ID3DBlob> tonemappingSignature;
+			ComPtr<ID3DBlob> tonemappingError;
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0);
+
+			rootSignatureDesc.Init_1_1(_countof(tonemappingRootParams), tonemappingRootParams,
+				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+				tonemappingSignature.GetAddressOf(), tonemappingError.GetAddressOf()));
+
+			ThrowIfFailed(device->CreateRootSignature(0, tonemappingSignature->GetBufferPointer(), tonemappingSignature->GetBufferSize(),
+				IID_PPV_ARGS(toneMappingRootSig.GetAddressOf())));
+
+			ComPtr<ID3DBlob> fullcreenVS;
+			ComPtr<ID3DBlob> tonemappingPS;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"TonemappingPS.cso", tonemappingPS.GetAddressOf()));
+			ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+			//creating a tonemapping pipeline state
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC toneMappingPSODesc = {};
+			toneMappingPSODesc.InputLayout = { };
+			toneMappingPSODesc.pRootSignature = toneMappingRootSig.Get();
+			toneMappingPSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+			toneMappingPSODesc.PS = CD3DX12_SHADER_BYTECODE(tonemappingPS.Get());
+			toneMappingPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+			toneMappingPSODesc.DepthStencilState.DepthEnable = false;
+			toneMappingPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+			toneMappingPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+			toneMappingPSODesc.SampleMask = UINT_MAX;
+			toneMappingPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			toneMappingPSODesc.NumRenderTargets = 1;
+			toneMappingPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			toneMappingPSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			toneMappingPSODesc.SampleDesc.Count = 1;
+			ThrowIfFailed(device->CreateGraphicsPipelineState(&toneMappingPSODesc, IID_PPV_ARGS(toneMappingPSO.GetAddressOf())));
+		}
+
+		//TAA
+		{
+			CD3DX12_DESCRIPTOR_RANGE1 taaDescriptorRange[3];
+			CD3DX12_ROOT_PARAMETER1 taaRootParams[4];
+
+			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+			taaDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+			taaDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0);
+			taaDescriptorRange[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0);
+
+			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+			taaRootParams[0].InitAsDescriptorTable(1, &taaDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+			taaRootParams[1].InitAsDescriptorTable(1, &taaDescriptorRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
+			taaRootParams[2].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+			taaRootParams[3].InitAsDescriptorTable(1, &taaDescriptorRange[2], D3D12_SHADER_VISIBILITY_PIXEL);
+
+			ComPtr<ID3DBlob> taaSignature;
+			ComPtr<ID3DBlob> taaError;
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0);
+
+			rootSignatureDesc.Init_1_1(_countof(taaRootParams), taaRootParams,
+				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+				taaSignature.GetAddressOf(), taaError.GetAddressOf()));
+
+			ThrowIfFailed(device->CreateRootSignature(0, taaSignature->GetBufferPointer(), taaSignature->GetBufferSize(),
+				IID_PPV_ARGS(taaRootSig.GetAddressOf())));
+
+			ComPtr<ID3DBlob> fullcreenVS;
+			ComPtr<ID3DBlob> taaPS;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"TemporalAntiAliasingPS.cso", taaPS.GetAddressOf()));
+			ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+			//creating a TAA pipeline state
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC taaPSODesc = {};
+			taaPSODesc.InputLayout = { };
+			taaPSODesc.pRootSignature = taaRootSig.Get();
+			taaPSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+			taaPSODesc.PS = CD3DX12_SHADER_BYTECODE(taaPS.Get());
+			taaPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+			taaPSODesc.DepthStencilState.DepthEnable = false;
+			taaPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+			taaPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+			taaPSODesc.SampleMask = UINT_MAX;
+			taaPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			taaPSODesc.NumRenderTargets = 1;
+			taaPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			taaPSODesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+			taaPSODesc.SampleDesc.Count = 1;
+			ThrowIfFailed(device->CreateGraphicsPipelineState(&taaPSODesc, IID_PPV_ARGS(taaPSO.GetAddressOf())));
+		}
 	}
 
 }
@@ -836,51 +1006,68 @@ void Game::CreateBasicGeometry()
 {
 
 	//creatng the constant buffer heap before creating the entity
+	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(SceneConstantBuffer) * 3);
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(SceneConstantBuffer)*3),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(cbufferUploadHeap.GetAddressOf())
 	));
 
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(1024 * 64);
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024*64),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(lightConstantBufferResource.GetAddressOf())
 	));
 
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(lightingConstantBufferResource.GetAddressOf())
 	));
 
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(lightCullingCBVResource.GetAddressOf())
 	));
 
+	for (int i = 0; i < 100; i++)
+	{
+		ComPtr<ID3D12Resource> tempCBV;
+		ThrowIfFailed(device->CreateCommittedResource(
+			&GetAppResources().uploadHeapType,
+			D3D12_HEAP_FLAG_NONE,
+			&bufferDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(tempCBV.GetAddressOf())
+		));
+
+		velocityCBVData.emplace_back(tempCBV);
+	}
+
 	ZeroMemory(&lightData, sizeof(lightData));
 	ZeroMemory(&lightingData, sizeof(lightingData));
 
-
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(Light) * MAX_LIGHTS);
 	//creating the light list srv
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(Light) * MAX_LIGHTS),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(lightListResource.GetAddressOf())
@@ -890,12 +1077,14 @@ void Game::CreateBasicGeometry()
 	int workGroupsY = (height + (height % TILE_SIZE)) / TILE_SIZE;
 	size_t numberOfTiles = workGroupsX * workGroupsY;
 
-	visibleLightIndices = new UINT[workGroupsX*workGroupsY*1024];
+	visibleLightIndices = new UINT[workGroupsX * workGroupsY * 1024];
+
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(UINT) * 1024 * numberOfTiles, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(UINT) * 1024 * numberOfTiles,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		nullptr,
 		IID_PPV_ARGS(visibleLightIndicesBuffer.resource.GetAddressOf())
@@ -938,34 +1127,41 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].type = LIGHT_TYPE_POINT;
 	lights[lightCount].color = XMFLOAT3(1, 0, 0);
 	lights[lightCount].range = 20;
-	lights[lightCount].position = XMFLOAT3(3,0,0);
+	lights[lightCount].position = XMFLOAT3(3, 0, 0);
 	lights[lightCount].intensity = 0;
 	lightCount++;
 
 	for (int i = 0; i < 1000; i++)
 	{
 		lights[lightCount].type = LIGHT_TYPE_POINT;
-		lights[lightCount].color = GetRandomFloat3(0,1);
+		lights[lightCount].color = GetRandomFloat3(0, 1);
 		lights[lightCount].range = 20;
-		lights[lightCount].position = GetRandomFloat3(-60,60);
+		lights[lightCount].position = GetRandomFloat3(-60, 60);
 		lights[lightCount].intensity = 4;
 		lightCount++;
 	}
 
-	lightConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCbufferBegin));
+	lightConstantBufferResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&lightCbufferBegin));
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
 
 	lightingData.cameraPosition = mainCamera->GetPosition();
 	lightingData.lightCount = lightCount;
 
-	lightingConstantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightingCbufferBegin));
+	lightingConstantBufferResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&lightingCbufferBegin));
 	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
 
-	lightCullingCBVResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightCullingExternBegin));
+	lightCullingCBVResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&lightCullingExternBegin));
 
 
-	lightListResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&lightBufferBegin));
+	lightListResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&lightBufferBegin));
 	memcpy(lightBufferBegin, lights, MAX_LIGHTS * sizeof(Light));
+
+	for (size_t i = 0; i < velocityCBVData.size(); i++)
+	{
+		UINT8* tempDataBegin;
+		velocityCBVData[i]->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&tempDataBegin));
+		velocityDataBegin.emplace_back(tempDataBegin);
+	}
 
 	UINT64 cbufferOffset = 0;
 	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
@@ -977,33 +1173,33 @@ void Game::CreateBasicGeometry()
 	rect = std::make_shared<Mesh>("../../Assets/Models/RectLight.obj", device, commandList);
 	disk = std::make_shared<Mesh>("../../Assets/Models/disk.obj", device, commandList);
 
-	
+
 
 	//creating the vertex buffer
 	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 	float aspectRatio = static_cast<float>(width / height);
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
-	material1 = std::make_shared<Material>(device, commandQueue,mainBufferHeap, pbrPipelineState,rootSignature, commandList,
+	material1 = std::make_shared<Material>( mainBufferHeap, pbrPipelineState, rootSignature,
 		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
-		L"../../Assets/Textures/GoldRoughness.png",L"../../Assets/Textures/GoldMetallic.png");
-	material2 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, rootSignature, commandList,
-		L"../../Assets/Textures/LayeredDiffuse.png",L"../../Assets/Textures/LayeredNormal.png",
+		L"../../Assets/Textures/GoldRoughness.png", L"../../Assets/Textures/GoldMetallic.png");
+	material2 = std::make_shared<Material>(mainBufferHeap, pbrPipelineState, rootSignature,
+		L"../../Assets/Textures/LayeredDiffuse.png", L"../../Assets/Textures/LayeredNormal.png",
 		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
 
-	std::shared_ptr<Material> material3 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, pbrPipelineState, 
-		rootSignature, commandList,
+	std::shared_ptr<Material> material3 = std::make_shared<Material>(mainBufferHeap, pbrPipelineState,
+		rootSignature,
 		L"../../Assets/Textures/CerebrusDiffuse.jpg", L"../../Assets/Textures/CerebrusNormal.jpg",
 		L"../../Assets/Textures/CerebrusRoughness.jpg", L"../../Assets/Textures/CerebrusMetalness.jpg");
 
-	std::shared_ptr<Material> material4 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, 
-		sssPipelineState, rootSignature, commandList,
+	std::shared_ptr<Material> material4 = std::make_shared<Material>(mainBufferHeap,
+		sssPipelineState, rootSignature,
 		L"../../Assets/Textures/Head_Diffuse.png", L"../../Assets/Textures/Head_Normal.png");
 
-	std::shared_ptr<Material> material5 = std::make_shared<Material>(device, commandQueue, mainBufferHeap, 
-		sssPipelineState, rootSignature, commandList,
-		L"../../Assets/Textures/GoldMetallic.png", L"../../Assets/Textures/GoldNormal.png", 
-		L"../../Assets/Textures/DefaultRoughness.png", 
+	std::shared_ptr<Material> material5 = std::make_shared<Material>(mainBufferHeap,
+		sssPipelineState, rootSignature,
+		L"../../Assets/Textures/GoldMetallic.png", L"../../Assets/Textures/GoldNormal.png",
+		L"../../Assets/Textures/DefaultRoughness.png",
 		L"../../Assets/Textures/LayeredMetallic.png");
 
 	materials.emplace_back(material1);
@@ -1024,20 +1220,20 @@ void Game::CreateBasicGeometry()
 			commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 	}
 
-	entity1 = std::make_shared<Entity>(mesh2,material1, registry);
-	entity2 = std::make_shared<Entity>(mesh1,material2, registry);
-	entity3 = std::make_shared<Entity>(mesh1,material2, registry);
-	entity4 = std::make_shared<Entity>(mesh2,material1, registry);
+	entity1 = std::make_shared<Entity>(mesh2, material1, registry);
+	entity2 = std::make_shared<Entity>(mesh1, material2, registry);
+	entity3 = std::make_shared<Entity>(mesh1, material2, registry);
+	entity4 = std::make_shared<Entity>(mesh2, material1, registry);
 	entity6 = std::make_shared<Entity>(faceMesh, material4, registry);
 	diskEntity = std::make_shared<Entity>(disk, material4, registry);
 
-	
+
 	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
 	entity1->SetScale(XMFLOAT3(100, 10, 100));
 	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
 	entity3->SetPosition(XMFLOAT3(-3, 0, 1.f));
 	entity4->SetPosition(XMFLOAT3(8, -8, 1.f));
-	entity6->SetPosition(XMFLOAT3(-3,0,0));
+	entity6->SetPosition(XMFLOAT3(-3, 0, 0));
 	diskEntity->SetPosition(XMFLOAT3(-1, 0, 0));
 
 	auto initialRot = entity6->GetRotation();
@@ -1046,17 +1242,17 @@ void Game::CreateBasicGeometry()
 	entity6->SetRotation(initialRot);
 	entity6->SetPosition(lights[1].position);
 
-	 initialRot = diskEntity->GetRotation();
-	 finalRot = XMQuaternionRotationRollPitchYaw(lights[2].rectLight.rotX * 3.14159f / 180, lights[2].rectLight.rotY * 3.14159f / 180, lights[2].rectLight.rotZ * 3.14159f / 180);
+	initialRot = diskEntity->GetRotation();
+	finalRot = XMQuaternionRotationRollPitchYaw(lights[2].rectLight.rotX * 3.14159f / 180, lights[2].rectLight.rotY * 3.14159f / 180, lights[2].rectLight.rotZ * 3.14159f / 180);
 	XMStoreFloat4(&initialRot, finalRot);
 	diskEntity->SetRotation(initialRot);
 	diskEntity->SetPosition(lights[2].position);
 
 
-	entity1->PrepareConstantBuffers(device,residencyManager,residencySet);
-	entity2->PrepareConstantBuffers(device,residencyManager,residencySet);
-	entity3->PrepareConstantBuffers(device,residencyManager,residencySet);
-	entity4->PrepareConstantBuffers(device,residencyManager,residencySet);
+	entity1->PrepareConstantBuffers(device, residencyManager, residencySet);
+	entity2->PrepareConstantBuffers(device, residencyManager, residencySet);
+	entity3->PrepareConstantBuffers(device, residencyManager, residencySet);
+	entity4->PrepareConstantBuffers(device, residencyManager, residencySet);
 	entity6->PrepareConstantBuffers(device, residencyManager, residencySet);
 	diskEntity->PrepareConstantBuffers(device, residencyManager, residencySet);
 
@@ -1068,7 +1264,7 @@ void Game::CreateBasicGeometry()
 	//entity6->SetScale(XMFLOAT3(lights[1].rectLight.width, lights[1].rectLight.height, 1));
 	cerebrus = std::make_shared<Entity>(mesh3, material3, registry);
 	cerebrus->SetScale(XMFLOAT3(0.3, 0.3, 0.3));
-	cerebrus->SetPosition(GetRandomFloat3(0, 4));
+	cerebrus->SetPosition(XMFLOAT3(0, 0.3, 2));
 	cerebrus->PrepareConstantBuffers(device, residencyManager, residencySet);
 	entities.emplace_back(cerebrus);
 	entities.emplace_back(diskEntity);
@@ -1089,12 +1285,12 @@ void Game::CreateBasicGeometry()
 		flockers.emplace_back(std::make_shared<Entity>(sharkMesh, material2, registry));
 		flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
 		const auto enttID = flockers[i]->GetEntityID();
-	
+
 		flockers[i]->SetPosition(XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f));
 		//registry.assign<Flocker>(enttID, XMFLOAT3(i+2,i-2,0), 2 ,XMFLOAT3(0,0,0), 10,XMFLOAT3(0,0,0),1);
 		auto valid = registry.valid(enttID);
-	
-		auto &flocker = registry.assign<Flocker>(enttID);
+
+		auto& flocker = registry.assign<Flocker>(enttID);
 		flocker.pos = XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f);
 		flocker.vel = XMFLOAT3(0, 0, 0);
 		flocker.acceleration = XMFLOAT3(0, 0, 0);
@@ -1181,15 +1377,14 @@ void Game::CreateEnvironment()
 	psoDesc.SampleDesc.Count = 1;
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(skyboxPSO.GetAddressOf())));
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size()+1, cbvDescriptorSize);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size() + 1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox4.hdr", mesh1, skyboxPSO, skyboxRootSignature, 
-		device, commandQueue, commandList, mainBufferHeap, false);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox4.hdr", mesh1,skyboxPSO, skyboxRootSignature, false);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 
 	//loading the shaders for image based lighting
-	
+
 	//irradiance map calculations
 
 
@@ -1284,13 +1479,13 @@ void Game::CreateShaderBindingTable()
 	//the ray generation shader needs external data therefore it needs the pointer to the heap
 	//the miss and hit group shaders don't have any data
 	sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress() });
-	sbtGenerator.AddMissProgram(L"Miss", {heapPointer});
+	sbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 	for (int i = 0; i < bottomLevelBufferInstances.size(); i++)
 	{
 		UINT64 materialIndex = entities[i]->GetMaterialIndex();
 		auto matIndexPtr = reinterpret_cast<UINT*>(materialIndex);
 		sbtGenerator.AddHitGroup(L"HitGroup", { (void*)entities[i]->GetMesh()->GetVertexBufferResource()->GetGPUVirtualAddress(),
-			(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr});
+			(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr });
 		sbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
 	}
 
@@ -1315,13 +1510,13 @@ void Game::CreateShaderBindingTable()
 		//shader binding tables define the raygen, miss, and hit group shaders
 		//these resources are interpreted by the shader
 		GBsbtGenerator.Reset();
-	
+
 		//getting the descriptor heap handle
 		D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = rtDescriptorHeap.GetHeap()->GetGPUDescriptorHandleForHeapStart();
-	
+
 		//reinterpreting the above pointer as a void pointer
 		auto heapPointer = reinterpret_cast<UINT64*>(gpuHandle.ptr);
-	
+
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		GBsbtGenerator.AddRayGenerationProgram(L"GBufferRayGen", { heapPointer });
@@ -1336,16 +1531,16 @@ void Game::CreateShaderBindingTable()
 
 		}
 
-	
+
 		//compute the size of the GBsbt
 		UINT32 GBsbtSize = GBsbtGenerator.ComputeSBTSize();
-	
+
 		//upload heap for the GBsbt
 		GBsbtResource = nv_helpers_dx12::CreateBuffer(device.Get(), GBsbtSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, nv_helpers_dx12::kUploadHeapProps);
-	
+
 		if (!GBsbtResource)
 			throw std::logic_error("Could not create GBsbt resource");
-	
+
 		//compile the GBsbt from the above info
 		GBsbtGenerator.Generate(GBsbtResource.Get(), GBrtStateObjectProps.Get());
 	}
@@ -1452,7 +1647,7 @@ AccelerationStructureBuffers Game::CreateBottomLevelAS(std::vector<std::pair<Com
 	AccelerationStructureBuffers buffers;
 	buffers.pScratch = nv_helpers_dx12::CreateBuffer(device.Get(), scratchInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON, nv_helpers_dx12::kDefaultHeapProps);
 	buffers.pResult = nv_helpers_dx12::CreateBuffer(device.Get(), resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nv_helpers_dx12::kDefaultHeapProps);
-	
+
 	//build the acceleration structure
 	bottomLevelAS.Generate(commandList.Get(), buffers.pScratch.Get(), buffers.pResult.Get(), false, nullptr);
 
@@ -1518,7 +1713,7 @@ void Game::CreateAccelerationStructures()
 
 	for (UINT i = 0; i < bottomLevelBuffers.size(); i++)
 	{
-		EntityInstance instance = {i ,bottomLevelBuffers[i].pResult, entities[i]->GetRawModelMatrix() };
+		EntityInstance instance = { i ,bottomLevelBuffers[i].pResult, entities[i]->GetRawModelMatrix() };
 		bottomLevelBufferInstances.emplace_back(instance);
 	}
 
@@ -1539,15 +1734,15 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 {
 	//this ray generation shader is getting and output texture and an acceleration structure
 	nv_helpers_dx12::RootSignatureGenerator rsc;
-	rsc.AddHeapRangesParameter({ 
-		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTOutputTexture}, 
+	rsc.AddHeapRangesParameter({
+		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTOutputTexture},
 		{1,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTDiffuseTexture},
 		{2,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTPositionTexture},
 		{3,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTNormalTexture},
 		{4,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTAlbedoTexture},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,RaytracingHeapRangesIndices::RTAccelerationStruct},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,RaytracingHeapRangesIndices::RTCameraData}
-	});
+		});
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 1);
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 2, MAX_LIGHTS);
 
@@ -1572,10 +1767,10 @@ ComPtr<ID3D12RootSignature> Game::CreateClosestHitRootSignature()
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV, 1);
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 1);
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 2, MAX_LIGHTS);
-	rsc.AddHeapRangesParameter({ 
+	rsc.AddHeapRangesParameter({
 		{0, 1, 0, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, RaytracingHeapRangesIndices::RTAccelerationStruct},
 		{0, 1, 1, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, RaytracingHeapRangesIndices::RTMaterials}
-	});
+		});
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, 0, 0, 1);
 	CD3DX12_STATIC_SAMPLER_DESC samplerDesc;
 	samplerDesc.Init(0);
@@ -1605,7 +1800,7 @@ void Game::CreateRaytracingOutputBuffer()
 
 	resDes.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
-	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes,D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtNormals.resource.GetAddressOf())));
+	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtNormals.resource.GetAddressOf())));
 	rtNormals.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 	rtNormals.resourceType = RESOURCE_TYPE_UAV;
 
@@ -1640,7 +1835,7 @@ void Game::CreateRaytracingDescriptorHeap()
 
 	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(device, topLevelAsBuffers);
 	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
-	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox1.dds",skyboxTexResource,RESOURCE_TYPE_SRV,device,commandQueue,TEXTURE_TYPE_DDS, true);
+	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox4.hdr", skyboxTexResource, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_HDR, false);
 
 	static UINT numStaticResources = 0;
 	for (int i = 0; i < materials.size(); i++)
@@ -1653,7 +1848,7 @@ void Game::CreateRaytracingDescriptorHeap()
 	}
 
 	ZeroMemory(&rtCamera, sizeof(rtCamera));
-	ThrowIfFailed(cameraData.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&cameraBufferBegin)));
+	ThrowIfFailed(cameraData.resource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&cameraBufferBegin)));
 	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
 
 }
@@ -1671,7 +1866,7 @@ void Game::CreateRayTracingPipeline()
 	//add the libraies to pipeliene
 	pipeline.AddLibrary(rayGenLib.Get(), { L"RayGen" });
 	pipeline.AddLibrary(missLib.Get(), { L"Miss" });
-	pipeline.AddLibrary(hitLib.Get(), { L"ClosestHit",L"PlaneClosestHit"});
+	pipeline.AddLibrary(hitLib.Get(), { L"ClosestHit",L"PlaneClosestHit" });
 
 	//creating the root signatures
 	rayGenRootSig = CreateRayGenRootSignature();
@@ -1691,7 +1886,7 @@ void Game::CreateRayTracingPipeline()
 	//shaders can share root signatures
 	pipeline.AddRootSignatureAssociation(rayGenRootSig.Get(), { L"RayGen" });
 	pipeline.AddRootSignatureAssociation(missRootSig.Get(), { L"Miss",L"ShadowMiss" });
-	pipeline.AddRootSignatureAssociation(closestHitRootSignature.Get(), { L"HitGroup" ,L"PlaneHitGroup",L"ShadowHitGroup"}); // the intersection, anyhit, and closest hit shaders are bundled together in a hit group
+	pipeline.AddRootSignatureAssociation(closestHitRootSignature.Get(), { L"HitGroup" ,L"PlaneHitGroup",L"ShadowHitGroup" }); // the intersection, anyhit, and closest hit shaders are bundled together in a hit group
 	//pipeline.AddRootSignatureAssociation(shadowRootSig.Get(), { L"ShadowHitGroup" });
 
 	//payload size defines the maximum size of the data carried by the rays
@@ -1774,13 +1969,16 @@ void Game::Update(float deltaTime, float totalTime)
 	if (GetAsyncKeyState(VK_ESCAPE))
 		Quit();
 
+	
+	numFrames++;
 	mainCamera->Update(deltaTime);
 
-	if (GetAsyncKeyState('R')&&!rtToggle) 
+
+	if (GetAsyncKeyState('R') && !rtToggle)
 	{
 		rtToggle = true;
 
-		if(isRaytracingAllowed)
+		if (isRaytracingAllowed)
 			raster = !raster;
 	}
 
@@ -1857,6 +2055,9 @@ void Game::Update(float deltaTime, float totalTime)
 
 	FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
 
+	velocityBufferData.projection = mainCamera->GetProjectionMatrix();
+	velocityBufferData.view = mainCamera->GetViewMatrix();
+
 }
 
 // --------------------------------------------------------
@@ -1869,7 +2070,7 @@ void Game::Draw(float deltaTime, float totalTime)
 
 	PopulateCommandList();
 
-	if(true)
+	if (true)
 	{
 		ID3D12CommandList* pcommandLists[] = { computeCommandList.Get() };
 		computeCommandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
@@ -1889,11 +2090,14 @@ void Game::Draw(float deltaTime, float totalTime)
 	ThrowIfFailed(swapChain->Present(1, 0));
 
 	MoveToNextFrame();
+	velocityBufferData.prevView = mainCamera->GetViewMatrix();
+	velocityBufferData.prevProjection = mainCamera->GetProjectionMatrix();
 }
 
 void Game::DepthPrePass()
 {
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+	commandList->ResourceBarrier(1, &transition);
 	depthTex.currentState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 
 	//set necessary state
@@ -1935,11 +2139,12 @@ void Game::DepthPrePass()
 		flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
 	}
 
-
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	commandList->ResourceBarrier(1, &transition);
 	depthTex.currentState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(visibleLightIndicesBuffer.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(visibleLightIndicesBuffer.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	commandList->ResourceBarrier(1, &transition);
 	visibleLightIndicesBuffer.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	commandList->Close();
@@ -1950,6 +2155,86 @@ void Game::DepthPrePass()
 
 	ThrowIfFailed(
 		commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
+}
+
+void Game::RenderVelocityBuffer()
+{
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
+		velocityBuffer.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+	commandList->ResourceBarrier(1, &transition);
+
+	ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+
+	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	auto rtvHandle = velocityBuffer.rtvCPUHandle;
+
+	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	auto dscCPUHandle = dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset);
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dscCPUHandle);
+	commandList->ClearDepthStencilView(dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+	commandList->SetGraphicsRootSignature(velRootSig.Get());
+	commandList->SetPipelineState(velPSO.Get());
+
+	for (UINT i = 0; i < entities.size(); i++)
+	{
+		//entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+		//commandList->SetPipelineState(depthPrePassPipelineState.Get());
+		//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
+
+		velocityBufferData.world = entities[i]->GetModelMatrix();
+		velocityBufferData.prevWorld = entities[i]->GetPrevModelMatrix();
+		memcpy(velocityDataBegin[i], &velocityBufferData, sizeof(velocityBufferData));
+
+		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[i]->GetGPUVirtualAddress());
+
+		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
+		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
+
+		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+		commandList->IASetIndexBuffer(&indexBuffer);
+
+		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+
+	}
+
+	for (UINT i = 0; i < flockers.size(); i++)
+	{
+		//entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+		//commandList->SetPipelineState(depthPrePassPipelineState.Get());
+		//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
+
+		int j = i + entities.size();
+		velocityBufferData.world = flockers[i]->GetModelMatrix();
+		velocityBufferData.prevWorld = flockers[i]->GetPrevModelMatrix();
+		memcpy(velocityDataBegin[j], &velocityBufferData, sizeof(velocityBufferData));
+
+		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[j]->GetGPUVirtualAddress());
+
+		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();
+		auto indexBuffer = flockers[i]->GetMesh()->GetIndexBuffer();
+
+		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+		commandList->IASetIndexBuffer(&indexBuffer);
+
+		commandList->DrawIndexedInstanced(flockers[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+
+	}
+
+	//transition render target to readable texture and then transition it back to render target
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(
+		velocityBuffer.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+	commandList->ResourceBarrier(1, &transition);
+
+	SubmitGraphicsCommandList(GetAppResources().commandList);
 }
 
 void Game::LightCullingPass()
@@ -1965,7 +2250,7 @@ void Game::LightCullingPass()
 	computeCommandList->SetComputeRootUnorderedAccessView(LightCullingRootIndices::VisibleLightIndicesUAV, visibleLightIndicesBuffer.resource->GetGPUVirtualAddress());
 	computeCommandList->SetComputeRootConstantBufferView(LightCullingRootIndices::LightCullingExternalDataCBV, lightCullingCBVResource->GetGPUVirtualAddress());
 
-	computeCommandList->Dispatch(width/ TILE_SIZE, height/ TILE_SIZE, 1);
+	computeCommandList->Dispatch(width / TILE_SIZE, height / TILE_SIZE, 1);
 
 	ThrowIfFailed(computeCommandList->Close());
 
@@ -1976,6 +2261,8 @@ void Game::PopulateCommandList()
 {
 
 	residencySet->Open();
+
+	//RenderVelocityBuffer();
 
 	DepthPrePass();
 
@@ -1988,29 +2275,39 @@ void Game::PopulateCommandList()
 
 	//setting the constant buffer descriptor table
 	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get() };
-	
+
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
+		D3D12_RESOURCE_STATE_PRESENT,
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
 	//indicate that the back buffer is the render target
 	commandList->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
-			D3D12_RESOURCE_STATE_PRESENT,
-			D3D12_RESOURCE_STATE_RENDER_TARGET));
+		&transition);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(finalRenderTarget.rtvCPUHandle);//(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart(),
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(taaInput.rtvCPUHandle);//(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart(),
 		//frameIndex,rtvDescriptorSize);
-	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
+	auto dscCPUHandle = dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset);
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dscCPUHandle);
 	commandList->ClearDepthStencilView(dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+	auto projectionMat = mainCamera->GetProjectionMatrix();
+
+	float xRand = jitters[numFrames % 16].x / width;
+	float yRand = jitters[numFrames % 16].y / height;
+
+	projectionMat._13 = xRand;
+	projectionMat._23 = yRand;
 
 	if (raster)
 	{
 		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			taaInput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
 			D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 		commandList->ResourceBarrier(1, &transition);
 
-			//record commands
+		//record commands
 		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -2028,14 +2325,14 @@ void Game::PopulateCommandList()
 
 		for (UINT i = 0; i < entities.size(); i++)
 		{
-			entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+			entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), projectionMat);
 			commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
 			entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
 		}
 
 		for (UINT i = 0; i < flockers.size(); i++)
 		{
-			flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+			flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), projectionMat);
 			commandList->SetPipelineState(flockers[i]->GetPipelineState().Get());
 			flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
 		}
@@ -2055,7 +2352,7 @@ void Game::PopulateCommandList()
 		RenderPostProcessing();
 
 		//transition = CD3DX12_RESOURCE_BARRIER::Transition(
-		//	finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+		//	taaInput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
 		//	D3D12_RESOURCE_STATE_COPY_SOURCE);
 		//
 		//ommandList->ResourceBarrier(1, &transition);
@@ -2068,7 +2365,7 @@ void Game::PopulateCommandList()
 		//ommandList->ResourceBarrier(1, &transition);
 		//
 		//ommandList->CopyResource(renderTargets[frameIndex].resource.Get(),
-		//	finalRenderTarget.resource.Get());
+		//	taaInput.resource.Get());
 		//
 		//transition = CD3DX12_RESOURCE_BARRIER::Transition(
 		//	renderTargets[frameIndex].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
@@ -2077,7 +2374,7 @@ void Game::PopulateCommandList()
 
 	}
 
-	else if(!raster&&isRaytracingAllowed)
+	else if (!raster && isRaytracingAllowed)
 	{
 		ID3D12DescriptorHeap* ppHeaps[] = { rtDescriptorHeap.GetHeap().Get() };
 
@@ -2150,9 +2447,10 @@ void Game::PopulateCommandList()
 		commandList->ResourceBarrier(1, &transition);
 
 	}
-		// Indicate that the back buffer will now be used to present.
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+	// Indicate that the back buffer will now be used to present.
+	commandList->ResourceBarrier(1, &transition);
 
 
 
@@ -2163,37 +2461,105 @@ void Game::PopulateCommandList()
 
 void Game::RenderPostProcessing()
 {
-	//transition render target to readable texture and then transition it back to render target
-	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
-		finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-	commandList->ResourceBarrier(1, &transition);
+	//TAA
+	{
+		//applying TAA
+		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			taaInput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		commandList->ResourceBarrier(1, &transition);
 
-	ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		commandList->ResourceBarrier(1, &transition);
 
-	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	auto rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);
+		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
-	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
-	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
-	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	commandList->SetGraphicsRootSignature(toneMappingRootSig.Get());
-	commandList->SetPipelineState(toneMappingPSO.Get());
+		auto rtvHandle = finalRenderTarget.rtvCPUHandle;
 
-	commandList->SetGraphicsRootDescriptorTable(1, finalRenderTarget.srvGPUHandle);
+		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	commandList->DrawInstanced(3, 1, 0, 0);
+		commandList->SetGraphicsRootSignature(taaRootSig.Get());
+		commandList->SetPipelineState(taaPSO.Get());
 
-	//transition render target to readable texture and then transition it back to render target
-	transition = CD3DX12_RESOURCE_BARRIER::Transition(
-		finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_COPY_SOURCE);
+		commandList->SetGraphicsRootDescriptorTable(0, taaInput.srvGPUHandle);
+		commandList->SetGraphicsRootDescriptorTable(1, taaHistoryBuffer.srvGPUHandle);
+		commandList->SetGraphicsRoot32BitConstant(2, numFrames, 0);
+		commandList->SetGraphicsRootDescriptorTable(3, velocityBuffer.srvGPUHandle);
 
-	commandList->ResourceBarrier(1, &transition);
+		commandList->DrawInstanced(3, 1, 0, 0);
+
+		//transition render target to readable texture and then transition it back to render target
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			taaInput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+		commandList->ResourceBarrier(1, &transition);
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+		commandList->ResourceBarrier(1, &transition);
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			taaHistoryBuffer.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_COPY_DEST);
+		commandList->ResourceBarrier(1, &transition);
+
+		commandList->CopyResource(taaHistoryBuffer.resource.Get(), finalRenderTarget.resource.Get());
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			taaHistoryBuffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		commandList->ResourceBarrier(1, &transition);
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		commandList->ResourceBarrier(1, &transition);
+	}
+
+	//Tonemapping
+	{
+		//transition render target to readable texture and then transition it back to render target
+		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+
+		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+		auto rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);
+
+		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		commandList->SetGraphicsRootSignature(toneMappingRootSig.Get());
+		commandList->SetPipelineState(toneMappingPSO.Get());
+
+		commandList->SetGraphicsRootDescriptorTable(1, finalRenderTarget.srvGPUHandle);
+
+		commandList->DrawInstanced(3, 1, 0, 0);
+
+		//transition render target to readable texture and then transition it back to render target
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+	}
 
 }
 
@@ -2297,7 +2663,7 @@ void Game::CreateLTCTexture()
 
 	if (gpuHeapRingBuffer != nullptr)
 	{
-	
+
 		//auto cpuHandle = gpuHeapRingBuffer->GetDescriptorHeap().GetCPUHandle(gpuHeapRingBuffer->GetNumStaticResources());
 		//auto otherCPUHandle = ltcDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart();
 		//device->CopyDescriptorsSimple(1, cpuHandle, otherCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -2322,17 +2688,17 @@ void Game::PrefilterLTCTextures()
 	prefilterMapDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
 	FLOAT color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
-	
+
 	D3D12_CLEAR_VALUE rtvClearVal = {};
 	rtvClearVal.Color[0] = color[0];
 	rtvClearVal.Color[1] = color[1];
 	rtvClearVal.Color[2] = color[2];
 	rtvClearVal.Color[3] = color[3];
 	rtvClearVal.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE,
+
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE,
 		&prefilterMapDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &rtvClearVal, IID_PPV_ARGS(ltcPrefilterTexture.resource.GetAddressOf())));
-	
+
 	ltcPrefilterTexture.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	//
 	////creating the srv
@@ -2344,29 +2710,30 @@ void Game::PrefilterLTCTextures()
 	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 	//commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(ltcPrefilterTexture.resource.Get(), ltcPrefilterTexture.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcPrefilterTexture.resource.Get(), ltcPrefilterTexture.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	commandList->ResourceBarrier(1, &transition);
 	ltcPrefilterTexture.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	commandList->SetGraphicsRootConstantBufferView(EnvironmentRootIndices::EnvironmentTexturesData, constantBufferResource->GetGPUVirtualAddress());
-	
-	
+
+
 	D3D12_VIEWPORT viewPort = {};
 	viewPort.Height = (float)ltcTexture.width;
-	viewPort.Width =  (float)ltcTexture.height;
+	viewPort.Width = (float)ltcTexture.height;
 	viewPort.MaxDepth = 1.f;
 	viewPort.MinDepth = 0.0f;
 	viewPort.TopLeftX = 0.f;
 	viewPort.TopLeftY = 0.0f;
-	
+
 	scissorRect = {};
 	scissorRect.bottom = (long)ltcTexture.width;
 	scissorRect.right = (LONG)ltcTexture.height;
 	scissorRect.left = 0;
 	scissorRect.top = 0;
-	
+
 	commandList->RSSetViewports(1, &viewPort);
 	commandList->RSSetScissorRects(1, &scissorRect);
-	
+
 	prefilterRTVHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
 	for (int i = 0; i < 5; i++)
@@ -2374,12 +2741,12 @@ void Game::PrefilterLTCTextures()
 		prefilterRTVHeap.CreateDescriptor(ltcPrefilterTexture, RESOURCE_TYPE_RTV, device, 0, width, height, 0, i);
 		commandList->ClearRenderTargetView(ltcPrefilterTexture.rtvCPUHandle, clearColor, 0, 0);
 		commandList->OMSetRenderTargets(1, &ltcPrefilterTexture.rtvCPUHandle, FALSE, nullptr);
-	
+
 		commandList->DrawInstanced(3, 1, 0, 0);
 	}
 
-
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(ltcPrefilterTexture.resource.Get(), ltcPrefilterTexture.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcPrefilterTexture.resource.Get(), ltcPrefilterTexture.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	commandList->ResourceBarrier(1, &transition);
 	ltcPrefilterTexture.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 }
 
@@ -2388,16 +2755,16 @@ void Game::WaitForPreviousFrame()
 {
 	//signal and increment the fence
 	//const UINT64 pfence = fenceValue;
-	ThrowIfFailed(commandQueue->Signal(fence.Get(),fenceValues[frameIndex]));
+	ThrowIfFailed(commandQueue->Signal(fence.Get(), fenceValues[frameIndex]));
 	//fenceValue++;
 
 	//wait until the previous frame is finished
 	//if (fence->GetCompletedValue() < pfence)
 	//{
-		ThrowIfFailed(fence->SetEventOnCompletion(fenceValues[frameIndex], fenceEvent));
-		WaitForSingleObjectEx(fenceEvent, INFINITE,false);
+	ThrowIfFailed(fence->SetEventOnCompletion(fenceValues[frameIndex], fenceEvent));
+	WaitForSingleObjectEx(fenceEvent, INFINITE, false);
 	//}
-	
+
 	//WaitToFlushGPU(commandQueue,fence,fenceValue,fenceEvent);
 	//frameIndex = swapChain->GetCurrentBackBufferIndex();
 	fenceValues[frameIndex]++;

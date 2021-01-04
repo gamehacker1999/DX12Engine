@@ -180,6 +180,15 @@ HRESULT DXCore::InitWindow()
 	return S_OK;
 }
 
+void DXCore::EnableShaderBasedValidation()
+{
+	ComPtr<ID3D12Debug> spDebugController0;
+	ComPtr<ID3D12Debug1> spDebugController1;
+	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&spDebugController0)));
+	ThrowIfFailed(spDebugController0->QueryInterface(IID_PPV_ARGS(&spDebugController1)));
+	spDebugController1->SetEnableGPUBasedValidation(true);
+}
+
 HRESULT DXCore::InitDirectX()
 {
 
@@ -193,6 +202,7 @@ HRESULT DXCore::InitDirectX()
 		}
 	}
 
+	//EnableShaderBasedValidation();
 
 	ComPtr<IDXGIFactory6> factory;
 	auto hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));

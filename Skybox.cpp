@@ -1,27 +1,26 @@
 #include "Skybox.h"
 
 
-Skybox::Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& skyboxPSO,
-	ComPtr<ID3D12RootSignature> skyboxRoot, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& commandQueue,
-	ComPtr<ID3D12GraphicsCommandList> commandList,
-	DescriptorHeapWrapper& mainBufferHeap, bool isCubeMap)
+Skybox::Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh,ComPtr<ID3D12PipelineState>& skyboxPSO,
+	ComPtr<ID3D12RootSignature> skyboxRoot, bool isCubeMap)
 {
 	/*LoadTexture(device, skyboxTexResource, skyboxTex, commandQueue, TEXTURE_TYPE_DDS);
 	CreateShaderResourceView(device.Get(), skyboxTexResource.Get(), cbvSRVDescriptorHandle, true);
 	cbvSRVDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));*/
 
-	ThrowIfFailed(descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	descriptorHeap.CreateDescriptor(skyboxTex, skyboxTexResource, RESOURCE_TYPE_SRV, device, commandQueue,
-		TEXTURE_TYPE_HDR, false, commandList, textureUpload);
+	ThrowIfFailed(descriptorHeap.Create(GetAppResources().device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	descriptorHeap.CreateDescriptor(skyboxTex, skyboxTexResource, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue,
+		TEXTURE_TYPE_HDR, false, GetAppResources().commandList, textureUpload);
 
 	this->skyBoxPSO = skyboxPSO;
 	this->skyboxRootSignature = skyboxRoot;
-	this->skyboxMesh = mesh;
+	skyboxMesh = mesh;
 
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(1024 * 64);
+	ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024*64),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(constantBufferResource.GetAddressOf())
@@ -29,7 +28,7 @@ Skybox::Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12
 
 	ZeroMemory(&skyboxData, sizeof(skyboxData));
 
-	constantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&constantBufferBegin));
+	constantBufferResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&constantBufferBegin));
 	memcpy(constantBufferBegin, &skyboxData, sizeof(skyboxData));
 
 	hasEnvironmentMaps = false;

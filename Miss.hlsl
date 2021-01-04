@@ -1,6 +1,7 @@
 #include "Common.hlsl"
+#include "Utils.hlsli"
 
-TextureCube skyboxTexture: register(t0);
+Texture2D skyboxTexture: register(t0);
 SamplerState basicSampler: register(s0);
 
 float3 CIEClearSky(in float3 dir, in float3 sunDir)
@@ -39,7 +40,11 @@ float3 CIEClearSky(in float3 dir, in float3 sunDir)
 void Miss(inout HitInfo payload : SV_RayPayload)
 {
     payload.rayDepth++;
-	float3 color = skyboxTexture.SampleLevel(basicSampler, WorldRayDirection(), 0).rgb;
+	float2 uv = DirectionToLatLongUV(WorldRayDirection());
+
+	//sample the skybox color
+	float3 skyboxColor = skyboxTexture.Sample(basicSampler, uv).rgb;
+	float3 color = skyboxTexture.SampleLevel(basicSampler, uv, 0).rgb;
     payload.color = color;
     payload.diffuseColor = color;
     payload.currentPosition = float3(0, 0, 0);

@@ -39,16 +39,11 @@ class Material
 	std::vector<UINT8*> generateMapDataCbufferBegin;
 
 public:
-	Material(ComPtr<ID3D12Device> device,ComPtr<ID3D12CommandQueue>& commandQueue,DescriptorHeapWrapper& mainBufferHeap, 
-		ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig,
-		ComPtr<ID3D12GraphicsCommandList> commandList,
+	Material(DescriptorHeapWrapper& mainBufferHeap, ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig,
 		std::wstring diffuse, std::wstring normal = L"default", std::wstring roughness = L"default", 
 		std::wstring metallnes = L"default");
 
-	void GenerateMaps(ComPtr<ID3D12Device> device, 
-		ComPtr<ID3D12PipelineState> vmfSolverPSO, ComPtr<ID3D12RootSignature> vmfRootSig,
-		ComPtr<ID3D12GraphicsCommandList> computeCommandList,
-		ComPtr<ID3D12GraphicsCommandList> commandList,
+	void GenerateMaps(ComPtr<ID3D12PipelineState> vmfSolverPSO, ComPtr<ID3D12RootSignature> vmfRootSig,
 		std::shared_ptr<GPUHeapRingBuffer> gpuRingBuffer);
 
 	ComPtr<ID3D12RootSignature>& GetRootSignature();

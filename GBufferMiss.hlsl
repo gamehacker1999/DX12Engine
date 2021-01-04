@@ -1,6 +1,8 @@
 #include "Common.hlsl"
+#include "Utils.hlsli"
 
-TextureCube skyboxTexture: register(t0);
+
+Texture2D skyboxTexture: register(t0);
 SamplerState basicSampler: register(s0);
 
 float3 CIEClearSky(in float3 dir, in float3 sunDir)
@@ -39,7 +41,11 @@ float3 CIEClearSky(in float3 dir, in float3 sunDir)
 [shader("miss")]
 void GBufferMiss(inout GbufferPayload payload : SV_RayPayload)
 {
-	float3 color = skyboxTexture.SampleLevel(basicSampler, WorldRayDirection(), 0).rgb;
+	float2 uv = DirectionToLatLongUV(WorldRayDirection());
+
+	//sample the skybox color
+	float3 skyboxColor = skyboxTexture.Sample(basicSampler, uv).rgb;
+	float3 color = skyboxTexture.SampleLevel(basicSampler, uv , 0).rgb;
     payload.normal = float3(0, 0, 0);
     payload.albedo = color;
     //payload.roughnessMetallic = float3(0.f, 0.f, 0.f);

@@ -2,13 +2,26 @@
 #include <fstream>
 
 
-float* pixels;
 ApplicationResources appResources;
+
+//Utitlity Resources
+ComPtr<ID3D12PipelineState> generateMipMapsPSO;
+ComPtr<ID3D12RootSignature> generateMipMapsRootSig;
+ComPtr<ID3D12DescriptorHeap> srvUavCBVDescriptorHeap;
+UINT lastResourceIndex;
+CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle;
+CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle;
+UINT handleIncrementSize;
+
+
+auto defaultHeapType = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+auto uploadHeapType = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
 
 void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12GraphicsCommandList> computeCommandList,
     ComPtr<ID3D12CommandQueue> graphicsQueue, ComPtr<ID3D12CommandAllocator> commandAllocators[3],
-    ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3])
+    ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3],
+    ComPtr<ID3D12Fence> graphicsFence, ComPtr<ID3D12Fence> computeFence, UINT64 fenceValues[3], HANDLE fenceEvent)
 {
     appResources = {};
     appResources.device = device;
@@ -18,36 +31,71 @@ void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList
     appResources.computeQueue = computeQueue;
     appResources.graphicsQueue = graphicsQueue;
     appResources.commandAllocators = commandAllocators;
+    appResources.frameIndex = 0;
+    appResources.graphicsFence = graphicsFence;
+    appResources.computeFence = computeFence;
+    appResources.fenceValues = fenceValues;
+    lastResourceIndex = 0;
+    appResources.fenceEvent = fenceEvent;
 
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc;
+    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+    heapDesc.NumDescriptors = 600;
+    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+
+    appResources.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(srvUavCBVDescriptorHeap.GetAddressOf()));
+    appResources.uploadHeapType = uploadHeapType;
+    appResources.defaultHeapType = defaultHeapType;
+    appResources.zeroZeroRange = CD3DX12_RANGE(0, 0);
+
+   cpuHandle =srvUavCBVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+   gpuHandle =srvUavCBVDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+   handleIncrementSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
 
     //generating mip maps
     {
         CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
         ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0);
-
-        CD3DX12_ROOT_PARAMETER1 rootParams[2];
+    
+        CD3DX12_ROOT_PARAMETER1 rootParams[3];
         rootParams[0].InitAsDescriptorTable(1, &ranges[0]);
         rootParams[1].InitAsDescriptorTable(1, &ranges[1]);
+        rootParams[2].InitAsConstants(2, 0, 0);
 
+        D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
+        samplerDesc.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+        samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.MipLODBias = 0.0f;
+        samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        samplerDesc.MinLOD = 0.0f;
+        samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+        samplerDesc.MaxAnisotropy = 0;
+        samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+        samplerDesc.ShaderRegister = 0;
+        samplerDesc.RegisterSpace = 0;
+        samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
-        computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams);
-
+        computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 1, &samplerDesc);
+    
         ComPtr<ID3DBlob> computeSignature;
         ComPtr<ID3DBlob> computeError;
-
+    
         ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
-        ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&appResources.generateMipMapsRootSig)));
-
-        ComPtr<ID3DBlob> vmfSolverBlob;
-        ThrowIfFailed(D3DReadFileToBlob(L"VMFSolverCS.cso", vmfSolverBlob.GetAddressOf()));
-
+        ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&generateMipMapsRootSig)));
+    
+        ComPtr<ID3DBlob> shaderBlob;
+        ThrowIfFailed(D3DReadFileToBlob(L"GenerateMipMapsCS.cso", shaderBlob.GetAddressOf()));
+    
         D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
-        computePSODesc.pRootSignature = appResources.generateMipMapsRootSig.Get();
-        computePSODesc.CS = CD3DX12_SHADER_BYTECODE(vmfSolverBlob.Get());
-
-        ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(appResources.generateMipMapsPSO.GetAddressOf())));
+        computePSODesc.pRootSignature = generateMipMapsRootSig.Get();
+        computePSODesc.CS = CD3DX12_SHADER_BYTECODE(shaderBlob.Get());
+    
+        ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(generateMipMapsPSO.GetAddressOf())));
     }
 }
 
@@ -67,16 +115,18 @@ void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence>
 }
 
 D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts, ComPtr<ID3D12Device> device,
-	ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource>& vertexBufferHeap, ComPtr<ID3D12Resource>& uploadHeap
-	)
+	ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource>& vertexBufferHeap, ComPtr<ID3D12Resource>& uploadHeap)
 {
 	{
+
 		UINT vertexBufferSize = numVerts*sizeof(Vertex);
 
+        auto vertexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
+
 		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			&defaultHeapType,
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+			&vertexBufferDesc,
 			D3D12_RESOURCE_STATE_COPY_DEST,
 			nullptr,
 			IID_PPV_ARGS(vertexBufferHeap.GetAddressOf())
@@ -85,9 +135,9 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 		vertexBufferHeap->SetName(L"vertex default heap");
 
 		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			&uploadHeapType,
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+			&vertexBufferDesc,
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
 			IID_PPV_ARGS(uploadHeap.GetAddressOf())
@@ -102,15 +152,10 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 		//copy triangle data to vertex buffer
 		//UINT8* vertexDataBegin;
 		CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
-		//ThrowIfFailed(vbufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&vertexDataBegin)));
-		//memcpy(vertexDataBegin, triangleVBO, sizeof(triangleVBO));
-		//vbufferUpload->Unmap(0, nullptr);
 
-		/*commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-			D3D12_RESOURCE_STATE_COPY_DEST));
-		commandList->CopyResource(vertexBuffer.Get(), vbufferUpload.Get());*/
-		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBufferHeap.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER| D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+        auto transition = CD3DX12_RESOURCE_BARRIER::Transition(vertexBufferHeap.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		commandList->ResourceBarrier(1, &transition);
 
 		//command lists are created in record state but since there is nothing to record yet
 		//close it for the main loop
@@ -131,11 +176,11 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 {
 	{
 		UINT indexBufferSize = numIndices * sizeof(unsigned int);
-
+        auto indexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
 		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			&defaultHeapType,
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+			&indexBufferDesc,
 			D3D12_RESOURCE_STATE_COPY_DEST,
 			nullptr,
 			IID_PPV_ARGS(indexBufferHeap.GetAddressOf())
@@ -144,9 +189,9 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 		indexBufferHeap->SetName(L"index default heap");
 
 		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			&uploadHeapType,
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+			&indexBufferDesc,
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
 			IID_PPV_ARGS(uploadIndexHeap.GetAddressOf())
@@ -162,8 +207,9 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 		//UINT8* vertexDataBegin;
 		CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 
-		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(indexBufferHeap.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_INDEX_BUFFER));
+        auto transition = CD3DX12_RESOURCE_BARRIER::Transition(indexBufferHeap.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_INDEX_BUFFER);
+		commandList->ResourceBarrier(1, &transition);
 
 		D3D12_INDEX_BUFFER_VIEW indexBufferView = {};
 		indexBufferView.BufferLocation = indexBufferHeap->GetGPUVirtualAddress();
@@ -194,13 +240,14 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
     {
         unsigned int width = 0;
         unsigned int height = 0;
+        float* pixels;
         pixels = ReadHDR(textureName.c_str(), &width, &height);
 
-        D3D12_RESOURCE_DESC textDesc = {};
+        auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, 1, 5, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         ThrowIfFailed(device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            &defaultHeapType,
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height),
+            &texDesc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
             IID_PPV_ARGS(tex.GetAddressOf())
@@ -208,10 +255,11 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
 
         const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.Get(), 0, 1);
 
+        auto uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
         ThrowIfFailed(device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            &uploadHeapType,
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+            &uploadBufferDesc,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
             IID_PPV_ARGS(&uploadRes)));
@@ -224,12 +272,11 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
         textureData.RowPitch = width * 16;
         textureData.SlicePitch = textureData.RowPitch * height;
 
-        UpdateSubresources<1>(commandList.Get(), tex.Get(), uploadRes, 0, 0, 1, &textureData);
+        UpdateSubresources<1>(appResources.commandList.Get(), tex.Get(), uploadRes, 0, 0, 1, &textureData);
 
         delete[] pixels;
 
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+        GenerateMipMaps(tex);
 
     }
 
@@ -277,6 +324,87 @@ void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter)
 	}
 
 	*ppAdapter = adapter.Detach();
+}
+
+void GenerateMipMaps(ComPtr<ID3D12Resource> texture)
+{
+
+    auto transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    appResources.commandList->ResourceBarrier(1, &transition);
+
+    SubmitGraphicsCommandList(appResources.commandList);
+
+    ID3D12DescriptorHeap* ppHeaps[] = { srvUavCBVDescriptorHeap.Get() };
+
+    appResources.computeCommandList->SetPipelineState(generateMipMapsPSO.Get());
+    appResources.computeCommandList->SetComputeRootSignature(generateMipMapsRootSig.Get());
+    appResources.computeCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+    auto desc = texture->GetDesc();
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = desc.Format;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = desc.Format;
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+    auto width = desc.Width;
+    auto height = desc.Height;
+
+
+    for (int i = 0; i < desc.MipLevels - 1; i++)
+    {
+
+        auto destWidth = std::max<UINT>(width >> (i + 1), 1);
+        auto destHeight = std::max<UINT>(height >> (i + 1), 1);
+
+        srvDesc.Texture2D.MostDetailedMip = i;
+        uavDesc.Texture2D.MipSlice = i + 1;
+
+        transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, i);
+        appResources.computeCommandList->ResourceBarrier(1, &transition);
+        appResources.device->CreateShaderResourceView(texture.Get(), &srvDesc, cpuHandle);
+        cpuHandle.Offset(1, handleIncrementSize);
+        lastResourceIndex++;
+        appResources.device->CreateUnorderedAccessView(texture.Get(), 0, &uavDesc, cpuHandle);
+        cpuHandle.Offset(1, handleIncrementSize);
+        lastResourceIndex++;
+
+        appResources.computeCommandList->SetComputeRootDescriptorTable(0, gpuHandle);
+        gpuHandle.Offset(1, handleIncrementSize);
+        appResources.computeCommandList->SetComputeRootDescriptorTable(1, gpuHandle);
+        gpuHandle.Offset(1, handleIncrementSize);
+
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, 1.0 / destWidth, 0);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, 1.0 / destHeight, 1);
+
+        //Dispatch the compute shader with one thread per 8x8 pixels
+        appResources.computeCommandList->Dispatch(std::max<UINT>(destWidth / 8, 1u), std::max<UINT>(destHeight / 8, 1u), 1);
+
+       // appResources.computeCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+       //     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, i));
+
+        //Wait for all accesses to the destination texture UAV to be finished before generating the next mipmap, as it will be the source texture for the next mipmap
+        auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(texture.Get());
+        appResources.computeCommandList->ResourceBarrier(1, &uavBarrier);
+    }
+
+    transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 4);
+    appResources.computeCommandList->ResourceBarrier(1, &transition);
+    //When done with the texture, transition it's state back to be a pixel shader resource
+    transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    appResources.commandList->ResourceBarrier(1, &transition);
+
+    SubmitComputeCommandList(appResources.computeCommandList, appResources.commandList);
+    SubmitGraphicsCommandList(appResources.commandList);
+
 }
 
 UINT DispatchSize(UINT tgSize, UINT numElements)
@@ -478,7 +606,37 @@ float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* he
     return pixels;
 }
 
-ApplicationResources GetAppResources()
+ApplicationResources& GetAppResources()
 {
     return appResources;
 }
+
+void SubmitGraphicsCommandList(ComPtr<ID3D12GraphicsCommandList> commandList)
+{
+
+    commandList->Close();
+    ID3D12CommandList* pcommandLists[] = { appResources.commandList.Get() };
+    appResources.graphicsQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+    auto lol = appResources.device->GetDeviceRemovedReason();
+
+    ThrowIfFailed(appResources.commandList->Reset(appResources.commandAllocators[appResources.frameIndex].Get(), generateMipMapsPSO.Get()));
+
+    ThrowIfFailed(appResources.graphicsQueue->Signal(appResources.graphicsFence.Get(), appResources.fenceValues[appResources.frameIndex]));
+
+    ThrowIfFailed(appResources.graphicsFence.Get()->SetEventOnCompletion(appResources.fenceValues[appResources.frameIndex], appResources.fenceEvent));
+    WaitForSingleObjectEx(appResources.fenceEvent, INFINITE, false);
+
+    appResources.fenceValues[appResources.frameIndex]++;
+}
+
+void SubmitComputeCommandList(ComPtr<ID3D12GraphicsCommandList> computeCommandList, ComPtr<ID3D12GraphicsCommandList> commandList)
+{
+
+    computeCommandList->Close();
+    ID3D12CommandList* ppcommandLists[] = { computeCommandList.Get() };
+    appResources.computeQueue->ExecuteCommandLists(_countof(ppcommandLists), ppcommandLists);
+    ThrowIfFailed(appResources.computeQueue->Signal(appResources.computeFence.Get(), appResources.fenceValues[appResources.frameIndex]));
+    ThrowIfFailed(appResources.graphicsQueue->Wait(appResources.computeFence.Get(), appResources.fenceValues[appResources.frameIndex]));
+    ThrowIfFailed(computeCommandList->Reset(appResources.computeAllocator[appResources.frameIndex].Get(), generateMipMapsPSO.Get()));
+}
+

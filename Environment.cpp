@@ -19,10 +19,11 @@ Environment::Environment(ComPtr<ID3D12RootSignature> irradianceRootSignature, Co
 
     ThrowIfFailed(dsvDescriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 
+	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(environmentData) * 64);
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(environmentData) * 64),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(constantBufferResource.GetAddressOf())
@@ -78,7 +79,7 @@ Environment::Environment(ComPtr<ID3D12RootSignature> irradianceRootSignature, Co
 	environmentData.projection = cubemapProj;
 	environmentData.cameraPos = XMFLOAT3(0, 0, 0);
 
-	constantBufferResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&environmentDataBegin));
+	constantBufferResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&environmentDataBegin));
 	memcpy(environmentDataBegin, &environmentData, sizeof(environmentData));
 
 	this->skyboxCube = skyboxCube;
@@ -121,7 +122,7 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	rtvClearVal.Color[3] = color[3];
 	rtvClearVal.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
 		&irradienaceTextureDesc,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
@@ -157,15 +158,17 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootConstantBufferView(EnvironmentRootIndices::EnvironmentTexturesData, constantBufferResource->GetGPUVirtualAddress());
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(irradienceMapTexture.resource.Get(), irradienceMapTexture.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(irradienceMapTexture.resource.Get(), irradienceMapTexture.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	commandList->ResourceBarrier(1, &transition);
 	irradienceMapTexture.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 
 
 	for (int i = 0; i < 6; i++)
 	{
 		rtvDescriptorHeap.CreateDescriptor(irradienceMapTexture, RESOURCE_TYPE_RTV, device, 0, 512, 512, i, 0);
+		auto rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(irradienceMapTexture.heapOffset);
 		commandList->ClearRenderTargetView(rtvDescriptorHeap.GetCPUHandle(irradienceMapTexture.heapOffset), clearColor, 0, 0);
-		commandList->OMSetRenderTargets(1, &rtvDescriptorHeap.GetCPUHandle(irradienceMapTexture.heapOffset), FALSE, &depthStencilHandle);
+		commandList->OMSetRenderTargets(1, &rtvCPUHandle, FALSE, &depthStencilHandle);
 		commandList->ClearDepthStencilView(depthStencilHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, 0);
 
 		XMStoreFloat4x4(&environmentData.world, XMMatrixIdentity());
@@ -182,7 +185,8 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 		commandList->DrawInstanced(3, 1, 0, 0);
 	}
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(irradienceMapTexture.resource.Get(), irradienceMapTexture.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(irradienceMapTexture.resource.Get(), irradienceMapTexture.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	commandList->ResourceBarrier(1, &transition);
 	irradienceMapTexture.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 }
 
@@ -210,7 +214,7 @@ void Environment::CreateBRDFLut(ComPtr<ID3D12Device> device, ComPtr<ID3D12Graphi
 	rtvClearVal.Color[3] = color[3];
 	rtvClearVal.Format = DXGI_FORMAT_R32G32_FLOAT;
 
-	ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE,
+	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE,
 		&integrationLUTTexture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &rtvClearVal, IID_PPV_ARGS(environmentBRDFLUT.resource.GetAddressOf())));
 
 	environmentBRDFLUT.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -241,7 +245,8 @@ void Environment::CreateBRDFLut(ComPtr<ID3D12Device> device, ComPtr<ID3D12Graphi
 	//commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(environmentBRDFLUT.resource.Get(), environmentBRDFLUT.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(environmentBRDFLUT.resource.Get(), environmentBRDFLUT.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	commandList->ResourceBarrier(1, &transition);
 	environmentBRDFLUT.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 
 	rtvDescriptorHeap.CreateDescriptor(environmentBRDFLUT, RESOURCE_TYPE_RTV, device, 0, 64, 64, 0, 0);
@@ -251,7 +256,8 @@ void Environment::CreateBRDFLut(ComPtr<ID3D12Device> device, ComPtr<ID3D12Graphi
 
 	commandList->DrawInstanced(3, 1, 0, 0);
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(environmentBRDFLUT.resource.Get(), environmentBRDFLUT.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(environmentBRDFLUT.resource.Get(), environmentBRDFLUT.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	commandList->ResourceBarrier(1, &transition);
 	environmentBRDFLUT.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 }
 
@@ -279,7 +285,7 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 	rtvClearVal.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), 
+		&GetAppResources().defaultHeapType, 
 		D3D12_HEAP_FLAG_NONE,
 		&prefilterMapDesc, 
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, 
@@ -298,7 +304,8 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 	//commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(prefilteredMapTextures.resource.Get(), prefilteredMapTextures.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(prefilteredMapTextures.resource.Get(), prefilteredMapTextures.currentState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	commandList->ResourceBarrier(1, &transition);
 	prefilteredMapTextures.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	commandList->SetGraphicsRootConstantBufferView(EnvironmentRootIndices::EnvironmentTexturesData, constantBufferResource->GetGPUVirtualAddress());
 
@@ -330,8 +337,9 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 		for (int i = 0; i < 6; i++)
 		{
 			rtvDescriptorHeap.CreateDescriptor(prefilteredMapTextures, RESOURCE_TYPE_RTV, device, 0, width, height, i, mip);
+			auto rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(prefilteredMapTextures.heapOffset);
 			commandList->ClearRenderTargetView(rtvDescriptorHeap.GetCPUHandle(prefilteredMapTextures.heapOffset), clearColor, 0, 0);
-			commandList->OMSetRenderTargets(1, &rtvDescriptorHeap.GetCPUHandle(prefilteredMapTextures.heapOffset), FALSE, nullptr);
+			commandList->OMSetRenderTargets(1, &rtvCPUHandle, FALSE, nullptr);
 			//commandList->ClearDepthStencilView(depthStencilHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, 0);
 
 			XMStoreFloat4x4(&environmentData.world, XMMatrixIdentity());
@@ -349,8 +357,8 @@ void Environment::CreatePrefilteredEnvironmentMap(ComPtr<ID3D12Device> device, C
 		}
 	}
 
-
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(prefilteredMapTextures.resource.Get(), prefilteredMapTextures.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(prefilteredMapTextures.resource.Get(), prefilteredMapTextures.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	commandList->ResourceBarrier(1, &transition);
 	prefilteredMapTextures.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 }
 

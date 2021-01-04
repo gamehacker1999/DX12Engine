@@ -7,6 +7,8 @@ Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& materi
 
 	XMStoreFloat4x4(&modelMatrix, XMMatrixIdentity()); //setting model matrix as identity
 
+	prevModelMatrix = modelMatrix;
+
 	//initializing position scale and rotation
 	position = XMFLOAT3(0.0f, 0.0f, 0.0f);
 	scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
@@ -78,6 +80,7 @@ void Entity::Draw(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList>
 	commandList->IASetIndexBuffer(&indexBuffer);
 
 	commandList->DrawIndexedInstanced(GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+
 }
 
 /*void Entity::SetRigidBody(std::shared_ptr<RigidBody> body)
@@ -163,6 +166,11 @@ XMFLOAT4X4 Entity::GetModelMatrix()
 
 	//returning the model matrix
 	return modelMatrix;
+}
+
+XMFLOAT4X4 Entity::GetPrevModelMatrix()
+{
+	return prevModelMatrix;
 }
 
 XMMATRIX Entity::GetRawModelMatrix()
@@ -281,7 +289,7 @@ void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device> device, D3DX12Residency
 
 void Entity::Update(float deltaTime)
 {
-
+	prevModelMatrix = modelMatrix;
 }
 
 void Entity::GetInput(float deltaTime)

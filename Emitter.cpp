@@ -60,31 +60,34 @@ Emitter::Emitter(int maxParticles, int particlesPerSecond, float lifetime,
 	//adding texture and structured buffer to the descriptor heap
 	descriptorHeap.CreateDescriptor(textureName, texture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT);
 
+	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(Particle) * maxParticles);
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(Particle) * maxParticles),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(particleBuffer.resource.GetAddressOf())
 	));
 
 	ZeroMemory(particles, maxParticles * sizeof(Particle));
-	particleBuffer.resource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&particleDataBegin));
+	auto range = CD3DX12_RANGE(0, 0);
+	particleBuffer.resource->Map(0, &range, reinterpret_cast<void**>(&particleDataBegin));
 	memcpy(particleDataBegin, particles, maxParticles * sizeof(Particle));
 
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(1024 * 64);
 	//creating the constant buffer
 	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
+		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(externalDataResource.GetAddressOf())
 	));
 
 	ZeroMemory(&externData, sizeof(ParticleExternalData));
-	externalDataResource->Map(0, &CD3DX12_RANGE(0, 0), reinterpret_cast<void**>(&externDataBegin));
+	externalDataResource->Map(0, &range, reinterpret_cast<void**>(&externDataBegin));
 	memcpy(externDataBegin, &externData, sizeof(ParticleExternalData));
 
 	delete[] indices;

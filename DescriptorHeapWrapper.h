@@ -1,6 +1,9 @@
 #pragma once
 #include"DX12Helper.h"
 #include<DirectXHelpers.h>
+#include<Windows.h>
+
+using namespace Microsoft::WRL;
 
 using namespace DirectX;
 class DescriptorHeapWrapper

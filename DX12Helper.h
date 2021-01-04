@@ -33,12 +33,14 @@ struct ApplicationResources
 	ComPtr<ID3D12CommandAllocator>* computeAllocator;
 	ComPtr<ID3D12GraphicsCommandList> commandList;
 	ComPtr<ID3D12GraphicsCommandList> computeCommandList;
+	ComPtr<ID3D12Fence> graphicsFence;
+	ComPtr<ID3D12Fence> computeFence;
+	UINT64* fenceValues;
 	UINT frameIndex;
-
-	//Utitlity Resources
-	ComPtr<ID3D12PipelineState> generateMipMapsPSO;
-	ComPtr<ID3D12RootSignature> generateMipMapsRootSig;
-	ComPtr<ID3D12DescriptorHeap> srvUavCBVDescriptorHeap;
+	HANDLE fenceEvent;
+	D3D12_HEAP_PROPERTIES defaultHeapType;
+	D3D12_HEAP_PROPERTIES uploadHeapType;
+	D3D12_RANGE zeroZeroRange;
 };
 
 typedef enum TEXTURE_TYPES
@@ -73,6 +75,36 @@ inline void ThrowIfFailed(HRESULT hr)
 		throw HrException(hr);
 	}
 }
+
+inline float halton(int i, int b)
+{
+	/* Creates a halton sequence of values between 0 and 1.
+	https://en.wikipedia.org/wiki/Halton_sequence
+	Used for jittering based on a constant set of 2D points. */
+	float f = 1.0;
+	float r = 0.0;
+	while (i > 0)
+	{
+		f = f / float(b);
+		r = r + f * float(i % b);
+		i = i / b;
+	}
+	return r;
+}
+
+inline XMFLOAT2* GenerateHaltonJitters()
+{
+	XMFLOAT2 jitters[16];
+
+	for (size_t i = 0; i < 16; i++)
+	{
+		jitters[i] = XMFLOAT2((halton(i, 2) - 0.5) * 2, (halton(i, 3) - 0.5) * 2);
+	}
+
+	return jitters;
+}
+
+
 
 typedef enum RESOURCE_TYPE
 {
@@ -140,7 +172,8 @@ inline XMFLOAT3 GetRandomFloat3(float minRange, float maxRange)
 
 void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12GraphicsCommandList> computeCommandList,
 ComPtr<ID3D12CommandQueue> graphicsQueue, ComPtr<ID3D12CommandAllocator> commandAllocators[3],
-ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3]);
+ComPtr<ID3D12CommandQueue> computeQueue, ComPtr<ID3D12CommandAllocator> computeAllocator[3],
+ComPtr<ID3D12Fence> graphicsFence, ComPtr<ID3D12Fence> computeFence, UINT64 fenceValues[3], HANDLE fenceEvent);
 
 void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue,ComPtr<ID3D12Fence> fence, UINT64 fenceValue,HANDLE fenceEvent);
 
@@ -168,7 +201,12 @@ UINT DispatchSize(UINT tgSize, UINT numElements);
 
 float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* height);
 
-ApplicationResources GetAppResources();
+ApplicationResources& GetAppResources();
+
+void SubmitGraphicsCommandList(ComPtr<ID3D12GraphicsCommandList> commandList);
+
+void SubmitComputeCommandList(ComPtr<ID3D12GraphicsCommandList> computeCommandList, ComPtr<ID3D12GraphicsCommandList> commandList);
+
 
 
 
