@@ -35,8 +35,8 @@ struct VertexToPixel
 inline float3 UnpackNormal(float3 packednormal)
 {
     float3 normal;
-    normal.xy = packednormal.xy * 2 - 1;
-    normal.z = sqrt(1 - normal.x * normal.x - normal.y * normal.y);
+    normal.xyz = packednormal.xyz * 2 - 1;
+    //normal.z = sqrt(1 - normal.x * normal.x - normal.y * normal.y);
     return normal;
 }
 
@@ -113,7 +113,7 @@ float3 CalculateLight(Light light, VertexToPixel input, Texture2D normalMap, Sam
         float c2 = clamp(length(fwidth(finalNormalG)), 0, 1) / length(fwidth(input.worldPosition));
         float c3 = clamp(length(fwidth(finalNormalB)), 0, 1) / length(fwidth(input.worldPosition));
 		float3 scatterAmount = float3(1.f, 0.15f, 0.1f);
-        float3 lambda = 1 / scatterAmount;
+        float3 lambda = 1.0f / scatterAmount;
 		//float3 radius = float3(c1, c2, c3);
 		lambda *= radius*radius;
 		SphericalGaussian redKernal = MakeNormalizedSG(L, lambda.x);

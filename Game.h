@@ -235,7 +235,7 @@ private:
 	ComPtr<ID3D12Resource> lightCullingCBVResource;
 
 	//velocity pass
-	VelocityConstantBuffer velocityBufferData;
+	std::vector<VelocityConstantBuffer> velocityBufferData;
 	std::vector<UINT8*> velocityDataBegin;
 	std::vector<ComPtr<ID3D12Resource>> velocityCBVData;
 	ManagedResource velocityBuffer;
@@ -252,9 +252,15 @@ private:
 	//ComPtr<ID3D12DescriptorHeap> dsDescriptorHeap;
 	DescriptorHeapWrapper dsDescriptorHeap;
 
+	ManagedResource depthStencilBuffer2;
+
 	//post processing
 	DescriptorHeapWrapper renderTargetSRVHeap;
 	ManagedResource finalRenderTarget;
+	ManagedResource taaOutput;
+	ManagedResource tonemappingOutput;
+	ManagedResource sharpenOutput;
+	ManagedResource fxaaOutput;
 	ManagedResource taaInput;
 	ManagedResource taaHistoryBuffer;
 	UINT numFrames;
@@ -321,6 +327,14 @@ private:
 	//taa vars
 	ComPtr<ID3D12RootSignature> taaRootSig;
 	ComPtr<ID3D12PipelineState> taaPSO;
+
+	//sharpen vars
+	ComPtr<ID3D12RootSignature> sharpenRootSig;
+	ComPtr<ID3D12PipelineState> sharpenPSO;
+
+	//FXAA vars
+	ComPtr<ID3D12RootSignature> fxaaRootSig;
+	ComPtr<ID3D12PipelineState> fxaaPSO;
 
 	//veloity vars
 	ComPtr<ID3D12RootSignature> velRootSig;

@@ -23,7 +23,7 @@ struct VertexShaderInput
 struct VertexToPixel
 {
 	float4 position: SV_POSITION;
-	float4 prevPosition: POS;
+	float4 prevPosition: LOL;
 
 };
 

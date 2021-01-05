@@ -43,7 +43,6 @@ Game::Game(HINSTANCE hInstance)
 	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
 	memset(&lightingData, 0, sizeof(LightingData));
 	memset(&lightCullingExternData, 0, sizeof(LightCullingExternalData));
-	memset(&velocityBufferData, 0, sizeof(VelocityConstantBuffer));
 
 	isRaytracingAllowed = false;
 	rtToggle = true;
@@ -76,6 +75,8 @@ Game::~Game()
 	{
 		registry.destroy(flockers[i]->GetEntityID());
 	}
+
+	delete[] jitters;
 
 	//delete[] denoised_pixels;
 	//inputBuffer->destroy();
@@ -113,7 +114,7 @@ HRESULT Game::Init()
 
 		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
-		ThrowIfFailed(dsDescriptorHeap.Create(device, 2, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
+		ThrowIfFailed(dsDescriptorHeap.Create(device, 10, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 
 	}
 
@@ -215,6 +216,17 @@ HRESULT Game::Init()
 		&renderTexureDesc,
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		&rtvClearVal,
+		IID_PPV_ARGS(taaOutput.resource.GetAddressOf())
+	));
+
+	taaOutput.resource->SetName(L"taa output");
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
 		IID_PPV_ARGS(taaInput.resource.GetAddressOf())
 	));
 
@@ -246,6 +258,42 @@ HRESULT Game::Init()
 
 	velocityBuffer.resource->SetName(L"velocity");
 
+	renderTexureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	rtvClearVal.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(tonemappingOutput.resource.GetAddressOf())
+	));
+
+	tonemappingOutput.resource->SetName(L"tonemapping output");
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(sharpenOutput.resource.GetAddressOf())
+	));
+
+	sharpenOutput.resource->SetName(L"sharpen output");
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(fxaaOutput.resource.GetAddressOf())
+	));
+
+	fxaaOutput.resource->SetName(L"fxaa output");
+
 
 	device->CreateRenderTargetView(finalRenderTarget.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
 	finalRenderTarget.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
@@ -262,9 +310,29 @@ HRESULT Game::Init()
 	velocityBuffer.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	rtvDescriptorHeap.IncrementLastResourceIndex(1);
 
+	device->CreateRenderTargetView(tonemappingOutput.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	tonemappingOutput.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	tonemappingOutput.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
+	device->CreateRenderTargetView(sharpenOutput.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	sharpenOutput.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	sharpenOutput.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
 	device->CreateRenderTargetView(taaHistoryBuffer.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
 	taaHistoryBuffer.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	taaHistoryBuffer.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
+	device->CreateRenderTargetView(taaOutput.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	taaOutput.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	taaOutput.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
+	device->CreateRenderTargetView(fxaaOutput.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	fxaaOutput.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	fxaaOutput.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	rtvDescriptorHeap.IncrementLastResourceIndex(1);
 
 	renderTargetSRVHeap.Create(device, 100, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -272,6 +340,10 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(taaHistoryBuffer, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(finalRenderTarget, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(taaOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(sharpenOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
 
 
 	//optimized clear value for depth stencil buffer
@@ -292,6 +364,19 @@ HRESULT Game::Init()
 	));
 
 	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer, RESOURCE_TYPE_DSV, device, 0, width, height);
+
+	//creating the default resource heap for the depth stencil
+	texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R24G8_TYPELESS, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&texDesc,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		&depthClearValue,
+		IID_PPV_ARGS(depthStencilBuffer2.resource.GetAddressOf())
+	));
+
+	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer2, RESOURCE_TYPE_DSV, device, 0, width, height);
 
 	D3D12_RESOURCE_DESC depthTexDesc = {};
 	depthTexDesc.Width = width;
@@ -336,10 +421,18 @@ HRESULT Game::Init()
 
 	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
 
-	velocityBufferData.view = mainCamera->GetViewMatrix();
-	velocityBufferData.projection = mainCamera->GetProjectionMatrix();
-	velocityBufferData.prevProjection = mainCamera->GetProjectionMatrix();
-	velocityBufferData.prevView = mainCamera->GetViewMatrix();
+	for (size_t i = 0; i < 100; i++)
+	{
+		VelocityConstantBuffer tempData = {};
+
+		velocityBufferData.emplace_back(tempData);
+
+		velocityBufferData[i].view = mainCamera->GetViewMatrix();
+		velocityBufferData[i].projection = mainCamera->GetProjectionMatrix();
+		velocityBufferData[i].prevProjection = mainCamera->GetProjectionMatrix();
+		velocityBufferData[i].prevView = mainCamera->GetViewMatrix();
+	}
+
 
 	LoadShaders();
 	CreateMatrices();
@@ -815,7 +908,7 @@ void Game::LoadShaders()
 	//velocity setup
 	{
 		CD3DX12_ROOT_PARAMETER1 velocityRootParams[1];
-		velocityRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_VERTEX);
+		velocityRootParams[0].InitAsConstantBufferView(0, 0);
 
 
 		ComPtr<ID3DBlob> velocitySignature;
@@ -872,7 +965,7 @@ void Game::LoadShaders()
 			ComPtr<ID3DBlob> tonemappingError;
 
 			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
-			staticSamplers[0].Init(0);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
 			rootSignatureDesc.Init_1_1(_countof(tonemappingRootParams), tonemappingRootParams,
 				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
@@ -927,8 +1020,9 @@ void Game::LoadShaders()
 			ComPtr<ID3DBlob> taaSignature;
 			ComPtr<ID3DBlob> taaError;
 
-			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
-			staticSamplers[0].Init(0);
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[2];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+			staticSamplers[1].Init(1, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
 			rootSignatureDesc.Init_1_1(_countof(taaRootParams), taaRootParams,
 				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
@@ -962,6 +1056,110 @@ void Game::LoadShaders()
 			taaPSODesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 			taaPSODesc.SampleDesc.Count = 1;
 			ThrowIfFailed(device->CreateGraphicsPipelineState(&taaPSODesc, IID_PPV_ARGS(taaPSO.GetAddressOf())));
+		}
+
+		//Sharpness
+		{
+			CD3DX12_DESCRIPTOR_RANGE1 sharpenDescriptorRange[1];
+			CD3DX12_ROOT_PARAMETER1 sharpenRootParams[1];
+
+			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+			sharpenDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+
+			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+			sharpenRootParams[0].InitAsDescriptorTable(1, &sharpenDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+
+
+			ComPtr<ID3DBlob> sharpenSignature;
+			ComPtr<ID3DBlob> sharpenError;
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+			rootSignatureDesc.Init_1_1(_countof(sharpenRootParams), sharpenRootParams,
+				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+				sharpenSignature.GetAddressOf(), sharpenError.GetAddressOf()));
+
+			ThrowIfFailed(device->CreateRootSignature(0, sharpenSignature->GetBufferPointer(), sharpenSignature->GetBufferSize(),
+				IID_PPV_ARGS(sharpenRootSig.GetAddressOf())));
+
+			ComPtr<ID3DBlob> fullcreenVS;
+			ComPtr<ID3DBlob> sharpenPS;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"FullScreenSharpenPS.cso", sharpenPS.GetAddressOf()));
+			ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+			//creating a sharpen pipeline state
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC sharpenPSODesc = {};
+			sharpenPSODesc.InputLayout = { };
+			sharpenPSODesc.pRootSignature = sharpenRootSig.Get();
+			sharpenPSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+			sharpenPSODesc.PS = CD3DX12_SHADER_BYTECODE(sharpenPS.Get());
+			sharpenPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+			sharpenPSODesc.DepthStencilState.DepthEnable = false;
+			sharpenPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+			sharpenPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+			sharpenPSODesc.SampleMask = UINT_MAX;
+			sharpenPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			sharpenPSODesc.NumRenderTargets = 1;
+			sharpenPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			sharpenPSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			sharpenPSODesc.SampleDesc.Count = 1;
+			ThrowIfFailed(device->CreateGraphicsPipelineState(&sharpenPSODesc, IID_PPV_ARGS(sharpenPSO.GetAddressOf())));
+		}
+
+		//FXAA
+		{
+			CD3DX12_DESCRIPTOR_RANGE1 fxaaDescriptorRange[1];
+			CD3DX12_ROOT_PARAMETER1 fxaaRootParams[1];
+
+			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+			fxaaDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+
+			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+			fxaaRootParams[0].InitAsDescriptorTable(1, &fxaaDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+
+
+			ComPtr<ID3DBlob> fxaaSignature;
+			ComPtr<ID3DBlob> fxaaError;
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+			rootSignatureDesc.Init_1_1(_countof(fxaaRootParams), fxaaRootParams,
+				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+				fxaaSignature.GetAddressOf(), fxaaError.GetAddressOf()));
+
+			ThrowIfFailed(device->CreateRootSignature(0, fxaaSignature->GetBufferPointer(), fxaaSignature->GetBufferSize(),
+				IID_PPV_ARGS(fxaaRootSig.GetAddressOf())));
+
+			ComPtr<ID3DBlob> fullcreenVS;
+			ComPtr<ID3DBlob> fxaaPS;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"FxaaPS.cso", fxaaPS.GetAddressOf()));
+			ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+			//creating a fxaa pipeline state
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC fxaaPSODesc = {};
+			fxaaPSODesc.InputLayout = { };
+			fxaaPSODesc.pRootSignature = fxaaRootSig.Get();
+			fxaaPSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+			fxaaPSODesc.PS = CD3DX12_SHADER_BYTECODE(fxaaPS.Get());
+			fxaaPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+			fxaaPSODesc.DepthStencilState.DepthEnable = false;
+			fxaaPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+			fxaaPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+			fxaaPSODesc.SampleMask = UINT_MAX;
+			fxaaPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			fxaaPSODesc.NumRenderTargets = 1;
+			fxaaPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			fxaaPSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			fxaaPSODesc.SampleDesc.Count = 1;
+			ThrowIfFailed(device->CreateGraphicsPipelineState(&fxaaPSODesc, IID_PPV_ARGS(fxaaPSO.GetAddressOf())));
 		}
 	}
 
@@ -1137,7 +1335,7 @@ void Game::CreateBasicGeometry()
 		lights[lightCount].color = GetRandomFloat3(0, 1);
 		lights[lightCount].range = 20;
 		lights[lightCount].position = GetRandomFloat3(-60, 60);
-		lights[lightCount].intensity = 4;
+		lights[lightCount].intensity = 1;
 		lightCount++;
 	}
 
@@ -1224,8 +1422,8 @@ void Game::CreateBasicGeometry()
 	entity2 = std::make_shared<Entity>(mesh1, material2, registry);
 	entity3 = std::make_shared<Entity>(mesh1, material2, registry);
 	entity4 = std::make_shared<Entity>(mesh2, material1, registry);
-	entity6 = std::make_shared<Entity>(faceMesh, material4, registry);
-	diskEntity = std::make_shared<Entity>(disk, material4, registry);
+	entity6 = std::make_shared<Entity>(faceMesh, material2, registry);
+	diskEntity = std::make_shared<Entity>(disk, material2, registry);
 
 
 	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
@@ -1260,14 +1458,12 @@ void Game::CreateBasicGeometry()
 	entities.emplace_back(entity2);
 	entities.emplace_back(entity3);
 	entities.emplace_back(entity4);
-	entities.emplace_back(entity6);
 	//entity6->SetScale(XMFLOAT3(lights[1].rectLight.width, lights[1].rectLight.height, 1));
 	cerebrus = std::make_shared<Entity>(mesh3, material3, registry);
 	cerebrus->SetScale(XMFLOAT3(0.3, 0.3, 0.3));
 	cerebrus->SetPosition(XMFLOAT3(0, 0.3, 2));
 	cerebrus->PrepareConstantBuffers(device, residencyManager, residencySet);
 	entities.emplace_back(cerebrus);
-	entities.emplace_back(diskEntity);
 
 
 	//for (int i = 0; i < 1; i++)
@@ -2055,8 +2251,21 @@ void Game::Update(float deltaTime, float totalTime)
 
 	FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
 
-	velocityBufferData.projection = mainCamera->GetProjectionMatrix();
-	velocityBufferData.view = mainCamera->GetViewMatrix();
+	for (size_t i = 0; i < 100; i++)
+	{
+		velocityBufferData[i].projection = mainCamera->GetProjectionMatrix();
+		velocityBufferData[i].view = mainCamera->GetViewMatrix();
+	}
+
+	for (size_t i = 0; i < entities.size(); i++)
+	{
+		entities[i]->Update(deltaTime);
+	}
+
+	for (size_t i = 0; i < flockers.size(); i++)
+	{
+		flockers[i]->Update(deltaTime);
+	}
 
 }
 
@@ -2090,8 +2299,13 @@ void Game::Draw(float deltaTime, float totalTime)
 	ThrowIfFailed(swapChain->Present(1, 0));
 
 	MoveToNextFrame();
-	velocityBufferData.prevView = mainCamera->GetViewMatrix();
-	velocityBufferData.prevProjection = mainCamera->GetProjectionMatrix();
+
+	for (size_t i = 0; i < 100; i++)
+	{
+		velocityBufferData[i].prevView = mainCamera->GetViewMatrix();
+		velocityBufferData[i].prevProjection = mainCamera->GetProjectionMatrix();
+	}
+
 }
 
 void Game::DepthPrePass()
@@ -2175,12 +2389,15 @@ void Game::RenderVelocityBuffer()
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	auto dscCPUHandle = dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset);
+	auto dscCPUHandle = depthStencilBuffer2.dsvCPUHandle;
 	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dscCPUHandle);
-	commandList->ClearDepthStencilView(dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	commandList->ClearDepthStencilView(dscCPUHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	commandList->SetGraphicsRootSignature(velRootSig.Get());
 	commandList->SetPipelineState(velPSO.Get());
+
+	commandList->RSSetViewports(1, &viewport);
+	commandList->RSSetScissorRects(1, &scissorRect);
 
 	for (UINT i = 0; i < entities.size(); i++)
 	{
@@ -2188,9 +2405,9 @@ void Game::RenderVelocityBuffer()
 		//commandList->SetPipelineState(depthPrePassPipelineState.Get());
 		//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
 
-		velocityBufferData.world = entities[i]->GetModelMatrix();
-		velocityBufferData.prevWorld = entities[i]->GetPrevModelMatrix();
-		memcpy(velocityDataBegin[i], &velocityBufferData, sizeof(velocityBufferData));
+		velocityBufferData[i].world = entities[i]->GetModelMatrix();
+		velocityBufferData[i].prevWorld = entities[i]->GetPrevModelMatrix();
+		memcpy(velocityDataBegin[i], &velocityBufferData[i], sizeof(velocityBufferData[i]));
 
 		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[i]->GetGPUVirtualAddress());
 
@@ -2211,9 +2428,9 @@ void Game::RenderVelocityBuffer()
 		//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
 
 		int j = i + entities.size();
-		velocityBufferData.world = flockers[i]->GetModelMatrix();
-		velocityBufferData.prevWorld = flockers[i]->GetPrevModelMatrix();
-		memcpy(velocityDataBegin[j], &velocityBufferData, sizeof(velocityBufferData));
+		velocityBufferData[j].world = flockers[i]->GetModelMatrix();
+		velocityBufferData[j].prevWorld = flockers[i]->GetPrevModelMatrix();
+		memcpy(velocityDataBegin[j], &velocityBufferData[j], sizeof(velocityBufferData[j]));
 
 		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[j]->GetGPUVirtualAddress());
 
@@ -2227,6 +2444,29 @@ void Game::RenderVelocityBuffer()
 
 	}
 
+	//for (UINT i = 0; i < flockers.size(); i++)
+	//{
+	//	//entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+	//	//commandList->SetPipelineState(depthPrePassPipelineState.Get());
+	//	//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
+	//
+	//	int j = i + entities.size();
+	//	velocityBufferData[j].world = flockers[i]->GetModelMatrix();
+	//	velocityBufferData[j].prevWorld = flockers[i]->GetPrevModelMatrix();
+	//	memcpy(velocityDataBegin[j], &velocityBufferData[i], sizeof(velocityBufferData[i]));
+	//
+	//	commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[j]->GetGPUVirtualAddress());
+	//
+	//	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();
+	//	auto indexBuffer = flockers[i]->GetMesh()->GetIndexBuffer();
+	//
+	//	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+	//	commandList->IASetIndexBuffer(&indexBuffer);
+	//
+	//	commandList->DrawIndexedInstanced(flockers[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+	//
+	//}
+
 	//transition render target to readable texture and then transition it back to render target
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(
 		velocityBuffer.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
@@ -2234,7 +2474,7 @@ void Game::RenderVelocityBuffer()
 
 	commandList->ResourceBarrier(1, &transition);
 
-	SubmitGraphicsCommandList(GetAppResources().commandList);
+	//SubmitGraphicsCommandList(GetAppResources().commandList);
 }
 
 void Game::LightCullingPass()
@@ -2262,7 +2502,7 @@ void Game::PopulateCommandList()
 
 	residencySet->Open();
 
-	//RenderVelocityBuffer();
+	RenderVelocityBuffer();
 
 	DepthPrePass();
 
@@ -2337,7 +2577,7 @@ void Game::PopulateCommandList()
 			flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
 		}
 
-		skybox->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition());
+		skybox->PrepareForDraw(mainCamera->GetViewMatrix(), projectionMat, mainCamera->GetPosition());
 
 		commandList->ExecuteBundle(skyboxBundle.Get());
 
@@ -2462,6 +2702,9 @@ void Game::PopulateCommandList()
 void Game::RenderPostProcessing()
 {
 
+	commandList->RSSetViewports(1, &viewport);
+	commandList->RSSetScissorRects(1, &scissorRect);
+
 	//TAA
 	{
 		//applying TAA
@@ -2471,7 +2714,7 @@ void Game::RenderPostProcessing()
 		commandList->ResourceBarrier(1, &transition);
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			taaOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
 			D3D12_RESOURCE_STATE_RENDER_TARGET);
 		commandList->ResourceBarrier(1, &transition);
 
@@ -2480,7 +2723,7 @@ void Game::RenderPostProcessing()
 
 		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-		auto rtvHandle = finalRenderTarget.rtvCPUHandle;
+		auto rtvHandle = taaOutput.rtvCPUHandle;
 
 		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
@@ -2504,7 +2747,7 @@ void Game::RenderPostProcessing()
 		commandList->ResourceBarrier(1, &transition);
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			taaOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
 			D3D12_RESOURCE_STATE_COPY_SOURCE);
 		commandList->ResourceBarrier(1, &transition);
 
@@ -2513,7 +2756,7 @@ void Game::RenderPostProcessing()
 			D3D12_RESOURCE_STATE_COPY_DEST);
 		commandList->ResourceBarrier(1, &transition);
 
-		commandList->CopyResource(taaHistoryBuffer.resource.Get(), finalRenderTarget.resource.Get());
+		commandList->CopyResource(taaHistoryBuffer.resource.Get(), taaOutput.resource.Get());
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(
 			taaHistoryBuffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
@@ -2521,7 +2764,7 @@ void Game::RenderPostProcessing()
 		commandList->ResourceBarrier(1, &transition);
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			taaOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
 			D3D12_RESOURCE_STATE_RENDER_TARGET);
 		commandList->ResourceBarrier(1, &transition);
 	}
@@ -2530,10 +2773,114 @@ void Game::RenderPostProcessing()
 	{
 		//transition render target to readable texture and then transition it back to render target
 		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			taaOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
 		commandList->ResourceBarrier(1, &transition);
+
+		//transition render target to readable texture and then transition it back to render target
+		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			tonemappingOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+
+		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+		auto rtvHandle = tonemappingOutput.rtvCPUHandle;
+
+		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		commandList->SetGraphicsRootSignature(toneMappingRootSig.Get());
+		commandList->SetPipelineState(toneMappingPSO.Get());
+
+		commandList->SetGraphicsRootDescriptorTable(1, taaOutput.srvGPUHandle);
+
+		commandList->DrawInstanced(3, 1, 0, 0);
+
+		//transition render target to readable texture and then transition it back to render target
+		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			taaOutput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		//transition render target to readable texture and then transition it back to render target
+		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			tonemappingOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+	}
+
+	//fxaa
+	{
+		//transition render target to readable texture and then transition it back to render target
+		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			tonemappingOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		//transition render target to readable texture and then transition it back to render target
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			fxaaOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+
+		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+		auto rtvHandle = fxaaOutput.rtvCPUHandle;
+
+		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		commandList->SetGraphicsRootSignature(fxaaRootSig.Get());
+		commandList->SetPipelineState(fxaaPSO.Get());
+
+		commandList->SetGraphicsRootDescriptorTable(0, tonemappingOutput.srvGPUHandle);
+
+		commandList->DrawInstanced(3, 1, 0, 0);
+
+		//transition render target to readable texture and then transition it back to render target
+		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			 tonemappingOutput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		//transition render target to readable texture and then transition it back to render target
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			fxaaOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+	}
+
+	//Sharpen pass
+	{
+		//transition render target to readable texture and then transition it back to render target
+		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			fxaaOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		//transition = CD3DX12_RESOURCE_BARRIER::Transition(
+		//	sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+		//	D3D12_RESOURCE_STATE_RENDER_TARGET);
+		//
+		//commandList->ResourceBarrier(1, &transition);
 
 		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
@@ -2546,19 +2893,28 @@ void Game::RenderPostProcessing()
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-		commandList->SetGraphicsRootSignature(toneMappingRootSig.Get());
-		commandList->SetPipelineState(toneMappingPSO.Get());
+		commandList->SetGraphicsRootSignature(sharpenRootSig.Get());
+		commandList->SetPipelineState(sharpenPSO.Get());
 
-		commandList->SetGraphicsRootDescriptorTable(1, finalRenderTarget.srvGPUHandle);
+		commandList->SetGraphicsRootDescriptorTable(0, fxaaOutput.srvGPUHandle);
 
 		commandList->DrawInstanced(3, 1, 0, 0);
 
+
 		//transition render target to readable texture and then transition it back to render target
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			finalRenderTarget.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			fxaaOutput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 			D3D12_RESOURCE_STATE_COPY_SOURCE);
 
 		commandList->ResourceBarrier(1, &transition);
+
+		//transition = CD3DX12_RESOURCE_BARRIER::Transition(
+		//	sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+		//	D3D12_RESOURCE_STATE_COPY_SOURCE);
+		//
+		//commandList->ResourceBarrier(1, &transition);
+
+
 	}
 
 }

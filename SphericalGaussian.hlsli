@@ -41,7 +41,7 @@ SphericalGaussian EvaluateProduct(SphericalGaussian sg1, SphericalGaussian sg2)
 
 float3 ApproximateSGIntegral(in SphericalGaussian sg)
 {
-	return 2 * M_PI * (sg.amplitude / sg.sharpness);
+	return 2.0 * M_PI * (sg.amplitude / sg.sharpness);
 }
 
 //-------------------------------------------------------------------------------------------------

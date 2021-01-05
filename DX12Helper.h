@@ -94,7 +94,7 @@ inline float halton(int i, int b)
 
 inline XMFLOAT2* GenerateHaltonJitters()
 {
-	XMFLOAT2 jitters[16];
+	XMFLOAT2* jitters = new XMFLOAT2[16];
 
 	for (size_t i = 0; i < 16; i++)
 	{
