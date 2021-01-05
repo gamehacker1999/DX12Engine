@@ -20,14 +20,14 @@ float4 main(VertexToPixel input) : SV_TARGET
     float3 rgbNE = taaOutput.Sample(pointSampler, (input.uv + float2(add.x, -add.y)));
     float3 rgbSW = taaOutput.Sample(pointSampler, (input.uv + float2(-add.x, add.y)));
     float3 rgbSE = taaOutput.Sample(pointSampler, (input.uv + float2(add.x, add.y)));
-    float3 rgbM = taaOutput.Sample(pointSampler, (input.uv));
+    float3 rgbM =  taaOutput.Sample(pointSampler, (input.uv));
 	
     float3 luma = float3(0.299, 0.587, 0.114);
     float lumaNW = dot(rgbNW, luma);
     float lumaNE = dot(rgbNE, luma);
     float lumaSW = dot(rgbSW, luma);
     float lumaSE = dot(rgbSE, luma);
-    float lumaM = dot(rgbM, luma);
+    float lumaM =  dot(rgbM, luma);
 	
     float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
     float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));

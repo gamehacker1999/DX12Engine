@@ -112,10 +112,29 @@ float SpecularDistribution(float roughness, float3 h, float3 n)
 
 }
 
-//function that calculates the cook torrence brdf
-void CookTorrence(float3 n, float3 h, float roughness, float3 v, float3 f0, float3 l, out float3 F, out float D, out float G)
+
+
+// Self-contained roughness filtering function, to be used in forward shading
+void FilterRoughness(float3 h, inout float2 roughness)
 {
-	D = SpecularDistribution(roughness, h, n);
+
+}
+
+//function that calculates the cook torrence brdf
+void CookTorrence(float3 n, float3 h, float roughness, float3 v, float3 f0, float3 l, out float3 F, out float D, out float G, float3x3 tbn)
+{
+    float3 halfvector = normalize(v + l);
+    float3 halfvectorTS = mul(halfvector, tbn);
+    float2 halfvector2D = halfvectorTS.xy;
+    float2 deltaU = ddx(halfvector2D);
+    float2 deltaV = ddy(halfvector2D);
+    float2 boundingRectangle = abs(deltaU) + abs(deltaV);
+    float2 variance = 0.25 * (boundingRectangle * boundingRectangle);
+    float2 kernelRoughness2 = min(2.0 * variance, 0.18);
+    float2 filteredRoughness2 = saturate(float2(roughness, roughness) + kernelRoughness2);
+    //roughness = filteredRoughness2;
+	
+    D = SpecularDistribution(filteredRoughness2.x, h, n);
 	F = Fresnel(h, v, f0);
 	G = GeometricShadowing(n, v, h, roughness) * GeometricShadowing(n, l, h, roughness);
 
@@ -166,7 +185,7 @@ float3 SpotLight(Light light, float3 normal, float3 worldPos, float3 camPos, flo
 
 
 
-float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
+float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0, float3x3 tbn)
 {
 	//variables for different functions
 	float3 F; //fresnel
@@ -178,7 +197,7 @@ float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 camera
 	float3 H = normalize(L + V);
 	float3 N = normalize(normal);
 
-	CookTorrence(normal, H, roughness, V, f0, L, F, D, G);
+	CookTorrence(normal, H, roughness, V, f0, L, F, D, G, tbn);
 
 	float3 ks = F;
 	float3 kd = float3(1.0f, 1.0f, 1.0f) - ks;
@@ -192,7 +211,7 @@ float3 DirectLightPBR(Light light, float3 normal, float3 worldPos, float3 camera
 	return ((kd * surfaceColor.xyz / PI) + specular) * lambert*light.intensity * light.color;
 }
 
-float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
+float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0, float3x3 tbn)
 {
 	//variables for different functions
 	float3 F; //fresnel
@@ -207,7 +226,7 @@ float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraP
 
 	float atten = Attenuate(light, worldPos);
 
-	CookTorrence(normal, H, roughness, V, f0, L, F, D, G);
+	CookTorrence(normal, H, roughness, V, f0, L, F, D, G, tbn);
 
 	float lambert = CalculateDiffuse(normal, L);
 	float3 ks = F;
@@ -222,12 +241,12 @@ float3 PointLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraP
 
 }
 
-float3 SpotLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
+float3 SpotLightPBR(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0, float3x3 tbn)
 {
 	float3 L = normalize(light.position - worldPos);
 	float3 penumbra = pow(saturate(dot(-L, light.direction)), light.spotFalloff);
 
-	return PointLightPBR(light, normal, worldPos, cameraPos, roughness, metalness, surfaceColor, f0) * penumbra;
+	return PointLightPBR(light, normal, worldPos, cameraPos, roughness, metalness, surfaceColor, f0, tbn) * penumbra;
 }
 
 float3 RectAreaLightPBR(Light light, float3 normal, float3 view ,float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0, 

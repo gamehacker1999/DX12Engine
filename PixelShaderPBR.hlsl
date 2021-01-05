@@ -68,6 +68,8 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	//transforming normal from map to world space
 	float3 finalNormal = mul(unpackedNormal, TBN);
+    N = finalNormal;
+    N = normalize(N); //normalizing the normal
 
 	//getting the metalness of the pixel
 	float3 metalColor = material[index + 3].Sample(basicSampler, input.uv).xyz;
@@ -77,21 +79,29 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	//getting the roughness of pixel
 	float roughness = material[index + 2].Sample(basicSampler, input.uv).x;
+	
     float3 diffuseColor = surfaceColor.rgb * (1 - metalColor);
 
 	float newRoughness = prefilteredRoughnessMap.Sample(basicSampler, input.uv).x;
 	float vmf = vmfMap.Sample(basicSampler, input.uv).x;
 
 	//roughness = newRoughness * newRoughness;
-
+    float roughness2 = 1; // = roughness * roughness;
+    roughness2 = roughness * roughness;
+    float3 dndu = ddx(N);
+    float3 dndv = ddy(N);
+	
+    float varience = 0.25 * (dot(dndu, dndu) + dot(dndv, dndv));
+    float kernelRoughness2 = min(varience, 0.18);
+    float filteredRoughness2 = 1;
+    filteredRoughness2 = saturate(roughness2 + kernelRoughness2);
 
 	//step 1 --- Solving the radiance integral for direct lighting, the integral is just the number of light sources
 	// the solid angle on the hemisphere in infinitely small, so the wi is just a direction vector
 	//for now radiance is just the color of the direction light, the diffuse part is lambertian*c/pi
 	//specular is calculated by cook torrence, which ontains in ks term in is due to fresnel
 
-	N = finalNormal;
-	N = normalize(N); //normalizing the normal
+
 	float3 V = normalize(cameraPosition - input.worldPosition); //view vector
 	float3 R = reflect(-V, N); //reflect R over N
 	
@@ -117,15 +127,15 @@ float4 main(VertexToPixel input) : SV_TARGET
          {
             case LIGHT_TYPE_DIR:
                 Lo += DirectLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
-			roughness, metalColor.r, surfaceColor.xyz, f0);
+			roughness, metalColor.r, surfaceColor.xyz, f0, TBN);
                 break;
             case LIGHT_TYPE_SPOT:
                 Lo += SpotLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
-			roughness, metalColor.r, surfaceColor.xyz, f0);
+			roughness, metalColor.r, surfaceColor.xyz, f0, TBN);
                 break;
             case LIGHT_TYPE_POINT:
                 Lo += PointLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
-			roughness, metalColor.r, surfaceColor.xyz, f0);
+			roughness, metalColor.r, surfaceColor.xyz, f0, TBN);
                 break;
             case LIGHT_TYPE_AREA_RECT:
                 Lo += RectAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 

@@ -2262,10 +2262,10 @@ void Game::Update(float deltaTime, float totalTime)
 		entities[i]->Update(deltaTime);
 	}
 
-	for (size_t i = 0; i < flockers.size(); i++)
-	{
-		flockers[i]->Update(deltaTime);
-	}
+	//for (size_t i = 0; i < flockers.size(); i++)
+	//{
+	//	flockers[i]->Update(deltaTime);
+	//}
 
 }
 
@@ -2346,12 +2346,12 @@ void Game::DepthPrePass()
 		entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
 	}
 
-	for (UINT i = 0; i < flockers.size(); i++)
-	{
-		flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
-		commandList->SetPipelineState(depthPrePassPipelineState.Get());
-		flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
-	}
+	//for (UINT i = 0; i < flockers.size(); i++)
+	//{
+	//	flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+	//	commandList->SetPipelineState(depthPrePassPipelineState.Get());
+	//	flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
+	//}
 
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	commandList->ResourceBarrier(1, &transition);
@@ -2421,28 +2421,28 @@ void Game::RenderVelocityBuffer()
 
 	}
 
-	for (UINT i = 0; i < flockers.size(); i++)
-	{
-		//entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
-		//commandList->SetPipelineState(depthPrePassPipelineState.Get());
-		//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
-
-		int j = i + entities.size();
-		velocityBufferData[j].world = flockers[i]->GetModelMatrix();
-		velocityBufferData[j].prevWorld = flockers[i]->GetPrevModelMatrix();
-		memcpy(velocityDataBegin[j], &velocityBufferData[j], sizeof(velocityBufferData[j]));
-
-		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[j]->GetGPUVirtualAddress());
-
-		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();
-		auto indexBuffer = flockers[i]->GetMesh()->GetIndexBuffer();
-
-		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-		commandList->IASetIndexBuffer(&indexBuffer);
-
-		commandList->DrawIndexedInstanced(flockers[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-
-	}
+	//for (UINT i = 0; i < flockers.size(); i++)
+	//{
+	//	//entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+	//	//commandList->SetPipelineState(depthPrePassPipelineState.Get());
+	//	//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
+	//
+	//	int j = i + entities.size();
+	//	velocityBufferData[j].world = flockers[i]->GetModelMatrix();
+	//	velocityBufferData[j].prevWorld = flockers[i]->GetPrevModelMatrix();
+	//	memcpy(velocityDataBegin[j], &velocityBufferData[j], sizeof(velocityBufferData[j]));
+	//
+	//	commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[j]->GetGPUVirtualAddress());
+	//
+	//	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();
+	//	auto indexBuffer = flockers[i]->GetMesh()->GetIndexBuffer();
+	//
+	//	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
+	//	commandList->IASetIndexBuffer(&indexBuffer);
+	//
+	//	commandList->DrawIndexedInstanced(flockers[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+	//
+	//}
 
 	//for (UINT i = 0; i < flockers.size(); i++)
 	//{
@@ -2570,12 +2570,12 @@ void Game::PopulateCommandList()
 			entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
 		}
 
-		for (UINT i = 0; i < flockers.size(); i++)
-		{
-			flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), projectionMat);
-			commandList->SetPipelineState(flockers[i]->GetPipelineState().Get());
-			flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
-		}
+		//for (UINT i = 0; i < flockers.size(); i++)
+		//{
+		//	flockers[i]->PrepareMaterial(mainCamera->GetViewMatrix(), projectionMat);
+		//	commandList->SetPipelineState(flockers[i]->GetPipelineState().Get());
+		//	flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
+		//}
 
 		skybox->PrepareForDraw(mainCamera->GetViewMatrix(), projectionMat, mainCamera->GetPosition());
 
