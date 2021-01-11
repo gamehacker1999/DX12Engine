@@ -13,6 +13,11 @@ CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle;
 CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle;
 UINT handleIncrementSize;
 
+//Utitlity Resources
+ComPtr<ID3D12PipelineState> ltcTexPrefilterPSO;
+ComPtr<ID3D12RootSignature> ltcTexPrefilterRootSig;
+
+
 
 auto defaultHeapType = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 auto uploadHeapType = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -39,7 +44,7 @@ void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList
     appResources.fenceEvent = fenceEvent;
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = 600;
+    heapDesc.NumDescriptors = 1200;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
@@ -96,6 +101,51 @@ void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList
         computePSODesc.CS = CD3DX12_SHADER_BYTECODE(shaderBlob.Get());
     
         ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(generateMipMapsPSO.GetAddressOf())));
+    }
+
+    //prefilter ltc tex
+    {
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0);
+
+        CD3DX12_ROOT_PARAMETER1 rootParams[3];
+        rootParams[0].InitAsDescriptorTable(1, &ranges[0]);
+        rootParams[1].InitAsDescriptorTable(1, &ranges[1]);
+        rootParams[2].InitAsConstants(5, 0, 0);
+
+        D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
+        samplerDesc.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+        samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.MipLODBias = 0.0f;
+        samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        samplerDesc.MinLOD = 0.0f;
+        samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+        samplerDesc.MaxAnisotropy = 0;
+        samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+        samplerDesc.ShaderRegister = 0;
+        samplerDesc.RegisterSpace = 0;
+        samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+        computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 1, &samplerDesc);
+
+        ComPtr<ID3DBlob> computeSignature;
+        ComPtr<ID3DBlob> computeError;
+
+        ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
+        ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&ltcTexPrefilterRootSig)));
+
+        ComPtr<ID3DBlob> shaderBlob;
+        ThrowIfFailed(D3DReadFileToBlob(L"PrefilterLTCTextureCS.cso", shaderBlob.GetAddressOf()));
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
+        computePSODesc.pRootSignature = ltcTexPrefilterRootSig.Get();
+        computePSODesc.CS = CD3DX12_SHADER_BYTECODE(shaderBlob.Get());
+
+        ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(ltcTexPrefilterPSO.GetAddressOf())));
     }
 }
 
@@ -278,16 +328,20 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
 
         GenerateMipMaps(tex);
 
+        //auto transition = CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+        //    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        //appResources.commandList->ResourceBarrier(1, &transition);
+        //
     }
 
 	else
-	{
+	{   
 		//loading texture from filename
 		ResourceUploadBatch resourceUpload(device.Get());
 
 		resourceUpload.Begin();
 
-		ThrowIfFailed(CreateWICTextureFromFile(device.Get(), resourceUpload, textureName.c_str(), tex.GetAddressOf(), true));
+		ThrowIfFailed(CreateWICTextureFromFileEx(device.Get(), resourceUpload, textureName.c_str(), 0Ui64, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, WIC_LOADER_MIP_AUTOGEN, tex.GetAddressOf()));
 
 		auto uploadedResourceFinish = resourceUpload.End(commandQueue.Get());
 
@@ -335,12 +389,6 @@ void GenerateMipMaps(ComPtr<ID3D12Resource> texture)
 
     SubmitGraphicsCommandList(appResources.commandList);
 
-    ID3D12DescriptorHeap* ppHeaps[] = { srvUavCBVDescriptorHeap.Get() };
-
-    appResources.computeCommandList->SetPipelineState(generateMipMapsPSO.Get());
-    appResources.computeCommandList->SetComputeRootSignature(generateMipMapsRootSig.Get());
-    appResources.computeCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
     auto desc = texture->GetDesc();
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -355,10 +403,16 @@ void GenerateMipMaps(ComPtr<ID3D12Resource> texture)
 
     auto width = desc.Width;
     auto height = desc.Height;
+    
+    ID3D12DescriptorHeap* ppHeaps[] = { srvUavCBVDescriptorHeap.Get() };
 
+    appResources.computeCommandList->SetPipelineState(generateMipMapsPSO.Get());
+    appResources.computeCommandList->SetComputeRootSignature(generateMipMapsRootSig.Get());
+    appResources.computeCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     for (int i = 0; i < desc.MipLevels - 1; i++)
-    {
+
+    {   
 
         auto destWidth = std::max<UINT>(width >> (i + 1), 1);
         auto destHeight = std::max<UINT>(height >> (i + 1), 1);
@@ -387,18 +441,105 @@ void GenerateMipMaps(ComPtr<ID3D12Resource> texture)
         //Dispatch the compute shader with one thread per 8x8 pixels
         appResources.computeCommandList->Dispatch(std::max<UINT>(destWidth / 8, 1u), std::max<UINT>(destHeight / 8, 1u), 1);
 
-       // appResources.computeCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-       //     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, i));
+        transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, i);
+       appResources.computeCommandList->ResourceBarrier(1, &transition);
 
         //Wait for all accesses to the destination texture UAV to be finished before generating the next mipmap, as it will be the source texture for the next mipmap
+        auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(texture.Get());
+        appResources.computeCommandList->ResourceBarrier(1, &uavBarrier);
+
+
+    }
+
+    SubmitComputeCommandList(appResources.computeCommandList, appResources.commandList);
+    SubmitGraphicsCommandList(appResources.commandList);
+
+    transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    appResources.commandList->ResourceBarrier(1, &transition);
+    SubmitGraphicsCommandList(appResources.commandList);
+
+
+
+}
+
+void PrefilterLTCTexture(ComPtr<ID3D12Resource> texture)
+{
+    auto texWidth = texture->GetDesc().Width;
+    auto texHeight = texture->GetDesc().Height;
+
+
+    auto transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    appResources.commandList->ResourceBarrier(1, &transition);
+
+    SubmitGraphicsCommandList(appResources.commandList);
+
+    ID3D12DescriptorHeap* ppHeaps[] = { srvUavCBVDescriptorHeap.Get() };
+
+    appResources.computeCommandList->SetPipelineState(ltcTexPrefilterPSO.Get());
+    appResources.computeCommandList->SetComputeRootSignature(ltcTexPrefilterRootSig.Get());
+    appResources.computeCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+    auto desc = texture->GetDesc();
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = desc.Format;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = desc.Format;
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+    for (int i = 0; i < desc.MipLevels - 1; i++)
+    {
+
+        auto destWidth = std::max<UINT>(texWidth >> (i + 1), 1);
+        auto destHeight = std::max<UINT>(texHeight >> (i + 1), 1);
+
+        srvDesc.Texture2D.MostDetailedMip = i;
+        uavDesc.Texture2D.MipSlice = i + 1 ;
+
+        transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, i);
+        appResources.computeCommandList->ResourceBarrier(1, &transition);
+        appResources.device->CreateShaderResourceView(texture.Get(), &srvDesc, cpuHandle);
+        cpuHandle.Offset(1, handleIncrementSize);
+        lastResourceIndex++;
+        appResources.device->CreateUnorderedAccessView(texture.Get(), 0, &uavDesc, cpuHandle);
+        cpuHandle.Offset(1, handleIncrementSize);
+        lastResourceIndex++;
+
+        appResources.computeCommandList->SetComputeRootDescriptorTable(0, gpuHandle);
+        gpuHandle.Offset(1, handleIncrementSize);
+        appResources.computeCommandList->SetComputeRootDescriptorTable(1, gpuHandle);
+        gpuHandle.Offset(1, handleIncrementSize);
+
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, texWidth, 0);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, texHeight, 1);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, destWidth, 2);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, destHeight, 3);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, i, 4);
+
+
+        //Dispatch the compute shader with one thread per 8x8 pixels
+        appResources.computeCommandList->Dispatch(std::max<UINT>(destWidth / 8, 1u), std::max<UINT>(destHeight / 8, 1u), 1);
+
+        // appResources.computeCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+        //     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, i));
+
+         //Wait for all accesses to the destination texture UAV to be finished before generating the next mipmap, as it will be the source texture for the next mipmap
         auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(texture.Get());
         appResources.computeCommandList->ResourceBarrier(1, &uavBarrier);
     }
 
     transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 4);
-    appResources.computeCommandList->ResourceBarrier(1, &transition);
-    //When done with the texture, transition it's state back to be a pixel shader resource
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, desc.MipLevels - 1);
+    appResources.commandList->ResourceBarrier(1, &transition);
+
     transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     appResources.commandList->ResourceBarrier(1, &transition);
 

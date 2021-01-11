@@ -11,6 +11,7 @@
 #include"DescriptorHeapWrapper.h"
 #include"CommonStructs.h"
 #include"Material.h"
+#include"InteriorMaterial.h"
 #include"Skybox.h"
 #include"GPUHeapRingBuffer.h"
 #include"RaymarchedVolume.h"
@@ -286,6 +287,7 @@ private:
 	std::shared_ptr<Entity> cerebrus;
 	std::shared_ptr<Material> material1;
 	std::shared_ptr<Material> material2;
+	std::shared_ptr<InteriorMaterial> interiorMaterial;
 	std::shared_ptr<Material> skinMat;
 
 	bool enableSSS;
@@ -307,6 +309,10 @@ private:
 
 	//subsurface scattering
 	ComPtr<ID3D12PipelineState> sssPipelineState;
+
+	//Interior mapping
+	ComPtr<ID3D12PipelineState> interiorMappingPSO;
+	ComPtr<ID3D12RootSignature> interiorMappingRootSig;
 
 	ManagedResource depthTex;
 	ComPtr<ID3D12PipelineState> depthPrePassPipelineState;
@@ -335,6 +341,11 @@ private:
 	//FXAA vars
 	ComPtr<ID3D12RootSignature> fxaaRootSig;
 	ComPtr<ID3D12PipelineState> fxaaPSO;
+
+	//passthrough vars
+	ComPtr<ID3D12RootSignature> passthroughRootSig;
+	ComPtr<ID3D12PipelineState> passthroughPSO;
+
 
 	//veloity vars
 	ComPtr<ID3D12RootSignature> velRootSig;

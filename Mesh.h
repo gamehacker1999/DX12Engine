@@ -30,7 +30,7 @@ class Mesh
 	std::vector<unsigned int> indices;
 
 public:
-	Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
+	Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device = nullptr , ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
 	Mesh(std::string fileName, ComPtr<ID3D12Device> device,ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
 	void CalculateTangents(std::vector<Vertex>& vertices, std::vector<XMFLOAT3>& position,
 		std::vector<XMFLOAT2>& uvs, unsigned int vertCount);

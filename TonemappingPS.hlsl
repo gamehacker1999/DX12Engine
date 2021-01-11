@@ -42,7 +42,8 @@ float4 main(VertexToPixel input) : SV_TARGET
 	// gamma correction 
 
 	float exposureBias = 2.0f;
-	float3 curr = uncharted2_tonemap_partial(hdrColor);
+	float3 curr = uncharted2_tonemap_partial(hdrColor * exposureBias);
+
 
 
 	float3 finalCol = uncharted2_filmic(hdrColor);

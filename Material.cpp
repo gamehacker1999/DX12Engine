@@ -1,22 +1,36 @@
 #include "Material.h"
 #include<DirectXHelpers.h>
 
-Material::Material(DescriptorHeapWrapper& mainBufferHeap, ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig,
-	std::wstring diffuse, std::wstring normal, std::wstring roughness, std::wstring metalness)
+Material::Material(int numTex)
+{
+	numTextures = 0;
+}
+
+Material::Material(std::wstring diffuse, std::wstring normal, std::wstring roughness, std::wstring metalness)
 {
 
 	ThrowIfFailed(descriptorHeap.Create(GetAppResources().device, 4, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
-	this->rootSignature = rootSig;
-	this->pipelineState = pipelineState;
-
 	//materialIndex = 0;
 	numTextures = 0;
-	descriptorHeap.CreateDescriptor(diffuse,diffuseTexture,RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue,TEXTURE_TYPE_DEAULT);
-	diffuseTextureIndex = diffuseTexture.heapOffset;
-	materialOffset = diffuseTexture.heapOffset;
-	//materialIndex = index;
-	numTextures++;
+
+
+	if (diffuse != L"default")
+	{
+		descriptorHeap.CreateDescriptor(diffuse, diffuseTexture, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		diffuseTextureIndex = diffuseTexture.heapOffset;
+		materialOffset = diffuseTexture.heapOffset;
+		numTextures++;
+	}
+
+	else
+	{
+		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick.jpg", diffuseTexture, RESOURCE_TYPE_SRV, GetAppResources().device,
+			GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		diffuseTextureIndex = diffuseTexture.heapOffset;
+		materialOffset = diffuseTexture.heapOffset;
+		numTextures++;
+	}
 
 	if (normal != L"default")
 	{

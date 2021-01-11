@@ -104,8 +104,8 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	D3D12_RESOURCE_DESC irradienaceTextureDesc = {};
 	irradienaceTextureDesc.DepthOrArraySize = 6;
 	irradienaceTextureDesc.MipLevels = 1;
-	irradienaceTextureDesc.Width = 512;
-	irradienaceTextureDesc.Height = 512;
+	irradienaceTextureDesc.Width = 64;
+	irradienaceTextureDesc.Height = 64;
 	irradienaceTextureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 	irradienaceTextureDesc.SampleDesc.Count = 1;
 	irradienaceTextureDesc.SampleDesc.Quality = 0;
@@ -135,16 +135,16 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 	srvDescriptorHeap.CreateDescriptor(irradienceMapTexture, RESOURCE_TYPE_SRV, device, 0, 512, 512, 0, 1);
 
 	viewPort = {};
-	viewPort.Height = 512.f;
-	viewPort.Width = 512.f;
+	viewPort.Height = 64;
+	viewPort.Width = 64;
 	viewPort.MaxDepth = 1.f;
 	viewPort.MinDepth = 0.0f;
 	viewPort.TopLeftX = 0.f;
 	viewPort.TopLeftY = 0.0f;
 
 	scissorRect = {};
-	scissorRect.bottom = 512;
-	scissorRect.right = 512;
+	scissorRect.bottom = 64;
+	scissorRect.right = 64;
 	scissorRect.left = 0;
 	scissorRect.top = 0;
 
@@ -165,9 +165,9 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 
 	for (int i = 0; i < 6; i++)
 	{
-		rtvDescriptorHeap.CreateDescriptor(irradienceMapTexture, RESOURCE_TYPE_RTV, device, 0, 512, 512, i, 0);
-		auto rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(irradienceMapTexture.heapOffset);
-		commandList->ClearRenderTargetView(rtvDescriptorHeap.GetCPUHandle(irradienceMapTexture.heapOffset), clearColor, 0, 0);
+		rtvDescriptorHeap.CreateDescriptor(irradienceMapTexture, RESOURCE_TYPE_RTV, device, 0, 64, 64, i, 0);
+		auto rtvCPUHandle = irradienceMapTexture.rtvCPUHandle;
+		commandList->ClearRenderTargetView(rtvCPUHandle, clearColor, 0, 0);
 		commandList->OMSetRenderTargets(1, &rtvCPUHandle, FALSE, &depthStencilHandle);
 		commandList->ClearDepthStencilView(depthStencilHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, 0);
 
@@ -177,7 +177,6 @@ void Environment::CreateIrradianceMap(ComPtr<ID3D12Device> device, ComPtr<ID3D12
 		environmentData.cameraPos = XMFLOAT3(0, 0, 0);
 
 		memcpy(environmentDataBegin, &environmentData, sizeof(environmentData));
-
 
 		commandList->SetGraphicsRootDescriptorTable(EnvironmentRootIndices::EnvironmentTextureSRV, skyboxHandle);
 		commandList->SetGraphicsRoot32BitConstant(EnvironmentRootIndices::EnvironmentFaceIndices, i, 0);

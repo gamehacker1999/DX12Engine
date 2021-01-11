@@ -231,7 +231,7 @@ HRESULT DXCore::InitDirectX()
 
 	// Describe and create the command queue.
 	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
 	hr = device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue));

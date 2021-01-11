@@ -1,9 +1,11 @@
 #include "Entity.h"
 
-Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& material, entt::registry& registry)
+Entity::Entity(entt::registry& registry, ComPtr<ID3D12PipelineState> pipelineState, ComPtr<ID3D12RootSignature> rootSig)
 {
-	this->mesh = mesh;
-	this->material = material;
+
+	this->pipelineState = pipelineState;
+	this->rootSig = rootSig;
+
 
 	XMStoreFloat4x4(&modelMatrix, XMMatrixIdentity()); //setting model matrix as identity
 
@@ -26,7 +28,9 @@ Entity::Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& materi
 
 	useRigidBody = false;
 
-	 entityID = registry.create();
+	entityID = registry.create();
+
+	model = nullptr;
 }
 
 Entity::~Entity()
@@ -62,24 +66,16 @@ void Entity::SetModelMatrix(XMFLOAT4X4 matrix)
 
 void Entity::Draw(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer)
 {
-	commandList->SetGraphicsRootSignature(GetRootSignature().Get());
+    commandList->SetGraphicsRootSignature(GetRootSignature().Get());
 
 	ringBuffer->AddDescriptor(device, 1, GetDescriptorHeap(), 0);
 
-	auto matIdx = GetMaterialIndex();
-	commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EntityMaterialIndex, matIdx, 0);
 	commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, ringBuffer->GetDynamicResourceOffset());
-	//commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityRoughnessVMFMapSRV,
-	//	ringBuffer->GetDescriptorHeap().GetGPUHandle(material->prefilteredMapIndex));
 
-
-	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = GetMesh()->GetVertexBuffer();
-	auto indexBuffer = GetMesh()->GetIndexBuffer();
-
-	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-	commandList->IASetIndexBuffer(&indexBuffer);
-
-	commandList->DrawIndexedInstanced(GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+	if (model != nullptr)
+	{
+		model->Draw(commandList);
+	}
 
 }
 
@@ -220,17 +216,40 @@ UINT Entity::GetMaterialIndex()
 
 ComPtr<ID3D12PipelineState>& Entity::GetPipelineState()
 {
-	return material->GetPipelineState();
+	return pipelineState;
 }
 
 ComPtr<ID3D12RootSignature>& Entity::GetRootSignature()
 {
-	return material->GetRootSignature();
+	return rootSig;
 }
 
 DescriptorHeapWrapper& Entity::GetDescriptorHeap()
 {
 	return descriptorHeap;
+}
+
+void Entity::AddModel(std::string pathToFile)
+{
+	model = std::make_shared<MyModel>(pathToFile);
+}
+
+std::shared_ptr<MyModel> Entity::GetModel()
+{
+	if (model != nullptr)
+	{
+		return model;
+	}
+
+	return nullptr;
+}
+
+void Entity::AddMaterial(unsigned int matId)
+{
+	if (model)
+	{
+		model->SetMaterial(matId);
+	}
 }
 
 /*std::shared_ptr<Material> Entity::GetMaterial()
@@ -257,19 +276,6 @@ void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device> device, D3DX12Residency
 	std::shared_ptr<D3DX12Residency::ResidencySet>& residencySet)
 {
 
-	//creating the constant buffer view
-	/*ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(SceneConstantBuffer)),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(sceneConstantBufferResource.resource.GetAddressOf())
-	));*/
-
-	//mainBufferHeap.CreateDescriptor(sceneConstantBufferResource,RESOURCE_TYPE_CBV,device,sizeof(SceneConstantBuffer));
-
-	//mainDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 	ThrowIfFailed(descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 

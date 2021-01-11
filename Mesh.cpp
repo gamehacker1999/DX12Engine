@@ -2,8 +2,8 @@
 Mesh::Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
 {
 	ComPtr<ID3D12Resource> vertexBufferDeafult;
-	vertexBuffer = CreateVBView(vertices, numVertices, device, commandList, defaultHeap,uploadHeap);
-	indexBuffer = CreateIBView(indices, numIndices, device, commandList, defaultIndexHeap, uploadIndexHeap);
+	vertexBuffer = CreateVBView(vertices, numVertices, GetAppResources().device, GetAppResources().commandList, defaultHeap,uploadHeap);
+	indexBuffer = CreateIBView(indices, numIndices, GetAppResources().device, GetAppResources().commandList, defaultIndexHeap, uploadIndexHeap);
 
 	//WaitForPreviousFrame();
 	//game->WaitForPreviousFrame();

@@ -70,3 +70,14 @@ enum TonemappingRootIndices
 {
 		
 };
+
+enum InteriorMappingRootIndices
+{
+	ExternDataVSCBV,
+	TextureArraySRV,
+	ExteriorTextureSRV,
+	CapTextureSRV,
+	SDFTextureSRV,
+	ExternDataPSCBV,
+	InteriorMappingNumParams
+};

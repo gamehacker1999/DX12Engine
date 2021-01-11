@@ -14,6 +14,8 @@ struct GenerateMapExternData
 using namespace DirectX;
 class Material
 {
+
+protected:
 	//ComPtr<ID3D12Resource> diffuseTexture;
 	ManagedResource diffuseTexture;
 	ManagedResource normalTexture;
@@ -39,8 +41,8 @@ class Material
 	std::vector<UINT8*> generateMapDataCbufferBegin;
 
 public:
-	Material(DescriptorHeapWrapper& mainBufferHeap, ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig,
-		std::wstring diffuse, std::wstring normal = L"default", std::wstring roughness = L"default", 
+	Material(int numTextures = 5);
+	Material(std::wstring diffuse = L"default", std::wstring normal = L"default", std::wstring roughness = L"default",
 		std::wstring metallnes = L"default");
 
 	void GenerateMaps(ComPtr<ID3D12PipelineState> vmfSolverPSO, ComPtr<ID3D12RootSignature> vmfRootSig,
@@ -48,7 +50,7 @@ public:
 
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();
-	DescriptorHeapWrapper& GetDescriptorHeap();
+	virtual DescriptorHeapWrapper& GetDescriptorHeap();
 	UINT GetMaterialOffset();
 	UINT GetDiffuseTextureOffset();
 

@@ -194,6 +194,9 @@ void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter);
 
 void GenerateMipMaps(ComPtr<ID3D12Resource> texture);
 
+void PrefilterLTCTexture(ComPtr<ID3D12Resource> texture);
+
+
 ComPtr<ID3D12PipelineState> CreatePipelineState();
 
 // Computes a compute shader dispatch size given a thread group size, and number of elements to process

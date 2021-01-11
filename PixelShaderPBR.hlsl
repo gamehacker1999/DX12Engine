@@ -137,14 +137,14 @@ float4 main(VertexToPixel input) : SV_TARGET
                 Lo += PointLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
 			roughness, metalColor.r, surfaceColor.xyz, f0, TBN);
                 break;
-            case LIGHT_TYPE_AREA_RECT:
-                Lo += RectAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
-			cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler, material[4]);
-                break;
-            case LIGHT_TYPE_AREA_DISK:
-                Lo += DiskAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
-			cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
-                break;
+            //case LIGHT_TYPE_AREA_RECT:
+            //    Lo += RectAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
+			//cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler, material[4]);
+            //    break;
+            //case LIGHT_TYPE_AREA_DISK:
+            //    Lo += DiskAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
+			//cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
+            //    break;
          }
      }
 

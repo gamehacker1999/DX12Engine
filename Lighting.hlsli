@@ -132,9 +132,16 @@ void CookTorrence(float3 n, float3 h, float roughness, float3 v, float3 f0, floa
     float2 variance = 0.25 * (boundingRectangle * boundingRectangle);
     float2 kernelRoughness2 = min(2.0 * variance, 0.18);
     float2 filteredRoughness2 = saturate(float2(roughness, roughness) + kernelRoughness2);
-    //roughness = filteredRoughness2;
+    roughness = filteredRoughness2.x;
 	
-    D = SpecularDistribution(filteredRoughness2.x, h, n);
+    //float roughness2 = roughness * roughness;
+    //float3 dndu = ddx(n);
+    //float3 dndv = ddy(n);
+    //float varience = 0.25 * (dot(dndu, dndu) + dot(dndv, dndv));
+    //float kernelRoughness2 = min(2.0 * varience, 0.18);
+    //float filteredRoughness = saturate(roughness2 + kernelRoughness2);
+    //roughness = filteredRoughness;
+    D = SpecularDistribution(roughness, h, n);
 	F = Fresnel(h, v, f0);
 	G = GeometricShadowing(n, v, h, roughness) * GeometricShadowing(n, l, h, roughness);
 
@@ -268,11 +275,11 @@ float3 RectAreaLightPBR(Light light, float3 normal, float3 view ,float3 worldPos
 	
     minV = transpose(minV);
     
-    float3 spec = LTC_Evaluate(normal, view, worldPos, minV, points, ltc2,false, samplerState, prefilteredTexture);
+    float3 spec = LTC_Evaluate(normal, view, worldPos, minV, points, ltc2,false, samplerState, prefilteredTexture, light.rectLight.width, light.rectLight.height, light.position);
     
     spec *= f0 * (ltc2.x) + (1 - f0) * (ltc2.y);
     
-    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), points, ltc2,false, samplerState, prefilteredTexture);
+    float3 diffuse = LTC_Evaluate(normal, view, worldPos, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), points, ltc2, false, samplerState, prefilteredTexture, light.rectLight.width, light.rectLight.height, light.position);
     float3 color = light.intensity * light.color * (spec + diffuse*surfaceColor);
 
     return color;

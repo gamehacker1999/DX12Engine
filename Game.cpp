@@ -191,6 +191,8 @@ HRESULT Game::Init()
 
 	// Background color (Cornflower Blue in this case) for clearing
 	FLOAT color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
+	FLOAT black[4] = { 0.0f, 0.0f, 0.f, 1.0f };
+
 
 	D3D12_CLEAR_VALUE rtvClearVal = {};
 	rtvClearVal.Color[0] = color[0];
@@ -244,7 +246,10 @@ HRESULT Game::Init()
 
 	taaHistoryBuffer.resource->SetName(L"taa history");
 
-
+	rtvClearVal.Color[0] = black[0];
+	rtvClearVal.Color[1] = black[1];
+	rtvClearVal.Color[2] = black[2];
+	rtvClearVal.Color[3] = black[3];
 	rtvClearVal.Format = DXGI_FORMAT_R32G32_FLOAT;
 	renderTexureDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
 	ThrowIfFailed(device->CreateCommittedResource(
@@ -258,6 +263,10 @@ HRESULT Game::Init()
 
 	velocityBuffer.resource->SetName(L"velocity");
 
+	rtvClearVal.Color[0] = color[0];
+	rtvClearVal.Color[1] = color[1];
+	rtvClearVal.Color[2] = color[2];
+	rtvClearVal.Color[3] = color[3];
 	renderTexureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	rtvClearVal.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -443,41 +452,6 @@ HRESULT Game::Init()
 	if (isRaytracingAllowed)
 		CreateAccelerationStructures();
 
-	//allocate volumes and skyboxes here
-	for (size_t i = 0; i < materials.size(); i++)
-	{
-		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, materials[i]->GetDescriptorHeap());
-		materials[i]->materialIndex = (UINT)i * 4;
-	}
-
-	auto numStaticResources = gpuHeapRingBuffer->GetNumStaticResources();
-	//for (int i = 0; i < materials.size(); i++)
-	//{
-	//	materials[i]->GenerateMaps(vmfSolverPSO, vmfSofverRootSignature, gpuHeapRingBuffer);
-	//	materials[i]->prefilteredMapIndex = gpuHeapRingBuffer->GetNumStaticResources() - 2;
-	//
-	//
-	//}
-
-
-	computeCommandList->Close();
-	ID3D12CommandList* computeCommandLists[] = { computeCommandList.Get() };
-	computeCommandQueue->ExecuteCommandLists(_countof(computeCommandLists), computeCommandLists);
-	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
-
-	ThrowIfFailed(computeCommandQueue->Signal(computeFence.Get(), fenceValues[frameIndex]));
-	ThrowIfFailed(commandQueue->Wait(computeFence.Get(), fenceValues[frameIndex]));
-
-	commandList->Close();
-	ID3D12CommandList* pcommandLists[] = { commandList.Get() };
-	D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
-	commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
-
-
-	WaitForPreviousFrame();
-
-	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
-
 	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
 	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 	skybox->CreateEnvironment(commandList, device, skyboxRootSignature, skyboxRootSignature, irradiencePSO, prefilteredMapPSO, brdfLUTPSO, dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
@@ -560,7 +534,7 @@ void Game::InitComputeEngine()
 {
 	// Describe and create the command queue.
 	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
 
 	//Creating the compute command queue
@@ -582,7 +556,7 @@ void Game::LoadShaders()
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-	ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 3, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+	ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 3, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 3);
 	rootParams[EntityRootIndices::EntityVertexCBV].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[EntityRootIndices::EntityIndex].InitAsConstants(1, 2, 0, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -647,43 +621,48 @@ void Game::LoadShaders()
 
 	};
 
-	//creating a pipeline state object
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
-	psoDesc.pRootSignature = rootSignature.Get();
-	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
-	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
-	////psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
-	//psoDesc.DepthStencilState.StencilEnable = FALSE;
-	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
-	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	psoDesc.SampleDesc.Count = 1;
-	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
+	{
+		//creating a pipeline state object
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+		psoDesc.pRootSignature = rootSignature.Get();
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+		////psoDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+		//psoDesc.DepthStencilState.StencilEnable = FALSE;
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		psoDesc.SampleDesc.Count = 1;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
+	}
 
-	//creating a pipeline state object
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDescPBR = {};
-	psoDescPBR.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
-	psoDescPBR.pRootSignature = rootSignature.Get();
-	psoDescPBR.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
-	psoDescPBR.PS = CD3DX12_SHADER_BYTECODE(pbrPixelShaderBlob.Get());
-	////psoPBRDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
-	//psoDePBRsc.DepthStencilState.StencilEnable = FALSE;
-	psoDescPBR.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDescPBR.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
-	psoDescPBR.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
-	psoDescPBR.SampleMask = UINT_MAX;
-	psoDescPBR.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDescPBR.NumRenderTargets = 1;
-	psoDescPBR.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDescPBR.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	psoDescPBR.SampleDesc.Count = 1;
-	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescPBR, IID_PPV_ARGS(pbrPipelineState.GetAddressOf())));
+	{
+
+		//creating a pipeline state object
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDescPBR = {};
+		psoDescPBR.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+		psoDescPBR.pRootSignature = rootSignature.Get();
+		psoDescPBR.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+		psoDescPBR.PS = CD3DX12_SHADER_BYTECODE(pbrPixelShaderBlob.Get());
+		////psoPBRDesc.DepthStencilState.DepthEnable = FALSE; //= CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // a default depth stencil state
+		//psoDePBRsc.DepthStencilState.StencilEnable = FALSE;
+		psoDescPBR.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDescPBR.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+		psoDescPBR.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+		psoDescPBR.SampleMask = UINT_MAX;
+		psoDescPBR.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDescPBR.NumRenderTargets = 1;
+		psoDescPBR.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		psoDescPBR.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		psoDescPBR.SampleDesc.Count = 1;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescPBR, IID_PPV_ARGS(pbrPipelineState.GetAddressOf())));
+	}
 
 	//creating a pipeline state object
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC sssDescPBR = {};
@@ -777,69 +756,140 @@ void Game::LoadShaders()
 	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescVolume, IID_PPV_ARGS(volumePSO.GetAddressOf())));
 
 	//creating particle root sig and pso
-	CD3DX12_DESCRIPTOR_RANGE1 particleDescriptorRange[2];
-	CD3DX12_ROOT_PARAMETER1 particleRootParams[3];
 
-	//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
-	particleDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+	{
+		CD3DX12_DESCRIPTOR_RANGE1 particleDescriptorRange[2];
+		CD3DX12_ROOT_PARAMETER1 particleRootParams[3];
 
-	//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
-	particleRootParams[0].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_VERTEX);
-	//
-	particleRootParams[1].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_VERTEX);
-	particleRootParams[2].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+		//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+		particleDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
 
-	ComPtr<ID3DBlob> particleSignature;
-	ComPtr<ID3DBlob> particleError;
+		//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+		particleRootParams[0].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_VERTEX);
+		//
+		particleRootParams[1].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_VERTEX);
+		particleRootParams[2].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
 
-	CD3DX12_STATIC_SAMPLER_DESC staticSamplersParticle[1];//(0, D3D12_FILTER_ANISOTROPIC);
-	staticSamplersParticle[0].Init(0);
+		ComPtr<ID3DBlob> particleSignature;
+		ComPtr<ID3DBlob> particleError;
 
-	rootSignatureDesc.Init_1_1(_countof(particleRootParams), particleRootParams,
-		_countof(staticSamplersParticle), staticSamplersParticle, rootSignatureFlags);
+		CD3DX12_STATIC_SAMPLER_DESC staticSamplersParticle[1];//(0, D3D12_FILTER_ANISOTROPIC);
+		staticSamplersParticle[0].Init(0);
 
-	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
-		particleSignature.GetAddressOf(), particleError.GetAddressOf()));
+		rootSignatureDesc.Init_1_1(_countof(particleRootParams), particleRootParams,
+			_countof(staticSamplersParticle), staticSamplersParticle, rootSignatureFlags);
 
-	ThrowIfFailed(device->CreateRootSignature(0, particleSignature->GetBufferPointer(), particleSignature->GetBufferSize(),
-		IID_PPV_ARGS(particleRootSig.GetAddressOf())));
+		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+			particleSignature.GetAddressOf(), particleError.GetAddressOf()));
 
-	ComPtr<ID3DBlob> particleVS;
-	ComPtr<ID3DBlob> particlePS;
+		ThrowIfFailed(device->CreateRootSignature(0, particleSignature->GetBufferPointer(), particleSignature->GetBufferSize(),
+			IID_PPV_ARGS(particleRootSig.GetAddressOf())));
 
-	ThrowIfFailed(D3DReadFileToBlob(L"ParticlePS.cso", particlePS.GetAddressOf()));
-	ThrowIfFailed(D3DReadFileToBlob(L"ParticleVS.cso", particleVS.GetAddressOf()));
+		ComPtr<ID3DBlob> particleVS;
+		ComPtr<ID3DBlob> particlePS;
 
-	//creating a pipeline state object
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDescParticle = {};
-	//psoDescParticle.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
-	psoDescParticle.pRootSignature = particleRootSig.Get();
-	psoDescParticle.VS = CD3DX12_SHADER_BYTECODE(particleVS.Get());
-	psoDescParticle.PS = CD3DX12_SHADER_BYTECODE(particlePS.Get());
-	//psoDescParticle.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDescParticle.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-	psoDescParticle.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-	psoDescParticle.DepthStencilState.DepthEnable = true;
-	psoDescParticle.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
-	psoDescParticle.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-	psoDescParticle.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state
-	psoDescParticle.BlendState.AlphaToCoverageEnable = false;
-	psoDescParticle.BlendState.IndependentBlendEnable = false;
-	psoDescParticle.BlendState.RenderTarget[0].BlendEnable = true;
-	psoDescParticle.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-	psoDescParticle.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-	psoDescParticle.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
-	psoDescParticle.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-	psoDescParticle.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
-	psoDescParticle.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-	psoDescParticle.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	psoDescParticle.SampleMask = UINT_MAX;
-	psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDescParticle.NumRenderTargets = 1;
-	psoDescParticle.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	psoDescParticle.SampleDesc.Count = 1;
-	ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescParticle, IID_PPV_ARGS(particlesPSO.GetAddressOf())));
+		ThrowIfFailed(D3DReadFileToBlob(L"ParticlePS.cso", particlePS.GetAddressOf()));
+		ThrowIfFailed(D3DReadFileToBlob(L"ParticleVS.cso", particleVS.GetAddressOf()));
+
+		//creating a pipeline state object
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDescParticle = {};
+		//psoDescParticle.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+		psoDescParticle.pRootSignature = particleRootSig.Get();
+		psoDescParticle.VS = CD3DX12_SHADER_BYTECODE(particleVS.Get());
+		psoDescParticle.PS = CD3DX12_SHADER_BYTECODE(particlePS.Get());
+		//psoDescParticle.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDescParticle.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+		psoDescParticle.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+		psoDescParticle.DepthStencilState.DepthEnable = true;
+		psoDescParticle.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+		psoDescParticle.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+		psoDescParticle.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state
+		psoDescParticle.BlendState.AlphaToCoverageEnable = false;
+		psoDescParticle.BlendState.IndependentBlendEnable = false;
+		psoDescParticle.BlendState.RenderTarget[0].BlendEnable = true;
+		psoDescParticle.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		psoDescParticle.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		psoDescParticle.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+		psoDescParticle.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+		psoDescParticle.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+		psoDescParticle.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		psoDescParticle.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+		psoDescParticle.SampleMask = UINT_MAX;
+		psoDescParticle.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDescParticle.NumRenderTargets = 1;
+		psoDescParticle.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		psoDescParticle.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		psoDescParticle.SampleDesc.Count = 1;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDescParticle, IID_PPV_ARGS(particlesPSO.GetAddressOf())));
+	}
+
+	//Interior mapping
+	{
+
+		D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
+		{
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+
+		};
+		CD3DX12_DESCRIPTOR_RANGE1 ranges[5];
+		CD3DX12_ROOT_PARAMETER1 rootParams[InteriorMappingRootIndices::InteriorMappingNumParams];
+
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
+		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+		ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
+		rootParams[InteriorMappingRootIndices::ExternDataVSCBV].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_VERTEX);
+		rootParams[InteriorMappingRootIndices::TextureArraySRV].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParams[InteriorMappingRootIndices::ExternDataPSCBV].InitAsConstants(6, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParams[InteriorMappingRootIndices::ExteriorTextureSRV].InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParams[InteriorMappingRootIndices::CapTextureSRV].InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParams[InteriorMappingRootIndices::SDFTextureSRV].InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL);
+
+
+		ComPtr<ID3DBlob> interiorSignature;
+		ComPtr<ID3DBlob> interiorError;
+
+		CD3DX12_STATIC_SAMPLER_DESC staticSamplers[2];//(0, D3D12_FILTER_ANISOTROPIC);
+		staticSamplers[0].Init(0);
+		staticSamplers[1].Init(1, D3D12_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER);
+
+		rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams,
+			_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+			interiorSignature.GetAddressOf(), interiorError.GetAddressOf()));
+
+		ThrowIfFailed(device->CreateRootSignature(0, interiorSignature->GetBufferPointer(), interiorSignature->GetBufferSize(),
+			IID_PPV_ARGS(interiorMappingRootSig.GetAddressOf())));
+
+		ComPtr<ID3DBlob> interiorMappingVS;
+		ComPtr<ID3DBlob> interiorMappingPS;
+
+		ThrowIfFailed(D3DReadFileToBlob(L"VertexShader.cso", interiorMappingVS.GetAddressOf()));
+		ThrowIfFailed(D3DReadFileToBlob(L"InteriorMappingPS.cso", interiorMappingPS.GetAddressOf()));
+
+		//creating a pipeline state object
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC interiorMappingPSODesc = {};
+		interiorMappingPSODesc.InputLayout = { inputElementDesc,_countof(inputElementDesc) };
+		interiorMappingPSODesc.pRootSignature = interiorMappingRootSig.Get();
+		interiorMappingPSODesc.VS = CD3DX12_SHADER_BYTECODE(interiorMappingVS.Get());
+		interiorMappingPSODesc.PS = CD3DX12_SHADER_BYTECODE(interiorMappingPS.Get());
+		interiorMappingPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		interiorMappingPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+		interiorMappingPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+		interiorMappingPSODesc.SampleMask = UINT_MAX;
+		interiorMappingPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		interiorMappingPSODesc.NumRenderTargets = 1;
+		interiorMappingPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		interiorMappingPSODesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		interiorMappingPSODesc.SampleDesc.Count = 1;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&interiorMappingPSODesc, IID_PPV_ARGS(interiorMappingPSO.GetAddressOf())));
+
+	}
 
 	//Light culling setup
 	{
@@ -1161,6 +1211,58 @@ void Game::LoadShaders()
 			fxaaPSODesc.SampleDesc.Count = 1;
 			ThrowIfFailed(device->CreateGraphicsPipelineState(&fxaaPSODesc, IID_PPV_ARGS(fxaaPSO.GetAddressOf())));
 		}
+
+		//fullscreen pass through
+		{
+			CD3DX12_DESCRIPTOR_RANGE1 passthroughDescriptorRange[1];
+			CD3DX12_ROOT_PARAMETER1 passthroughRootParams[1];
+
+			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+			passthroughDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+
+			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+			passthroughRootParams[0].InitAsDescriptorTable(1, &passthroughDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+
+
+			ComPtr<ID3DBlob> passthroughSignature;
+			ComPtr<ID3DBlob> passthroughError;
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+			rootSignatureDesc.Init_1_1(_countof(passthroughRootParams), passthroughRootParams,
+				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+				passthroughSignature.GetAddressOf(), passthroughError.GetAddressOf()));
+
+			ThrowIfFailed(device->CreateRootSignature(0, passthroughSignature->GetBufferPointer(), passthroughSignature->GetBufferSize(),
+				IID_PPV_ARGS(passthroughRootSig.GetAddressOf())));
+
+			ComPtr<ID3DBlob> fullcreenVS;
+			ComPtr<ID3DBlob> passthroughPS;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"FullScreenPassThroughPS.cso", passthroughPS.GetAddressOf()));
+			ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+			//creating a passthrough pipeline state
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC passthroughPSODesc = {};
+			passthroughPSODesc.InputLayout = { };
+			passthroughPSODesc.pRootSignature = passthroughRootSig.Get();
+			passthroughPSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+			passthroughPSODesc.PS = CD3DX12_SHADER_BYTECODE(passthroughPS.Get());
+			passthroughPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+			passthroughPSODesc.DepthStencilState.DepthEnable = false;
+			passthroughPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+			passthroughPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+			passthroughPSODesc.SampleMask = UINT_MAX;
+			passthroughPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			passthroughPSODesc.NumRenderTargets = 1;
+			passthroughPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			passthroughPSODesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			passthroughPSODesc.SampleDesc.Count = 1;
+			ThrowIfFailed(device->CreateGraphicsPipelineState(&passthroughPSODesc, IID_PPV_ARGS(passthroughPSO.GetAddressOf())));
+		}
 	}
 
 }
@@ -1308,7 +1410,7 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].rectLight.rotZ = 0;
 	lights[lightCount].rectLight.rotX = 0;
 	lights[lightCount].position = XMFLOAT3(-6, -2, 0);
-	lights[lightCount].intensity = 100;
+	lights[lightCount].intensity = 1;
 	lightCount++;
 
 	lights[lightCount].type = LIGHT_TYPE_AREA_DISK;
@@ -1378,33 +1480,70 @@ void Game::CreateBasicGeometry()
 	float aspectRatio = static_cast<float>(width / height);
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
-	material1 = std::make_shared<Material>( mainBufferHeap, pbrPipelineState, rootSignature,
+	material1 = std::make_shared<Material>(
 		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
 		L"../../Assets/Textures/GoldRoughness.png", L"../../Assets/Textures/GoldMetallic.png");
-	material2 = std::make_shared<Material>(mainBufferHeap, pbrPipelineState, rootSignature,
+	material2 = std::make_shared<Material>(
 		L"../../Assets/Textures/LayeredDiffuse.png", L"../../Assets/Textures/LayeredNormal.png",
 		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
 
-	std::shared_ptr<Material> material3 = std::make_shared<Material>(mainBufferHeap, pbrPipelineState,
-		rootSignature,
+	std::shared_ptr<Material> material3 = std::make_shared<Material>(
 		L"../../Assets/Textures/CerebrusDiffuse.jpg", L"../../Assets/Textures/CerebrusNormal.jpg",
 		L"../../Assets/Textures/CerebrusRoughness.jpg", L"../../Assets/Textures/CerebrusMetalness.jpg");
 
-	std::shared_ptr<Material> material4 = std::make_shared<Material>(mainBufferHeap,
-		sssPipelineState, rootSignature,
+	std::shared_ptr<Material> material4 = std::make_shared<Material>(
 		L"../../Assets/Textures/Head_Diffuse.png", L"../../Assets/Textures/Head_Normal.png");
 
-	std::shared_ptr<Material> material5 = std::make_shared<Material>(mainBufferHeap,
-		sssPipelineState, rootSignature,
+	std::shared_ptr<Material> material5 = std::make_shared<Material>(
 		L"../../Assets/Textures/GoldMetallic.png", L"../../Assets/Textures/GoldNormal.png",
 		L"../../Assets/Textures/DefaultRoughness.png",
 		L"../../Assets/Textures/LayeredMetallic.png");
+
+	interiorMaterial = std::make_shared<InteriorMaterial>(5);
 
 	materials.emplace_back(material1);
 	materials.emplace_back(material2);
 	materials.emplace_back(material3);
 	materials.emplace_back(material4);
 	materials.emplace_back(material5);
+
+	//allocate volumes and skyboxes here
+	for (size_t i = 0; i < materials.size(); i++)
+	{
+		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, materials[i]->GetDescriptorHeap());
+		materials[i]->materialIndex = gpuHeapRingBuffer->GetNumStaticResources()-4;
+	}
+
+	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, interiorMaterial->GetDescriptorHeap());
+	interiorMaterial->materialIndex = gpuHeapRingBuffer->GetNumStaticResources() - 4;
+
+	auto numStaticResources = gpuHeapRingBuffer->GetNumStaticResources();
+	//for (int i = 0; i < materials.size(); i++)
+	//{
+	//	materials[i]->GenerateMaps(vmfSolverPSO, vmfSofverRootSignature, gpuHeapRingBuffer);
+	//	materials[i]->prefilteredMapIndex = gpuHeapRingBuffer->GetNumStaticResources() - 2;
+	//
+	//
+	//}
+
+
+	computeCommandList->Close();
+	ID3D12CommandList* computeCommandLists[] = { computeCommandList.Get() };
+	computeCommandQueue->ExecuteCommandLists(_countof(computeCommandLists), computeCommandLists);
+	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
+
+	ThrowIfFailed(computeCommandQueue->Signal(computeFence.Get(), fenceValues[frameIndex]));
+	ThrowIfFailed(commandQueue->Wait(computeFence.Get(), fenceValues[frameIndex]));
+
+	commandList->Close();
+	ID3D12CommandList* pcommandLists[] = { commandList.Get() };
+	D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
+	commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+
+
+	WaitForPreviousFrame();
+
+	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 
 	{
 		commandList->Close();
@@ -1418,34 +1557,49 @@ void Game::CreateBasicGeometry()
 			commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 	}
 
-	entity1 = std::make_shared<Entity>(mesh2, material1, registry);
-	entity2 = std::make_shared<Entity>(mesh1, material2, registry);
-	entity3 = std::make_shared<Entity>(mesh1, material2, registry);
-	entity4 = std::make_shared<Entity>(mesh2, material1, registry);
-	entity6 = std::make_shared<Entity>(faceMesh, material2, registry);
-	diskEntity = std::make_shared<Entity>(disk, material2, registry);
+	entity1 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	entity1->AddModel("../../Assets/Models/cube.obj");
+	entity1->AddMaterial(material1->materialIndex);
 
+	entity2 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	entity2->AddModel("../../Assets/Models/sphere.obj");
+	entity2->AddMaterial(material2->materialIndex);
+
+	entity3 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	entity3->AddModel("../../Assets/Models/sphere.obj");
+	entity3->AddMaterial(material2->materialIndex);
+
+	entity4 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	entity4->AddModel("../../Assets/Models/cube.obj");
+	entity4->AddMaterial(material1->materialIndex);
+
+	entity6 = std::make_shared<Entity>(registry, interiorMappingPSO, interiorMappingRootSig);
+	entity6->AddModel("../../Assets/Models/cube.obj");
+	//entity6->AddMaterial(interiorMaterial->materialIndex);
+
+	diskEntity = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	diskEntity->AddModel("../../Assets/Models/disk.obj");
+	diskEntity->AddMaterial(material2->materialIndex);
+
+	cerebrus = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	cerebrus->AddModel("../../Assets/Models/Cerebrus.obj");
+	cerebrus->AddMaterial(material3->materialIndex);
 
 	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
 	entity1->SetScale(XMFLOAT3(100, 10, 100));
 	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
 	entity3->SetPosition(XMFLOAT3(-3, 0, 1.f));
 	entity4->SetPosition(XMFLOAT3(8, -8, 1.f));
-	entity6->SetPosition(XMFLOAT3(-3, 0, 0));
+	entity6->SetPosition(XMFLOAT3(-10, 0, 0));
+	entity6->SetScale(XMFLOAT3(3, 3, 3));
 	diskEntity->SetPosition(XMFLOAT3(-1, 0, 0));
+	cerebrus->SetScale(XMFLOAT3(0.3, 0.3, 0.3));
+	cerebrus->SetPosition(XMFLOAT3(0, 0.3, 2));
 
 	auto initialRot = entity6->GetRotation();
-	XMVECTOR finalRot = XMQuaternionRotationRollPitchYaw(lights[1].rectLight.rotX * 3.14159f / 180, lights[1].rectLight.rotY * 3.14159f / 180, lights[1].rectLight.rotZ * 3.14159f / 180);
+	XMVECTOR finalRot = XMQuaternionRotationRollPitchYaw(0, 0, -90 * 3.14159f / 180);
 	XMStoreFloat4(&initialRot, finalRot);
 	entity6->SetRotation(initialRot);
-	entity6->SetPosition(lights[1].position);
-
-	initialRot = diskEntity->GetRotation();
-	finalRot = XMQuaternionRotationRollPitchYaw(lights[2].rectLight.rotX * 3.14159f / 180, lights[2].rectLight.rotY * 3.14159f / 180, lights[2].rectLight.rotZ * 3.14159f / 180);
-	XMStoreFloat4(&initialRot, finalRot);
-	diskEntity->SetRotation(initialRot);
-	diskEntity->SetPosition(lights[2].position);
-
 
 	entity1->PrepareConstantBuffers(device, residencyManager, residencySet);
 	entity2->PrepareConstantBuffers(device, residencyManager, residencySet);
@@ -1453,32 +1607,18 @@ void Game::CreateBasicGeometry()
 	entity4->PrepareConstantBuffers(device, residencyManager, residencySet);
 	entity6->PrepareConstantBuffers(device, residencyManager, residencySet);
 	diskEntity->PrepareConstantBuffers(device, residencyManager, residencySet);
+	cerebrus->PrepareConstantBuffers(device, residencyManager, residencySet);
+
 
 	entities.emplace_back(entity1);
 	entities.emplace_back(entity2);
 	entities.emplace_back(entity3);
 	entities.emplace_back(entity4);
-	//entity6->SetScale(XMFLOAT3(lights[1].rectLight.width, lights[1].rectLight.height, 1));
-	cerebrus = std::make_shared<Entity>(mesh3, material3, registry);
-	cerebrus->SetScale(XMFLOAT3(0.3, 0.3, 0.3));
-	cerebrus->SetPosition(XMFLOAT3(0, 0.3, 2));
-	cerebrus->PrepareConstantBuffers(device, residencyManager, residencySet);
 	entities.emplace_back(cerebrus);
-
-
-	//for (int i = 0; i < 1; i++)
-	//{
-	//	cerebrus = std::make_shared<Entity>(mesh2, material2, registry);
-	//	cerebrus->SetScale(XMFLOAT3(0.3, 0.3, 0.3));
-	//	cerebrus->SetPosition(GetRandomFloat3(0,4));
-	//	cerebrus->PrepareConstantBuffers(device, residencyManager, residencySet);
-	//	entities.emplace_back(cerebrus);
-	//
-	//}
 
 	for (int i = 0; i < 10; i++)
 	{
-		flockers.emplace_back(std::make_shared<Entity>(sharkMesh, material2, registry));
+		flockers.emplace_back(std::make_shared<Entity>(registry, pipelineState, rootSignature));
 		flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
 		const auto enttID = flockers[i]->GetEntityID();
 
@@ -2310,6 +2450,9 @@ void Game::Draw(float deltaTime, float totalTime)
 
 void Game::DepthPrePass()
 {
+
+	//skybox->CreateEnvironment(commandList, device, skyboxRootSignature, skyboxRootSignature, irradiencePSO, prefilteredMapPSO, brdfLUTPSO, dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
+
 	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 	commandList->ResourceBarrier(1, &transition);
 	depthTex.currentState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
@@ -2385,7 +2528,7 @@ void Game::RenderVelocityBuffer()
 
 	auto rtvHandle = velocityBuffer.rtvCPUHandle;
 
-	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+	const float clearColor[] = { 0.0f, 0.0f, 0.f, 1.0f };
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -2401,9 +2544,6 @@ void Game::RenderVelocityBuffer()
 
 	for (UINT i = 0; i < entities.size(); i++)
 	{
-		//entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
-		//commandList->SetPipelineState(depthPrePassPipelineState.Get());
-		//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
 
 		velocityBufferData[i].world = entities[i]->GetModelMatrix();
 		velocityBufferData[i].prevWorld = entities[i]->GetPrevModelMatrix();
@@ -2411,38 +2551,14 @@ void Game::RenderVelocityBuffer()
 
 		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[i]->GetGPUVirtualAddress());
 
-		D3D12_VERTEX_BUFFER_VIEW vertexBuffer = entities[i]->GetMesh()->GetVertexBuffer();
-		auto indexBuffer = entities[i]->GetMesh()->GetIndexBuffer();
+		auto model = entities[i]->GetModel();
 
-		commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-		commandList->IASetIndexBuffer(&indexBuffer);
-
-		commandList->DrawIndexedInstanced(entities[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+		if (model != nullptr)
+		{
+			model->Draw(commandList, false);
+		}
 
 	}
-
-	//for (UINT i = 0; i < flockers.size(); i++)
-	//{
-	//	//entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
-	//	//commandList->SetPipelineState(depthPrePassPipelineState.Get());
-	//	//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
-	//
-	//	int j = i + entities.size();
-	//	velocityBufferData[j].world = flockers[i]->GetModelMatrix();
-	//	velocityBufferData[j].prevWorld = flockers[i]->GetPrevModelMatrix();
-	//	memcpy(velocityDataBegin[j], &velocityBufferData[j], sizeof(velocityBufferData[j]));
-	//
-	//	commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[j]->GetGPUVirtualAddress());
-	//
-	//	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();
-	//	auto indexBuffer = flockers[i]->GetMesh()->GetIndexBuffer();
-	//
-	//	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-	//	commandList->IASetIndexBuffer(&indexBuffer);
-	//
-	//	commandList->DrawIndexedInstanced(flockers[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-	//
-	//}
 
 	//for (UINT i = 0; i < flockers.size(); i++)
 	//{
@@ -2474,7 +2590,6 @@ void Game::RenderVelocityBuffer()
 
 	commandList->ResourceBarrier(1, &transition);
 
-	//SubmitGraphicsCommandList(GetAppResources().commandList);
 }
 
 void Game::LightCullingPass()
@@ -2569,6 +2684,23 @@ void Game::PopulateCommandList()
 			commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
 			entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
 		}
+
+		commandList->SetGraphicsRootSignature(entity6->GetRootSignature().Get());
+		entity6->PrepareMaterial(mainCamera->GetViewMatrix(), projectionMat);
+		commandList->SetPipelineState(entity6->GetPipelineState().Get());
+
+		auto cameraPos = mainCamera->GetPosition();
+		commandList->SetGraphicsRootDescriptorTable(InteriorMappingRootIndices::TextureArraySRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(interiorMaterial->materialIndex));
+		commandList->SetGraphicsRoot32BitConstants(InteriorMappingRootIndices::ExternDataPSCBV, 3, &cameraPos, 0);
+		commandList->SetGraphicsRoot32BitConstant(InteriorMappingRootIndices::ExternDataPSCBV, 5, 3);
+		commandList->SetGraphicsRoot32BitConstant(InteriorMappingRootIndices::ExternDataPSCBV, 5, 4);
+		commandList->SetGraphicsRoot32BitConstant(InteriorMappingRootIndices::ExternDataPSCBV, 11, 5);
+		commandList->SetGraphicsRootDescriptorTable(InteriorMappingRootIndices::ExteriorTextureSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(interiorMaterial->materialIndex+1));
+		commandList->SetGraphicsRootDescriptorTable(InteriorMappingRootIndices::CapTextureSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(interiorMaterial->materialIndex + 2));
+		commandList->SetGraphicsRootDescriptorTable(InteriorMappingRootIndices::SDFTextureSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(interiorMaterial->materialIndex + 3));
+
+		entity6->Draw(device, commandList, gpuHeapRingBuffer);
+
 
 		//for (UINT i = 0; i < flockers.size(); i++)
 		//{
@@ -2704,6 +2836,7 @@ void Game::RenderPostProcessing()
 
 	commandList->RSSetViewports(1, &viewport);
 	commandList->RSSetScissorRects(1, &scissorRect);
+	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 
 	//TAA
 	{
@@ -2725,7 +2858,6 @@ void Game::RenderPostProcessing()
 
 		auto rtvHandle = taaOutput.rtvCPUHandle;
 
-		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -2791,7 +2923,6 @@ void Game::RenderPostProcessing()
 
 		auto rtvHandle = tonemappingOutput.rtvCPUHandle;
 
-		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -2840,7 +2971,6 @@ void Game::RenderPostProcessing()
 
 		auto rtvHandle = fxaaOutput.rtvCPUHandle;
 
-		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -2876,19 +3006,18 @@ void Game::RenderPostProcessing()
 
 		commandList->ResourceBarrier(1, &transition);
 
-		//transition = CD3DX12_RESOURCE_BARRIER::Transition(
-		//	sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-		//	D3D12_RESOURCE_STATE_RENDER_TARGET);
-		//
-		//commandList->ResourceBarrier(1, &transition);
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		
+		commandList->ResourceBarrier(1, &transition);
 
 		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
 		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-		auto rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);
+		auto rtvHandle = sharpenOutput.rtvCPUHandle;
 
-		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
 		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -2908,13 +3037,46 @@ void Game::RenderPostProcessing()
 
 		commandList->ResourceBarrier(1, &transition);
 
-		//transition = CD3DX12_RESOURCE_BARRIER::Transition(
-		//	sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-		//	D3D12_RESOURCE_STATE_COPY_SOURCE);
-		//
-		//commandList->ResourceBarrier(1, &transition);
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+		
+		commandList->ResourceBarrier(1, &transition);
 
 
+	}
+
+	//fullscreen pass through
+	{
+
+		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
+
+		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+
+		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+		auto rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);
+
+		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		commandList->SetGraphicsRootSignature(passthroughRootSig.Get());
+		commandList->SetPipelineState(passthroughPSO.Get());
+
+		commandList->SetGraphicsRootDescriptorTable(0, sharpenOutput.srvGPUHandle);
+
+		commandList->DrawInstanced(3, 1, 0, 0);
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		commandList->ResourceBarrier(1, &transition);
 	}
 
 }
@@ -3014,7 +3176,11 @@ void Game::CreateLTCTexture()
 	ltcDescriptorHeap.Create(device, 3 + 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcLUT, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
 	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_2.png", ltcLUT2, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
-	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick.jpg", ltcTexture, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+	commandList->ResourceBarrier(1, &transition);
+	GenerateMipMaps(ltcTexture.resource);
+	PrefilterLTCTexture(ltcTexture.resource);
 
 
 	if (gpuHeapRingBuffer != nullptr)

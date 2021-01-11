@@ -8,6 +8,7 @@ SamplerState brdfSampler : register(s1);
 Texture2D brdfLUT : register(t2, space1);
 Texture2D LtcLUT : register(t3, space1);
 Texture2D LtcLUT2 : register(t4, space1);
+Texture2D prefilteredLTCTex : register(t5, space1);
 SamplerState basicSampler : register(s0);
 
 
@@ -167,7 +168,7 @@ float PolygonalClippedFormFactorToHorizonClippedSphereFormFactor(float3 F)
 
 
 float3 LTC_Evaluate(
-    float3 N, float3 V, float3 P, float3x3 Minv, float3 points[4], float4 ltc2, bool twoSided, SamplerState samplerState, Texture2D prefilteredTexture)
+    float3 N, float3 V, float3 P, float3x3 Minv, float3 points[4], float4 ltc2, bool twoSided, SamplerState samplerState, Texture2D prefilteredTexture, float width, float height, float3 pos)
 {
     // construct orthonormal basis around N
     float3 T1, T2;
@@ -207,8 +208,9 @@ float3 LTC_Evaluate(
         
         float scale = PolygonalClippedFormFactorToHorizonClippedSphereFormFactor(vsum);
         
-        float2 textureLookupDir = vsum.xy;
-        color = prefilteredTexture.Sample(basicSampler, textureLookupDir);
+        float2 textureLookupDir = normalize(vsum);
+        float lod = sqrt(distance(P, pos) / (2 * width * height));
+        color = prefilteredLTCTex.SampleLevel(basicSampler, textureLookupDir * 0.1, lod);
    
         sum = scale;
         if (behind && !twoSided)

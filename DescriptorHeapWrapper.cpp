@@ -140,11 +140,23 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 	else if (resourceType == RESOURCE_TYPE_SRV)
 	{
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+
 		if (resource.resource->GetDesc().DepthOrArraySize == 6)
 		{
 			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
 			srvDesc.TextureCube.MostDetailedMip = 0;
 			srvDesc.TextureCube.MipLevels = mipLevel;
+
+		}
+
+
+		else if (resource.resource->GetDesc().DepthOrArraySize % 6 == 0)
+		{
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBEARRAY;
+			srvDesc.TextureCubeArray.First2DArrayFace = 0;
+			srvDesc.TextureCubeArray.MipLevels = mipLevel;
+			srvDesc.TextureCubeArray.MostDetailedMip = 0;
+			srvDesc.TextureCubeArray.NumCubes = 5;
 	
 		}
 

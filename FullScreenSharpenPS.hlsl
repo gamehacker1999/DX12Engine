@@ -16,6 +16,12 @@ float4 main(VertexToPixel input) : SV_TARGET
     float4 down = taaOutput.Sample(pointSampler, float2(input.uv.x, input.uv.y + pixelSize.y));
     float4 up = taaOutput.Sample(pointSampler, float2(input.uv.x, input.uv.y - pixelSize.y));
     float4 right = taaOutput.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y));
+    float4 topRight = taaOutput.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y - pixelSize.y));
+    float4 topLeft = taaOutput.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y - pixelSize.y));
+    float4 bottomRight = taaOutput.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y + pixelSize.y));
+    float4 bottomLeft = taaOutput.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y + pixelSize.y));
 
-    return saturate(center + (4 * center) - up - down - left - right);
+
+    return saturate(center); // + (4 * center) - up - down - left - right);
+    //-topLeft - topRight - bottomLeft - bottomRight);
 }

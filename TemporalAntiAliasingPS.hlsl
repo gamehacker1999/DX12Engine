@@ -19,11 +19,11 @@ struct VertexToPixel
 float4 main(VertexToPixel input) : SV_TARGET
 {
 
-	float3 currentColor = currentFrame.SampleLevel(basicSampler, input.uv, 0);
-	float3 previousColor = previousFrame.SampleLevel(basicSampler, input.uv, 0);
+	float3 currentColor = currentFrame.SampleLevel(pointSampler, input.uv, 0);
+	float4 previousColor = previousFrame.SampleLevel(pointSampler, input.uv, 0);
     float2 pixelSize = float2(1.0 / 1280.0, 1.0 / 720.0); //Need to pass this later
 
-	if (frameNum == 0)
+	if (frameNum == frameNum)
 	{
 		return float4(currentColor, 1.0f);
 	}
@@ -33,15 +33,15 @@ float4 main(VertexToPixel input) : SV_TARGET
 
     const float4 nbh[9] =
     {
-        ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x - pixelSize.x, input.uv.y - pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x - pixelSize.x, input.uv.y))),
-		ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x - pixelSize.x, input.uv.y + pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x, input.uv.y - pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x, input.uv.y))),
-		ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x, input.uv.y + pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x + pixelSize.x, input.uv.y - pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x + pixelSize.x, input.uv.y))),
-		ConvertToYCoCg(currentFrame.Sample(basicSampler, float2(input.uv.x + pixelSize.x, input.uv.y + pixelSize.y))),
+        ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y - pixelSize.y))),
+		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y))),
+		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y + pixelSize.y))),
+		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y - pixelSize.y))),
+		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y))),
+		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y + pixelSize.y))),
+		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y - pixelSize.y))),
+		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y))),
+		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y + pixelSize.y))),
     };
     const float4 color = nbh[4];
 
@@ -54,8 +54,8 @@ float4 main(VertexToPixel input) : SV_TARGET
     float2 vel = velocityBuffer.SampleLevel(pointSampler, input.uv, 0).xy;
     float2 historyUV = input.uv + vel;
 	
-	
-    float4 history = ConvertToYCoCg(previousFrame.SampleLevel(basicSampler, historyUV, 0));
+    float2 historySize = float2(1280, 720);
+    float4 history = ConvertToYCoCg(SampleTextureCatmullRom(previousFrame, basicSampler, historyUV, historySize));
 	
     const float3 origin = history.rgb - 0.5f * (minimum.rgb + maximum.rgb);
     const float3 direction = average.rgb - history.rgb;
@@ -63,10 +63,10 @@ float4 main(VertexToPixel input) : SV_TARGET
 
     history = lerp(history, average, saturate(IntersectAABB(origin, direction, extents)));
 
-    float blendFactor = 0.05f;
+    float blendFactor = 0.1f;
 
     float impulse = abs(color.x - history.x) / max(color.x, max(history.x, minimum.x));
-    float factor = lerp(blendFactor * 0.8f, blendFactor * 2.0f, impulse * impulse);
+    float factor = lerp(blendFactor * 0.8f, blendFactor, impulse * impulse);
 	
     return ConvertToRGBA(lerp(history, color, factor));
 

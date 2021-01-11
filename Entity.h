@@ -1,5 +1,6 @@
 #pragma once
 #include"Mesh.h"
+#include "MyModel.h"
 #include"DX12Helper.h"
 #include"Vertex.h"
 #include<string>
@@ -59,12 +60,19 @@ protected:
 	//entity id for the ECS
 	entt::entity entityID;
 
+	//adding a model
+	std::shared_ptr<MyModel> model;
+
 	//descriptor heap
 	DescriptorHeapWrapper descriptorHeap;
 
+	//pipeline and root sig
+	ComPtr<ID3D12PipelineState> pipelineState;
+	ComPtr<ID3D12RootSignature> rootSig;
+
 public:
 	//constructor which accepts a mesh
-	Entity(std::shared_ptr<Mesh> mesh/**/, std::shared_ptr<Material>& material, entt::registry& registry);
+	Entity(entt::registry& registry, ComPtr<ID3D12PipelineState> pipelineState, ComPtr<ID3D12RootSignature> rootSig);
 	virtual ~Entity();
 
 	//getters and setters
@@ -104,6 +112,10 @@ public:
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 
 	DescriptorHeapWrapper& GetDescriptorHeap();
+
+	void AddModel(std::string pathToFile);
+	std::shared_ptr<MyModel> GetModel();
+	void AddMaterial(unsigned int matId);
 
 	//std::shared_ptr<Material> GetMaterial();
 
