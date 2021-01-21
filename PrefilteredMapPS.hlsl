@@ -174,6 +174,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	prefilteredColor /= totalWeight;
 
+    prefilteredColor = pow(prefilteredColor, 2.2);
 	return float4(prefilteredColor, 1.0f);
 
 }

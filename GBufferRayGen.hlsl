@@ -1,11 +1,5 @@
 #include "RayGenIncludes.hlsli"
 
-// Raytracing output texture, accessed as a UAV
-RWTexture2D< float4 > gOutput : register(u0);
-RWTexture2D< float4 > gRoughnessMetallic : register(u1);
-RWTexture2D< float4 > gPosition : register(u2);
-RWTexture2D< float4 > gNormal : register(u3);
-RWTexture2D< float4 > gAlbedo : register(u4);
 
 
 struct RayTraceCameraData

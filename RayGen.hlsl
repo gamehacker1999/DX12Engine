@@ -1,11 +1,7 @@
 #include "RayGenIncludes.hlsli"
 
-// Raytracing output texture, accessed as a UAV
-RWTexture2D< float4 > gOutput : register(u0);
-RWTexture2D< float4 > gRoughnessMetallic : register(u1);
-RWTexture2D< float4 > gPosition : register(u2);
-RWTexture2D< float4 > gNormal : register(u3);
-RWTexture2D< float4 > gAlbedo : register(u4);
+
+
 
 struct RayTraceCameraData
 {
@@ -18,7 +14,8 @@ struct RayTraceCameraData
 ConstantBuffer<RayTraceCameraData> cameraData: register(b0);
 
 [shader("raygeneration")] 
-void RayGen() {
+void RayGen() 
+{
     // Initialize the ray payload
     HitInfo payload;
     payload.color = float3(0, 0, 0);
@@ -57,20 +54,6 @@ void RayGen() {
         // Do explicit direct lighting to a random light in the scene
         color += DirectLighting(rndseed, pos, norm, V, metalColor.r,
 		albedo, f0, roughness);
-
-        float3 indirectLight = float3(0, 0, 0);
-        
-        for (int i = 0; i < 1;i++)
-        {
-            // Do indirect lighting for global illumination
-            indirectLight += IndirectLighting(rndseed, pos, norm, V, metalColor.r,
-	        albedo, f0, roughness, 0);
-        }
-        
-
-        
-        indirectLight /= 1;
-        color += indirectLight;
 
     } 
 

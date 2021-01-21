@@ -44,7 +44,9 @@ void Miss(inout HitInfo payload : SV_RayPayload)
 
 	//sample the skybox color
 	float3 skyboxColor = skyboxTexture.Sample(basicSampler, uv).rgb;
-	float3 color = skyboxTexture.SampleLevel(basicSampler, uv, 0).rgb;
+    skyboxColor = pow(skyboxColor, 2.2);
+    float3 color = skyboxTexture.SampleLevel(basicSampler, uv, 0).rgb;
+    color = pow(color, 2.2);
     payload.color = color;
     payload.diffuseColor = color;
     payload.currentPosition = float3(0, 0, 0);

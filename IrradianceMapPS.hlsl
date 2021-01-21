@@ -66,6 +66,8 @@ float4 main(VertexToPixel input) :SV_TARGET
 
 			//adding all the texure values
 			irradiance += skybox.Sample(basicSampler, uv).rgb * sin(theta) * cos(theta);
+			
+
 
 			numOfSamples++;
 		}
@@ -74,6 +76,7 @@ float4 main(VertexToPixel input) :SV_TARGET
 	//dividing by the total number of samples
 	irradiance = PI * irradiance * (1 / numOfSamples);
 
+    irradiance = pow(irradiance, 2.2);
 	//returning the sample value
 	return float4(irradiance,  1.0f);
 

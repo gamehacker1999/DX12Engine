@@ -23,11 +23,14 @@ class Mesh
 	ComPtr<ID3D12Resource> uploadIndexHeap;
 
 	unsigned int numIndices; //number of indices in the mesh
+	unsigned int numVertices; //number of indices in the mesh
 	std::vector<XMFLOAT3> points;
 
 	//list of vertices and indices
 	std::vector<Vertex> vertices;
 	std::vector<unsigned int> indices;
+
+	UINT materialID;
 
 public:
 	Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device = nullptr , ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
@@ -42,6 +45,7 @@ public:
 	D3D12_INDEX_BUFFER_VIEW GetIndexBuffer();
 	ComPtr<ID3D12Resource> GetVertexBufferResource();
 	unsigned int GetIndexCount();
+	unsigned int GetVertexCount();
 	std::vector<XMFLOAT3> GetPoints();
 
 	//load fbx files
@@ -50,6 +54,10 @@ public:
 	void LoadOBJ(ComPtr<ID3D12Device> device , std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList);
 	//sdk meshes
 	void LoadSDKMesh(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue);
+
+	void SetMaterialID(UINT id);
+
+	UINT GetMaterialID();
 
 	//function to load draw the mesh
 	//void Draw(ID3D11DeviceContext* context);

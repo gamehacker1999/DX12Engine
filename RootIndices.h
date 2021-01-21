@@ -2,7 +2,7 @@
 enum EntityRootIndices
 {
 	EntityVertexCBV,
-	EntityIndex,
+	EnableIndirectLighting,
 	EntityPixelCBV,
 	EntityLightListSRV,
 	EntityLightIndices,
@@ -11,6 +11,7 @@ enum EntityRootIndices
 	EntityRoughnessVMFMapSRV,
 	EntityEnvironmentSRV,
 	EntityLTCSRV,
+	AccelerationStructureSRV,
 	EntityNumRootIndices,
 };
 
@@ -37,6 +38,8 @@ enum OceanRenderRootIndices
 enum RaytracingHeapRangesIndices
 {
 	RTOutputTexture,
+	RTIndirectDiffuseOutputTexture,
+	RTIndirectSpecularOutputTexture,
 	RTDiffuseTexture,
 	RTPositionTexture,
 	RTNormalTexture,
@@ -80,4 +83,42 @@ enum InteriorMappingRootIndices
 	SDFTextureSRV,
 	ExternDataPSCBV,
 	InteriorMappingNumParams
+};
+
+enum BMFRPreProcessRootIndices
+{
+	CurPosSRV,
+	PrevPosSRV,
+	CurNormSRV,
+	PrevNormSRV,
+	CurNoisyUAV,
+	PrevNoisySRV,
+	AcceptBoolUAV,
+	PrevFramePixelUAV,
+	FrameDataCBC,
+	BMFRPreProcessNumParams
+};
+
+enum BMFRRegressionRootIndices
+{
+	CurPositionSRV,
+	CurNormalSRV,
+	CurAlbedoSRV,
+	CurrentNoisyUAV,
+	TempDataUAV,
+	OutDataUAV,
+	FrameDataCBV,
+	BMFRRegressionNumParams
+};
+
+enum BMFRPostProcessRootIndices
+{
+	FilterFrameSRV,
+	AccumPrevFrameSRV,
+	AlbedoSRV,
+	AcceptBoolsSRV,
+	PrevFramePixelSRV,
+	AccumFrameUAV,
+	FrameDataConstants,
+	BMFRPostProcessNumParams
 };

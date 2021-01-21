@@ -196,13 +196,31 @@ void GenerateMipMaps(ComPtr<ID3D12Resource> texture);
 
 void PrefilterLTCTexture(ComPtr<ID3D12Resource> texture);
 
+void DenoiseBMFR(ManagedResource inputTex, ManagedResource inputNorm, ManagedResource inputWorld,
+	ManagedResource inputAlbedo, ManagedResource prevNorm, ManagedResource prevWorld,
+	ManagedResource prevAlbedo);
+
+void BMFRPreprocess(ManagedResource rtOutput, ManagedResource normals, ManagedResource position,
+	ManagedResource prevOutput, ManagedResource prevNormals, ManagedResource prevPos,
+	ManagedResource acceptBools, ManagedResource outPrevPixelFrame, ComPtr<ID3D12Resource> cbvData,
+	UINT frameIndex, ComPtr<ID3D12DescriptorHeap> srvUavHeap, D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle);
+
+void BMFRRegression(ManagedResource rtOutput, ManagedResource normals, ManagedResource position,
+	ManagedResource prevOutput, ManagedResource prevNormals, ManagedResource prevPos,
+	ManagedResource acceptBools, ManagedResource outPrevPixelFrame, ComPtr<ID3D12Resource> cbvData,
+	UINT frameIndex, ComPtr<ID3D12DescriptorHeap> srvUavHeap, );
 
 ComPtr<ID3D12PipelineState> CreatePipelineState();
 
+void TransitionResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedResource& resource, D3D12_RESOURCE_STATES afterState);
+
+void CopyResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedResource& dst, ManagedResource& src);
 // Computes a compute shader dispatch size given a thread group size, and number of elements to process
 UINT DispatchSize(UINT tgSize, UINT numElements);
 
 float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* height);
+
+void LoadPrefilteredLTCTexture(ManagedResource tex);
 
 ApplicationResources& GetAppResources();
 

@@ -30,7 +30,7 @@ public:
 	void IncrementLastResourceIndex(UINT valueToIncrementBy);
 	UINT GetDescriptorIncrementSize();
 	void CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType, 
-		ComPtr<ID3D12Device> device,size_t cbufferSize=0,UINT width = 0, UINT height = 0,UINT firstArraySlice = -1,UINT mipLevel = 0);
+		ComPtr<ID3D12Device> device,size_t cbufferSize=0,UINT width = 0, UINT height = 0,UINT firstArraySlice = -1,UINT mipLevel = 0, bool isArray = false);
 	void CreateDescriptor(std::wstring resName, ManagedResource& resource,
 		RESOURCE_TYPE resourceType, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue,
 		TEXTURE_TYPES type = TEXTURE_TYPE_DEAULT, bool isCube = false, ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, 

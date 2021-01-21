@@ -13,11 +13,14 @@ struct Index
 
 ConstantBuffer <Index>entityIndex: register(b0);
 
-struct SubsurfaceScattering
+struct IndirectLighting
 {
-    bool enableSSS;
+    bool enableIndirectLighting;
+    bool inlineRaytrace;
 };
-ConstantBuffer<SubsurfaceScattering> subsurfaceScattering : register(b2);
+ConstantBuffer<IndirectLighting> indLighting : register(b2);
+
+RaytracingAccelerationStructure SceneBVH : register(t0, space4);
 
 struct VertexToPixel
 {
@@ -84,17 +87,8 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float newRoughness = prefilteredRoughnessMap.Sample(basicSampler, input.uv).x;
 	float vmf = vmfMap.Sample(basicSampler, input.uv).x;
-
-	//roughness = newRoughness * newRoughness;
-    float roughness2 = 1; // = roughness * roughness;
-    roughness2 = roughness * roughness;
-    float3 dndu = ddx(N);
-    float3 dndv = ddy(N);
 	
-    float varience = 0.25 * (dot(dndu, dndu) + dot(dndv, dndv));
-    float kernelRoughness2 = min(varience, 0.18);
-    float filteredRoughness2 = 1;
-    filteredRoughness2 = saturate(roughness2 + kernelRoughness2);
+    roughness = min(roughness, 0.2);
 
 	//step 1 --- Solving the radiance integral for direct lighting, the integral is just the number of light sources
 	// the solid angle on the hemisphere in infinitely small, so the wi is just a direction vector
@@ -112,10 +106,55 @@ float4 main(VertexToPixel input) : SV_TARGET
 	
     float2 ltcUV = float2(roughness, sqrt(1-ndotv));
     ltcUV = ltcUV * LUT_SCALE + LUT_BIAS;
+	
+	ltcUV.y = 1.0f - ltcUV.y;
 
     float4 t1 = LtcLUT.Sample(basicSampler, ltcUV);
     float4 t2 = LtcLUT2.Sample(basicSampler, ltcUV);
     float4 envBRDF = brdfLUT.Sample(basicSampler, float2(ndotv, roughness));
+	
+    float3 shadow = float3(1, 1, 1);
+	
+	if(indLighting.inlineRaytrace && indLighting.enableIndirectLighting)
+    {
+    
+	    //creating the rayDescription
+        RayDesc ray;
+        ray.Origin = input.worldPosition + N;
+        ray.Direction = normalize(-lights[0].direction);
+        ray.TMin = 1;
+        ray.TMax = 100000;
+	
+		// Instantiate ray query object.
+		// Template parameter allows driver to generate a specialized
+		// implementation.
+        RayQuery < RAY_FLAG_CULL_NON_OPAQUE |
+             RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH > q;
+	
+	    // Set up a trace.  No work is done yet.
+        q.TraceRayInline(
+        SceneBVH,
+        RAY_FLAG_NONE, // OR'd with flags above
+        1,
+        ray);
+
+		// Proceed() below is where behind-the-scenes traversal happens,
+		// including the heaviest of any driver inlined code.
+		// In this simplest of scenarios, Proceed() only needs
+		// to be called once rather than a loop:
+		// Based on the template specialization above,
+		// traversal completion is guaranteed.
+        q.Proceed();
+
+		// Examine and act on the result of the traversal.
+		// Was a hit committed?
+        if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+        {
+            shadow = float3(0.2, 0.2, 0.2);
+
+        }
+    }
 	
     uint offset = tileIndex * 1024;
 	[loop]
@@ -137,16 +176,19 @@ float4 main(VertexToPixel input) : SV_TARGET
                 Lo += PointLightPBR(lights[lightIndex], N, input.worldPosition, cameraPosition,
 			roughness, metalColor.r, surfaceColor.xyz, f0, TBN);
                 break;
-            //case LIGHT_TYPE_AREA_RECT:
-            //    Lo += RectAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
-			//cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler, material[4]);
-            //    break;
-            //case LIGHT_TYPE_AREA_DISK:
-            //    Lo += DiskAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
-			//cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
-            //    break;
+            case LIGHT_TYPE_AREA_RECT:
+                Lo += RectAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
+			cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler, material[4], TBN);
+                break;
+            case LIGHT_TYPE_AREA_DISK:
+                Lo += DiskAreaLightPBR(lights[lightIndex], N, V, input.worldPosition, 
+			cameraPosition, roughness, metalColor.x, surfaceColor.rgb, f0, t1, envBRDF, brdfSampler);
+                break;
          }
      }
+	
+	
+
 
 	float3 ksIndirect = FresnelRoughness(dot(N, V), f0, roughness);
 
@@ -167,8 +209,11 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float3 ambientIndirect = (kdIndirect * diffuseIndirect + specularIndirect); 
 
     float3 color = Lo;
-	color += ambientIndirect;
-
+	
+	if(indLighting.enableIndirectLighting)
+		color += ambientIndirect;
+	
+    color *= shadow;
 	color = pow(abs(color), 1.f / 1);
 
 	return float4(color, surfaceColor.w);

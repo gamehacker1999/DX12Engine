@@ -8,7 +8,7 @@ SamplerState brdfSampler : register(s1);
 Texture2D brdfLUT : register(t2, space1);
 Texture2D LtcLUT : register(t3, space1);
 Texture2D LtcLUT2 : register(t4, space1);
-Texture2D prefilteredLTCTex : register(t5, space1);
+Texture2DArray prefilteredLTCTex : register(t5, space1);
 SamplerState basicSampler : register(s0);
 
 
@@ -166,9 +166,112 @@ float PolygonalClippedFormFactorToHorizonClippedSphereFormFactor(float3 F)
 
 }
 
+struct Ray
+{
+    float3 origin;
+    float3 dir;
+};
+
+struct AreaRect
+{
+    float halfx;
+    float halfy;
+    float3 dirx;
+    float3 diry;
+    float3 center;
+    
+    float4 plane;
+};
+
+
+bool RayPlaneIntersect(Ray ray, float4 plane, out float t)
+{
+    t = -dot(plane, float4(ray.origin, 1.0)) / dot(plane.xyz, ray.dir);
+    return t > 0.0;
+}
+
+bool RayRectIntersect(Ray ray, AreaRect rect, out float t)
+{
+    bool intersect = RayPlaneIntersect(ray, rect.plane, t);
+    if (intersect)
+    {
+        float3 pos = ray.origin + ray.dir * t;
+        float3 lpos = pos - rect.center;
+
+        float x = dot(lpos, rect.dirx);
+        float y = dot(lpos, rect.diry);
+
+        if (abs(x) > rect.halfx || abs(y) > rect.halfy)
+            intersect = false;
+    }
+
+    return intersect;
+}
+
+float2 RectUVs(float3 pos, AreaRect rect)
+{
+    float3 lpos = pos - rect.center;
+
+    float x = dot(lpos, rect.dirx);
+    float y = dot(lpos, rect.diry);
+
+    return float2(
+        0.5 * x / rect.halfx + 0.5,
+        0.5 * y / rect.halfy + 0.5);
+}
+
+float3 FetchColorTexture(float2 uv, float lod)
+{
+    return prefilteredLTCTex.Sample(basicSampler, float3(uv, lod)).rgb;
+}
+
+float3 GetPrefilteredTextureColor(float3 p1, float3 p2, float3 p3, float3 p4, float3 dir)
+{
+    float3 V1 = p2 - p1;
+    float3 V2 = p4 - p1;
+   
+    float3 planeOrtho = cross(V1, V2);
+    float planeAreaSquared = dot(planeOrtho, planeOrtho);
+
+    Ray ray;
+    ray.origin = float3(0, 0, 0);
+    ray.dir = dir;
+    float4 plane = float4(planeOrtho, -dot(planeOrtho, p1));
+    float planeDist;
+    RayPlaneIntersect(ray, plane, planeDist);
+ 
+    float3 P = planeDist * ray.dir - p1;
+    
+    P.x += 3;
+    P.y -= 3;
+ 
+    // find tex coords of P
+    float dot_V1_V2 = dot(V1, V2);
+    float inv_dot_V1_V1 = 1.0 / dot(V1, V1);
+    float3 V2_ = V2 - V1 * dot_V1_V2 * inv_dot_V1_V1;
+    float2 Puv;
+    Puv.y = dot(V2_, P) / dot(V2_, V2_);
+    Puv.x = dot(V1, P) * inv_dot_V1_V1 - dot_V1_V2 * inv_dot_V1_V1 * Puv.y;
+    Puv *= 0.333f;
+    
+    // LOD
+    float d = abs(planeDist) / pow(planeAreaSquared, 0.25);
+    
+    float lod = log(2048.0 * d) / log(3.0);
+    lod = min(lod, 11.0);
+    
+    float lodA = floor(lod);
+    float lodB = ceil(lod);
+    float t = lod - lodA;
+    
+    float3 a = FetchColorTexture(Puv, lodA);
+    float3 b = FetchColorTexture(Puv, lodB);
+
+    return saturate(lerp(a, b, t));
+}
 
 float3 LTC_Evaluate(
-    float3 N, float3 V, float3 P, float3x3 Minv, float3 points[4], float4 ltc2, bool twoSided, SamplerState samplerState, Texture2D prefilteredTexture, float width, float height, float3 pos)
+    float3 N, float3 V, float3 P, float3x3 Minv, float3 points[4], float4 ltc2, bool twoSided, float width, float height, float3 pos, float3x3 TBN, Area rect)
 {
     // construct orthonormal basis around N
     float3 T1, T2;
@@ -208,10 +311,11 @@ float3 LTC_Evaluate(
         
         float scale = PolygonalClippedFormFactorToHorizonClippedSphereFormFactor(vsum);
         
-        float2 textureLookupDir = normalize(vsum);
-        float lod = sqrt(distance(P, pos) / (2 * width * height));
-        color = prefilteredLTCTex.SampleLevel(basicSampler, textureLookupDir * 0.1, lod);
-   
+        float len = length(vsum);
+        float3 direction = vsum / len;
+        
+        color = GetPrefilteredTextureColor(L[0], L[1], L[2], L[3], direction);
+        
         sum = scale;
         if (behind && !twoSided)
             sum = 0.0;
@@ -242,9 +346,9 @@ float3 LTC_Evaluate(
         sum = twoSided ? abs(sum) : max(0.0, sum);
     }
 
-    float3 Lo_i = float3(sum, sum, sum);
+    float3 Lo_i = float3(sum, sum, sum)*color;
 
-    return Lo_i / 2*3.141592;
+    return (Lo_i / 2 * 3.141592);
 }
 
 // http://momentsingraphics.de/?p=105

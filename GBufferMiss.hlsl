@@ -46,6 +46,7 @@ void GBufferMiss(inout GbufferPayload payload : SV_RayPayload)
 	//sample the skybox color
 	float3 skyboxColor = skyboxTexture.Sample(basicSampler, uv).rgb;
 	float3 color = skyboxTexture.SampleLevel(basicSampler, uv , 0).rgb;
+    color = pow(color, 2.2);
     payload.normal = float3(0, 0, 0);
     payload.albedo = color;
     //payload.roughnessMetallic = float3(0.f, 0.f, 0.f);

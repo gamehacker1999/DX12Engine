@@ -17,7 +17,17 @@ UINT handleIncrementSize;
 ComPtr<ID3D12PipelineState> ltcTexPrefilterPSO;
 ComPtr<ID3D12RootSignature> ltcTexPrefilterRootSig;
 
+//BMFR Preprocess Resources
+ComPtr<ID3D12PipelineState> bmfrPreProcessPSO;
+ComPtr<ID3D12RootSignature> bmfrPreProcessRootSig;
 
+//BMFR Regression Resources
+ComPtr<ID3D12PipelineState> bmfrRegressionPSO;
+ComPtr<ID3D12RootSignature> bmfrRegressionRootSig;
+
+//BMFR Postprocess Resources
+ComPtr<ID3D12PipelineState> bmfrPostProcessPSO;
+ComPtr<ID3D12RootSignature> bmfrPostProcessRootSig;
 
 auto defaultHeapType = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 auto uploadHeapType = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -61,8 +71,8 @@ void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList
     //generating mip maps
     {
         CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
-        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0);
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
     
         CD3DX12_ROOT_PARAMETER1 rootParams[3];
         rootParams[0].InitAsDescriptorTable(1, &ranges[0]);
@@ -146,6 +156,194 @@ void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList
         computePSODesc.CS = CD3DX12_SHADER_BYTECODE(shaderBlob.Get());
 
         ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(ltcTexPrefilterPSO.GetAddressOf())));
+    }
+
+    D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+        D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+        D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
+
+    //BMFR preprocess
+    {
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[8];
+        CD3DX12_ROOT_PARAMETER1 rootParams[BMFRPreProcessRootIndices::BMFRPreProcessNumParams];
+
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);
+        ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
+
+        rootParams[BMFRPreProcessRootIndices::CurPosSRV].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPreProcessRootIndices::PrevPosSRV].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPreProcessRootIndices::CurNormSRV].InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPreProcessRootIndices::PrevNormSRV].InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPreProcessRootIndices::PrevNoisySRV].InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPreProcessRootIndices::CurNoisyUAV].InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPreProcessRootIndices::AcceptBoolUAV].InitAsDescriptorTable(1, &ranges[6], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPreProcessRootIndices::PrevFramePixelUAV].InitAsDescriptorTable(1, &ranges[7], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPreProcessRootIndices::FrameDataCBC].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
+
+        CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];
+        staticSamplers[0].Init(0);
+
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams,
+            _countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+
+        ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+            signature.GetAddressOf(), error.GetAddressOf()));
+
+        ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+            IID_PPV_ARGS(bmfrPreProcessRootSig.GetAddressOf())));
+
+        ComPtr<ID3DBlob> fullcreenVS;
+        ComPtr<ID3DBlob> pixelShader;
+
+        ThrowIfFailed(D3DReadFileToBlob(L"BMFRPreprocessPS.cso", pixelShader.GetAddressOf()));
+        ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+        //creating a tonemapping pipeline state
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc = {};
+        PSODesc.InputLayout = { };
+        PSODesc.pRootSignature = bmfrPreProcessRootSig.Get();
+        PSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+        PSODesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+        PSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+        PSODesc.DepthStencilState.DepthEnable = false;
+        PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+        PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+        PSODesc.SampleMask = UINT_MAX;
+        PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        PSODesc.NumRenderTargets = 1;
+        PSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        PSODesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        PSODesc.SampleDesc.Count = 1;
+        ThrowIfFailed(device->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(bmfrPreProcessPSO.GetAddressOf())));
+
+    }
+
+    //BMFR Regression
+    {
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[6];
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
+
+        CD3DX12_ROOT_PARAMETER1 rootParams[BMFRRegressionRootIndices::BMFRRegressionNumParams];
+        rootParams[BMFRRegressionRootIndices::CurPositionSRV].InitAsDescriptorTable(1, &ranges[0]);
+        rootParams[BMFRRegressionRootIndices::CurNormalSRV].InitAsDescriptorTable(1, &ranges[1]);
+        rootParams[BMFRRegressionRootIndices::CurAlbedoSRV].InitAsDescriptorTable(1, &ranges[2]);
+        rootParams[BMFRRegressionRootIndices::CurrentNoisyUAV].InitAsDescriptorTable(1, &ranges[3]);
+        rootParams[BMFRRegressionRootIndices::TempDataUAV].InitAsDescriptorTable(1, &ranges[4]);
+        rootParams[BMFRRegressionRootIndices::OutDataUAV].InitAsDescriptorTable(1, &ranges[5]);
+        rootParams[BMFRRegressionRootIndices::FrameDataCBV].InitAsConstants(4, 0, 0);
+
+        D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
+        samplerDesc.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+        samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplerDesc.MipLODBias = 0.0f;
+        samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        samplerDesc.MinLOD = 0.0f;
+        samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+        samplerDesc.MaxAnisotropy = 0;
+        samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+        samplerDesc.ShaderRegister = 0;
+        samplerDesc.RegisterSpace = 0;
+        samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+        computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 1, &samplerDesc);
+
+        ComPtr<ID3DBlob> computeSignature;
+        ComPtr<ID3DBlob> computeError;
+
+        ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
+        ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&bmfrRegressionRootSig)));
+
+        ComPtr<ID3DBlob> shaderBlob;
+        ThrowIfFailed(D3DReadFileToBlob(L"BMFRRegressionCS.cso", shaderBlob.GetAddressOf()));
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
+        computePSODesc.pRootSignature = bmfrRegressionRootSig.Get();
+        computePSODesc.CS = CD3DX12_SHADER_BYTECODE(shaderBlob.Get());
+
+        ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(bmfrRegressionPSO.GetAddressOf())));
+    }
+
+    //BMFR post process
+    {
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[6];
+        CD3DX12_ROOT_PARAMETER1 rootParams[BMFRPostProcessNumParams];
+
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+
+        rootParams[BMFRPostProcessRootIndices::FilterFrameSRV].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPostProcessRootIndices::AccumPrevFrameSRV].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPostProcessRootIndices::AlbedoSRV].InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPostProcessRootIndices::AcceptBoolsSRV].InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPostProcessRootIndices::PrevFramePixelSRV].InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPostProcessRootIndices::AccumFrameUAV].InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParams[BMFRPostProcessRootIndices::FrameDataConstants].InitAsConstants(1, 0);
+
+        CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];
+        staticSamplers[0].Init(0);
+
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams,
+            _countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+
+        ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+            signature.GetAddressOf(), error.GetAddressOf()));
+
+        ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+            IID_PPV_ARGS(bmfrPostProcessRootSig.GetAddressOf())));
+
+        ComPtr<ID3DBlob> fullcreenVS;
+        ComPtr<ID3DBlob> pixelShader;
+
+        ThrowIfFailed(D3DReadFileToBlob(L"BMFRPostprocessPS.cso", pixelShader.GetAddressOf()));
+        ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+        //creating a tonemapping pipeline state
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc = {};
+        PSODesc.InputLayout = { };
+        PSODesc.pRootSignature = bmfrPostProcessRootSig.Get();
+        PSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+        PSODesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+        PSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+        PSODesc.DepthStencilState.DepthEnable = false;
+        PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+        PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+        PSODesc.SampleMask = UINT_MAX;
+        PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        PSODesc.NumRenderTargets = 1;
+        PSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        PSODesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        PSODesc.SampleDesc.Count = 1;
+        ThrowIfFailed(device->CreateGraphicsPipelineState(&PSODesc, IID_PPV_ARGS(bmfrPostProcessPSO.GetAddressOf())));
     }
 }
 
@@ -327,11 +525,6 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
         delete[] pixels;
 
         GenerateMipMaps(tex);
-
-        //auto transition = CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
-        //    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        //appResources.commandList->ResourceBarrier(1, &transition);
-        //
     }
 
 	else
@@ -387,6 +580,8 @@ void GenerateMipMaps(ComPtr<ID3D12Resource> texture)
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     appResources.commandList->ResourceBarrier(1, &transition);
 
+    texture->SetName(L"mip");
+
     SubmitGraphicsCommandList(appResources.commandList);
 
     auto desc = texture->GetDesc();
@@ -419,31 +614,30 @@ void GenerateMipMaps(ComPtr<ID3D12Resource> texture)
 
         srvDesc.Texture2D.MostDetailedMip = i;
         uavDesc.Texture2D.MipSlice = i + 1;
-
         transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, i);
         appResources.computeCommandList->ResourceBarrier(1, &transition);
+
         appResources.device->CreateShaderResourceView(texture.Get(), &srvDesc, cpuHandle);
         cpuHandle.Offset(1, handleIncrementSize);
         lastResourceIndex++;
+
         appResources.device->CreateUnorderedAccessView(texture.Get(), 0, &uavDesc, cpuHandle);
         cpuHandle.Offset(1, handleIncrementSize);
         lastResourceIndex++;
 
         appResources.computeCommandList->SetComputeRootDescriptorTable(0, gpuHandle);
         gpuHandle.Offset(1, handleIncrementSize);
+
         appResources.computeCommandList->SetComputeRootDescriptorTable(1, gpuHandle);
         gpuHandle.Offset(1, handleIncrementSize);
 
-        appResources.computeCommandList->SetComputeRoot32BitConstant(2, 1.0 / destWidth, 0);
-        appResources.computeCommandList->SetComputeRoot32BitConstant(2, 1.0 / destHeight, 1);
+        XMFLOAT2 pixelSize = XMFLOAT2(1.0 / (float)destWidth, 1.0 / (float)destHeight);
+        appResources.computeCommandList->SetComputeRoot32BitConstants(2, 2, &pixelSize, 0) ;
+        //appResources.computeCommandList->SetComputeRoot32BitConstant(2, 1.0 / destHeight, 1);
 
         //Dispatch the compute shader with one thread per 8x8 pixels
         appResources.computeCommandList->Dispatch(std::max<UINT>(destWidth / 8, 1u), std::max<UINT>(destHeight / 8, 1u), 1);
-
-        transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, i);
-       appResources.computeCommandList->ResourceBarrier(1, &transition);
 
         //Wait for all accesses to the destination texture UAV to be finished before generating the next mipmap, as it will be the source texture for the next mipmap
         auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(texture.Get());
@@ -451,15 +645,14 @@ void GenerateMipMaps(ComPtr<ID3D12Resource> texture)
 
 
     }
-
-    SubmitComputeCommandList(appResources.computeCommandList, appResources.commandList);
-    SubmitGraphicsCommandList(appResources.commandList);
-
     transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, desc.MipLevels-1);
+    appResources.computeCommandList->ResourceBarrier(1, &transition);
+    transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     appResources.commandList->ResourceBarrier(1, &transition);
+    SubmitComputeCommandList(appResources.computeCommandList, appResources.commandList);
     SubmitGraphicsCommandList(appResources.commandList);
-
 
 
 }
@@ -518,10 +711,10 @@ void PrefilterLTCTexture(ComPtr<ID3D12Resource> texture)
         appResources.computeCommandList->SetComputeRootDescriptorTable(1, gpuHandle);
         gpuHandle.Offset(1, handleIncrementSize);
 
-        appResources.computeCommandList->SetComputeRoot32BitConstant(2, texWidth, 0);
-        appResources.computeCommandList->SetComputeRoot32BitConstant(2, texHeight, 1);
-        appResources.computeCommandList->SetComputeRoot32BitConstant(2, destWidth, 2);
-        appResources.computeCommandList->SetComputeRoot32BitConstant(2, destHeight, 3);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, destWidth, 0);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, destHeight, 1);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, texWidth, 2);
+        appResources.computeCommandList->SetComputeRoot32BitConstant(2, texHeight, 3);
         appResources.computeCommandList->SetComputeRoot32BitConstant(2, i, 4);
 
 
@@ -546,6 +739,124 @@ void PrefilterLTCTexture(ComPtr<ID3D12Resource> texture)
     SubmitComputeCommandList(appResources.computeCommandList, appResources.commandList);
     SubmitGraphicsCommandList(appResources.commandList);
 
+}
+
+void DenoiseBMFR(ManagedResource inputTex, ManagedResource inputNorm, ManagedResource inputWorld, ManagedResource inputAlbedo, ManagedResource prevNorm, ManagedResource prevWorld, ManagedResource prevAlbedo)
+{
+}
+
+void BMFRPreprocess(ManagedResource rtOutput, ManagedResource normals, ManagedResource position, ManagedResource prevOutput, 
+    ManagedResource prevNormals, ManagedResource prevPos, ManagedResource acceptBools, 
+    ManagedResource outPrevPixelFrame, ComPtr<ID3D12Resource> cbvData, UINT frameIndex,
+    ComPtr<ID3D12DescriptorHeap> srvUavHeap, D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle)
+{
+    auto commandList = appResources.commandList;
+
+
+    {
+        //doing the necessary copies
+        auto transition = CD3DX12_RESOURCE_BARRIER::Transition(position.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &transition);
+
+
+        transition = CD3DX12_RESOURCE_BARRIER::Transition(normals.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &transition);
+
+    }
+
+
+
+    ID3D12DescriptorHeap* ppHeaps[] = { srvUavHeap.Get() };
+
+    commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+    const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+
+    commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+    commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    commandList->SetPipelineState(bmfrPreProcessPSO.Get());
+    commandList->SetGraphicsRootSignature(bmfrPreProcessRootSig.Get());
+
+    commandList->SetGraphicsRootDescriptorTable(BMFRPreProcessRootIndices::CurPosSRV, position.srvGPUHandle);
+    commandList->SetGraphicsRootDescriptorTable(BMFRPreProcessRootIndices::PrevPosSRV, prevPos.srvGPUHandle);
+    commandList->SetGraphicsRootDescriptorTable(BMFRPreProcessRootIndices::CurNormSRV, normals.srvGPUHandle);
+    commandList->SetGraphicsRootDescriptorTable(BMFRPreProcessRootIndices::PrevNormSRV, prevNormals.srvGPUHandle);
+    commandList->SetGraphicsRootDescriptorTable(BMFRPreProcessRootIndices::CurNoisyUAV, rtOutput.uavGPUHandle);
+    commandList->SetGraphicsRootDescriptorTable(BMFRPreProcessRootIndices::PrevNoisySRV, prevOutput.srvGPUHandle);
+    commandList->SetGraphicsRootDescriptorTable(BMFRPreProcessRootIndices::AcceptBoolUAV, acceptBools.uavGPUHandle);
+    commandList->SetGraphicsRootDescriptorTable(BMFRPreProcessRootIndices::PrevFramePixelUAV, outPrevPixelFrame.uavGPUHandle);
+    commandList->SetGraphicsRootConstantBufferView(BMFRPreProcessRootIndices::FrameDataCBC, cbvData->GetGPUVirtualAddress());
+
+
+    commandList->DrawInstanced(3, 1, 0, 0);
+
+    {
+        //doing the necessary copies
+         auto transition = CD3DX12_RESOURCE_BARRIER::Transition(rtOutput.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COPY_SOURCE);
+        commandList->ResourceBarrier(1, &transition);
+
+
+         transition = CD3DX12_RESOURCE_BARRIER::Transition(prevOutput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_COPY_DEST);
+        commandList->ResourceBarrier(1, &transition);
+
+
+        commandList->CopyResource(prevOutput.resource.Get(), rtOutput.resource.Get());
+
+
+        //doing the necessary copies
+         transition = CD3DX12_RESOURCE_BARRIER::Transition(rtOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commandList->ResourceBarrier(1, &transition);
+
+
+         transition = CD3DX12_RESOURCE_BARRIER::Transition(prevOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &transition);
+
+        //doing the necessary copies
+         transition = CD3DX12_RESOURCE_BARRIER::Transition(position.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commandList->ResourceBarrier(1, &transition);
+
+
+        transition = CD3DX12_RESOURCE_BARRIER::Transition(normals.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commandList->ResourceBarrier(1, &transition);
+
+    }
+
+}
+
+void TransitionResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedResource& resource, D3D12_RESOURCE_STATES afterState)
+{
+    if (resource.currentState == afterState)
+    {
+        return;
+    }
+
+    auto transition = CD3DX12_RESOURCE_BARRIER::Transition(resource.resource.Get(), resource.currentState, afterState);
+    commandList->ResourceBarrier(1, &transition);
+
+    resource.currentState = afterState;
+}
+
+void CopyResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedResource& dst, ManagedResource& src)
+{
+    auto destBefore = dst.currentState;
+    auto srcBefore = src.currentState;
+
+    TransitionResource(commandList, dst, D3D12_RESOURCE_STATE_COPY_DEST);
+    TransitionResource(commandList, src, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+    commandList->CopyResource(dst.resource.Get(), src.resource.Get());
+
+    TransitionResource(commandList, dst, destBefore);
+    TransitionResource(commandList, src, srcBefore);
 }
 
 UINT DispatchSize(UINT tgSize, UINT numElements)
@@ -746,6 +1057,8 @@ float* ReadHDR(const wchar_t* textureFile, unsigned int* width, unsigned int* he
     // Success
     return pixels;
 }
+
+
 
 ApplicationResources& GetAppResources()
 {

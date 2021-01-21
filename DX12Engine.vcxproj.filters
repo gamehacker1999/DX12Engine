@@ -350,6 +350,18 @@
     <FxCompile Include="InteriorMappingPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="RaytraceFinalCombine.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="BMFRPostprocessPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="BMFRPreprocessPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="BMFRRegressionCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -397,6 +409,12 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="Utils.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="RayGenIndirectDiffuse.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="RayGenIndirectSpecular.hlsl">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

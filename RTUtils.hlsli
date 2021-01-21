@@ -185,27 +185,185 @@ float ShootShadowRays(float3 origin, float3 direction, float minT, float maxT)
     return shadowPayload.isHit ? 0.3 : 1.0f;
 }
 
+//function that calculates the cook torrence brdf
+void CookTorrenceRaytrace(float3 n, float3 h, float roughness, float3 v, float3 f0, float3 l, out float3 F, out float D, out float G)
+{
+
+    D = SpecularDistribution(roughness, h, n);
+    F = Fresnel(h, v, f0);
+    G = GeometricShadowing(n, v, h, roughness) * GeometricShadowing(n, l, h, roughness);
+
+}
+
+
+float3 DirectLightPBRRaytrace(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
+{
+	//variables for different functions
+    float3 F; //fresnel
+    float D; //ggx
+    float G; //geomteric shadowing
+
+    float3 V = normalize(cameraPos - worldPos);
+    float3 L = -light.direction;
+    float3 H = normalize(L + V);
+    float3 N = normalize(normal);
+
+    CookTorrenceRaytrace(normal, H, roughness, V, f0, L, F, D, G);
+
+    float3 ks = F;
+    float3 kd = float3(1.0f, 1.0f, 1.0f) - ks;
+    kd *= (float3(1.0f, 1.0f, 1.0f) - metalness);
+
+    float lambert = CalculateDiffuse(normal, L);
+    float3 numSpec = D * F * G;
+    float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
+    float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
+
+    return ((kd * surfaceColor.xyz / PI) + specular) * lambert * light.intensity * light.color;
+}
+
+float3 PointLightPBRRaytrace(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
+{
+	//variables for different functions
+    float3 F; //fresnel
+    float D; //ggx
+    float G; //geomteric shadowing
+
+	//light direction calculation
+    float3 L = normalize(light.position - worldPos);
+    float3 V = normalize(cameraPos - worldPos);
+    float3 H = normalize(L + V);
+    float3 N = normalize(normal);
+
+    float atten = Attenuate(light, worldPos);
+
+    CookTorrenceRaytrace(normal, H, roughness, V, f0, L, F, D, G);
+
+    float lambert = CalculateDiffuse(normal, L);
+    float3 ks = F;
+    float3 kd = float3(1.0f, 1.0f, 1.0f) - ks;
+    kd *= (float3(1.0f, 1.0f, 1.0f) - metalness);
+
+    float3 numSpec = D * F * G;
+    float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
+    float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
+
+    return ((kd * surfaceColor.xyz / PI) + specular) * lambert * atten * light.intensity * light.color;
+
+}
+
+float3 SpotLightPBRRaytrace(Light light, float3 normal, float3 worldPos, float3 cameraPos, float roughness, float metalness, float3 surfaceColor, float3 f0)
+{
+    float3 L = normalize(light.position - worldPos);
+    float3 penumbra = pow(saturate(dot(-L, light.direction)), light.spotFalloff);
+
+    return PointLightPBRRaytrace(light, normal, worldPos, cameraPos, roughness, metalness, surfaceColor, f0) * penumbra;
+}
+
 
 float3 DirectLighting(float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness)
 {
-    int lightToSample = min(int(nextRand(rndseed) * lightCount),
-                             lightCount - 1);
-    
     float3 color = float3(0, 0, 0);
-    if (lights[0].type == LIGHT_TYPE_DIR)
+
+    for (int i = 0; i < lightCount; i++)
     {
-        color += DirectLightPBR(lights[0], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+        if (lights[i].type == LIGHT_TYPE_DIR)
+        {
+            color += DirectLightPBRRaytrace(lights[i], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+        }
+        else if (lights[i].type == LIGHT_TYPE_POINT)
+        {
+            color += PointLightPBRRaytrace(lights[i], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+        }
+        else if (lights[i].type == LIGHT_TYPE_SPOT)
+        {
+            color += SpotLightPBRRaytrace(lights[i], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
+        }
     }
-    else if (lights[0].type == LIGHT_TYPE_POINT)
-    {
-        color += PointLightPBR(lights[0], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
-    }
-    else if (lights[0].type == LIGHT_TYPE_SPOT)
-    {
-        color += SpotLightPBR(lights[0], norm, pos, cameraPosition, roughness, metalColor, surfaceColor, f0);
-    }
+    
+
         
-    return color * ShootShadowRays(pos, -lights[0].direction, 0.001, 1000000);
+    return color * ShootShadowRays(pos + norm, -lights[0].direction, 0.001, 1000000);
+}
+
+float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness, float rayDepth)
+{
+    float probDiffuse = probabilityToSampleDiffuse(surfaceColor, f0);
+    float chooseDiffuse = (nextRand(rndseed) < probDiffuse);
+    float3 response = float3(0, 0, 0);
+    
+    if (true)
+    {
+	// Shoot a randomly selected cosine-sampled diffuse ray.
+        
+        for (int i = 0; i < NUM_SAMPLES; i++)
+        {
+            float3 L = GetCosHemisphereSample(rndseed, norm);
+        
+            HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+       
+            RayDesc ray;
+            ray.Origin = pos;
+            ray.Direction = L;
+            ray.TMin = 0.01;
+            ray.TMax = 100000;
+        
+            TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+            
+            response += giPayload.color * surfaceColor / (probDiffuse);
+
+        }
+        
+        return response /= NUM_SAMPLES;
+        
+    }
+}
+
+float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness, float rayDepth)
+{
+    
+     float probDiffuse = probabilityToSampleDiffuse(surfaceColor, f0);
+     float chooseDiffuse = (nextRand(rndseed) < probDiffuse);
+     float3 response = float3(0, 0, 0);
+     for (int i = 0; i < NUM_SAMPLES; i++)
+     {
+         float2 randVals = Hammersley(rndseed, 4096);
+         float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
+         float3 L = normalize(2 * dot(V, H) * H - V);
+     
+         HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+     
+         RayDesc ray;
+         ray.Origin = pos;
+         ray.Direction = L;
+         ray.TMin = 0.01;
+         ray.TMax = 100000;
+     
+         TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+	
+	 // Compute some dot products needed for shading
+         float NdotL = saturate(dot(norm, L));
+         float NdotH = saturate(dot(norm, H));
+         float LdotH = saturate(dot(L, H));
+         float NdotV = saturate(dot(norm, V));
+     
+	 // valuate our BRDF using a microfacet BRDF model
+         float D = SpecularDistribution(roughness, H, norm);
+         float G = GeometricShadowing(norm, V, H, roughness) * GeometricShadowing(norm, L, H, roughness);
+         float3 F = FresnelRoughness(NdotV, f0, roughness);
+         float3 ggxTerm = D * G * F / (4 * NdotL * NdotV);
+     
+         float ggxProb = D * NdotH / (4 * LdotH);
+         
+         response += NdotL * giPayload.color * ggxTerm / (ggxProb * (1.0f - probDiffuse));
+
+     }
+     
+     response /= NUM_SAMPLES;
+     
+     return response;
+
+   
 }
 
 float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness, float rayDepth)

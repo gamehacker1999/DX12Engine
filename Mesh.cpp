@@ -8,6 +8,8 @@ Mesh::Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, in
 	//WaitForPreviousFrame();
 	//game->WaitForPreviousFrame();
 	this->numIndices = numIndices;
+	this->numVertices = numVertices;
+	materialID = 0;
 }
 
 Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
@@ -80,7 +82,7 @@ Mesh::~Mesh()
 
 std::pair<ComPtr<ID3D12Resource>, UINT> Mesh::GetVertexBufferResourceAndCount()
 {
-	return std::pair<ComPtr<ID3D12Resource>, UINT>(defaultHeap,static_cast<UINT>(vertices.size()));
+	return std::pair<ComPtr<ID3D12Resource>, UINT>(defaultHeap,static_cast<UINT>(numVertices));
 }
 
 D3D12_VERTEX_BUFFER_VIEW Mesh::GetVertexBuffer()
@@ -102,6 +104,12 @@ unsigned int Mesh::GetIndexCount()
 {
 	return numIndices;
 }
+
+unsigned int Mesh::GetVertexCount()
+{
+	return numVertices;
+}
+
 
 std::vector<XMFLOAT3> Mesh::GetPoints()
 {
@@ -368,4 +376,14 @@ void Mesh::LoadSDKMesh(ComPtr<ID3D12Device> device, std::string& fileName, ComPt
 	auto uploadResourcesFinished = resourceUploadBatch.End(commandQueue.Get());
 
 	uploadResourcesFinished.wait();
+}
+
+void Mesh::SetMaterialID(UINT id)
+{
+	materialID = id;
+}
+
+UINT Mesh::GetMaterialID()
+{
+	return materialID;
 }

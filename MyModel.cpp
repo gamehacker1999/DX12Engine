@@ -3,11 +3,15 @@
 MyModel::MyModel(std::string pathToFile)
 {
 	LoadModel(pathToFile);
+	lastMeshID = 0;
 }
 
 void MyModel::SetMaterial(unsigned int id)
 {
 	matIds.emplace_back(id);
+	meshes[lastMeshID]->SetMaterialID(id);
+	lastMeshID++;
+
 }
 
 void MyModel::LoadModel(std::string path)
@@ -77,6 +81,11 @@ std::shared_ptr<Mesh> MyModel::ProcessMesh(aiMesh* mesh, const aiScene* scene)
 	std::shared_ptr<Mesh> finalMesh = std::make_shared<Mesh>(&vertices[0], vertices.size(), &indices[0], indices.size());
 
 	return finalMesh;
+}
+
+std::vector<std::shared_ptr<Mesh>> MyModel::GetMeshes()
+{
+	return meshes;
 }
 
 void MyModel::Draw(ComPtr<ID3D12GraphicsCommandList> commandList, bool drawMats)

@@ -92,7 +92,7 @@ protected:
 	//ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
 	DescriptorHeapWrapper rtvDescriptorHeap;
 	ComPtr<ID3D12PipelineState> pipelineState;
-	ComPtr<ID3D12GraphicsCommandList4> commandList;
+	ComPtr<ID3D12GraphicsCommandList6> commandList;
 	UINT rtvDescriptorSize;	
 
 	ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dredSettings;

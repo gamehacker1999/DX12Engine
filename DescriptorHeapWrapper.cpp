@@ -70,7 +70,7 @@ UINT DescriptorHeapWrapper::GetDescriptorIncrementSize()
 }
 
 void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,
-	ComPtr<ID3D12Device> device, size_t cbufferSize, UINT width, UINT height, UINT firstArraySlice, UINT mipLevel)
+	ComPtr<ID3D12Device> device, size_t cbufferSize, UINT width, UINT height, UINT firstArraySlice, UINT mipLevel, bool isArray)
 {
 
 
@@ -141,7 +141,18 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 	{
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 
-		if (resource.resource->GetDesc().DepthOrArraySize == 6)
+
+		if (resource.resource->GetDesc().DepthOrArraySize > 1 && isArray)
+		{
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+			srvDesc.Texture2DArray.MostDetailedMip = 0;
+			srvDesc.Texture2DArray.MipLevels = mipLevel;
+			srvDesc.Texture2DArray.ArraySize = 8;
+			srvDesc.Texture2DArray.FirstArraySlice = 0;
+
+		}
+
+		if (resource.resource->GetDesc().DepthOrArraySize == 6 && !isArray)
 		{
 			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
 			srvDesc.TextureCube.MostDetailedMip = 0;

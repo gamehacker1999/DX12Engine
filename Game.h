@@ -20,6 +20,9 @@
 #include<Mouse.h>
 #include"RootIndices.h"
 
+#include <array>
+#include <io.h>
+
 #include"Velocity.h"
 
 #include <DirectXMath.h>
@@ -57,6 +60,17 @@ struct VelocityConstantBuffer
 	XMFLOAT4X4 prevView;
 	XMFLOAT4X4 prevProjection;
 	XMFLOAT4X4 prevWorld;
+};
+
+struct BMFRPreProcessData
+{
+	XMFLOAT4X4 view;
+	XMFLOAT4X4 proj;
+	XMFLOAT4X4 prevView;
+	XMFLOAT4X4 prevProj;
+	UINT frame_number;
+	UINT IMAGE_WIDTH;
+	UINT IMAGE_HEIGHT;
 };
 
 
@@ -125,12 +139,18 @@ public:
 
 	//create dxr pipeline
 	void CreateRayTracingPipeline();
+	void CreateRayTracingDirectLightingPipeline();
+	void CreateRayTracingIndirectDiffusePipeline();
+	void CreateRayTracingIndirectSpecularPipeline();
 	void CreateGbufferRaytracingPipeline();
 
 	//shader binding table
 	void CreateShaderBindingTable();
 
 	void CreateGBufferRays();
+	void CreateDirectRays();
+	void CreateIndirectDiffuseRays();
+	void CreateIndirectSpecularRays();
 
 	void CreateLTCTexture();
 	void PrefilterLTCTextures();
@@ -145,13 +165,20 @@ public:
 
 	//---------------------------------------------------------------
 
+	//NRD functions ---------------------------------
+	void InitNRDDenoiser();
+
+
+	//-------------------------------------------------
+
+	void RaytracingPrePass();
 	void DepthPrePass();
 	void RenderVelocityBuffer();
 	void LightCullingPass();
 	void Update(float deltaTime, float totalTime);
 	void Draw(float deltaTime, float totalTime);
 	void PopulateCommandList();
-	void RenderPostProcessing();
+	void RenderPostProcessing(ManagedResource inputTexture);
 	void WaitForPreviousFrame();
 	void MoveToNextFrame();
 
@@ -246,6 +273,13 @@ private:
 	ComPtr<ID3D12Resource> visibleLightList;
 	ComPtr<ID3D12Resource> lightGrid;
 
+	//BMFR preprocess data----------------------
+	BMFRPreProcessData bmfrPreProcData;
+	UINT8* bmfrPreprocessBegin;
+	ComPtr<ID3D12Resource> bmfrPreProcessCBV;
+
+	//-----------------------------------------
+
 	//
 
 	//ComPtr<ID3D12Resource> depthStencilBuffer;
@@ -264,6 +298,7 @@ private:
 	ManagedResource fxaaOutput;
 	ManagedResource taaInput;
 	ManagedResource taaHistoryBuffer;
+	ManagedResource rtCombineOutput;
 	UINT numFrames;
 	XMFLOAT2* jitters;
 
@@ -346,6 +381,10 @@ private:
 	ComPtr<ID3D12RootSignature> passthroughRootSig;
 	ComPtr<ID3D12PipelineState> passthroughPSO;
 
+	//rt combine vars
+	ComPtr<ID3D12RootSignature> rtCombineRootSig;
+	ComPtr<ID3D12PipelineState> rtCombinePSO;
+
 
 	//veloity vars
 	ComPtr<ID3D12RootSignature> velRootSig;
@@ -369,16 +408,20 @@ private:
 
 	//raytracing pipeline state
 	ComPtr<ID3D12StateObject> rtStateObject;
+	ComPtr<ID3D12StateObject> indirectDiffuseRtStateObject;
+	ComPtr<ID3D12StateObject> indirectSpecularRtStateObject;
 	ComPtr<ID3D12StateObject> gbufferStateObject;
 
 	//pipeline state properties, for the shader table
 	ComPtr<ID3D12StateObjectProperties> rtStateObjectProps;
+	ComPtr<ID3D12StateObjectProperties> indirectDiffuseRtStateObjectProps;
+	ComPtr<ID3D12StateObjectProperties> indirectSpecularRtStateObjectProps;
 	ComPtr<ID3D12StateObjectProperties> GBrtStateObjectProps;
-
-
 
 	//dxil libs for the shaders
 	ComPtr<IDxcBlob> rayGenLib;
+	ComPtr<IDxcBlob> indirectDiffuseRayGenLib;
+	ComPtr<IDxcBlob> indirectSpecularRayGenLib;
 	ComPtr<IDxcBlob> missLib;
 	ComPtr<IDxcBlob> hitLib;
 
@@ -387,16 +430,31 @@ private:
 	ComPtr<IDxcBlob> GBhitLib;
 
 	ManagedResource rtOutPut;
+	ManagedResource rtIndirectDiffuseOutPut;
+	ManagedResource rtIndirectSpecularOutPut;
+
+	ManagedResource tempRTIndDiffuse;
+	ManagedResource tempRTIndSpec;
 	//gbuffers resources
 	ManagedResource rtPosition;
 	ManagedResource rtNormals;
 	ManagedResource rtDiffuse;
 	ManagedResource rtAlbedo;
+	ManagedResource prevNormals;
+	ManagedResource prevPosition;
+	ManagedResource prevNoisy;
+	ManagedResource currentNoisy;
+	ManagedResource acceptBools;
+	ManagedResource outPrevFramePixels;
 	DescriptorHeapWrapper rtDescriptorHeap;
 
 	//SBT variables
 	nv_helpers_dx12::ShaderBindingTableGenerator sbtGenerator;
 	ComPtr<ID3D12Resource> sbtResource;
+	nv_helpers_dx12::ShaderBindingTableGenerator indirectDiffuseSbtGenerator;
+	ComPtr<ID3D12Resource> indirectDiffuseSbtResource;
+	nv_helpers_dx12::ShaderBindingTableGenerator indirectSpecularSbtGenerator;
+	ComPtr<ID3D12Resource> indirectSpecularSbtResource;
 	nv_helpers_dx12::ShaderBindingTableGenerator GBsbtGenerator;
 	ComPtr<ID3D12Resource> GBsbtResource;
 
@@ -414,10 +472,20 @@ private:
 
 	//Linearly transformed cosines
 	DescriptorHeapWrapper ltcDescriptorHeap;
+	DescriptorHeapWrapper ltcTempDescriptorHeap;
 	ComPtr<ID3D12Resource> ltcTextureUploadHeap;
 	ManagedResource ltcLUT;
 	ManagedResource ltcLUT2;
-	ManagedResource ltcTexture;
+	ManagedResource ltcTexture[8];
+	ManagedResource ltcTexture0;
+	ManagedResource ltcTexture1;
+	ManagedResource ltcTexture2;
+	ManagedResource ltcTexture3;
+	ManagedResource ltcTexture4;
+	ManagedResource ltcTexture5;
+	ManagedResource ltcTexture6;
+	ManagedResource ltcTexture7;
+
 	ManagedResource ltcPrefilterTexture;
 
 	DescriptorHeapWrapper prefilterRTVHeap;
