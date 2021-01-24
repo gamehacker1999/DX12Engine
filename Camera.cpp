@@ -1,6 +1,6 @@
 #include "Camera.h"
 
-Camera::Camera(XMFLOAT3 position, XMFLOAT3 direction, XMFLOAT3 up)
+Camera::Camera(Vector3 position, Vector3 direction, Vector3 up)
 {
 	xRotation = 0.0f;
 	yRotation = 0.0f;
@@ -23,20 +23,20 @@ Camera::~Camera()
 {
 }
 
-XMFLOAT4X4 Camera::GetViewMatrix()
+Matrix Camera::GetViewMatrix()
 {
 	//returning view matrix
 		//creating a camera rotation matrix based on the x and y values
 	XMVECTOR cameraRot = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(yRotation), XMConvertToRadians(xRotation), 0.0f);
 
 	//rotating the direction vector
-	XMFLOAT3 unitZ(0.0f, 0.0f, 1.0f);
+	Vector3 unitZ(0.0f, 0.0f, 1.0f);
 	XMVECTOR tempRotation = XMVector3Rotate(XMLoadFloat3(&unitZ), cameraRot);
 
 	//storing the direction vector
 	XMStoreFloat3(&direction, tempRotation);
 
-	XMFLOAT3 worldUp(0.0f, 1.0f, 0.0f);
+	Vector3 worldUp(0.0f, 1.0f, 0.0f);
 	XMVECTOR right = XMVector3Cross(XMLoadFloat3(&worldUp), XMLoadFloat3(&direction)); //finding the right vector
 	XMStoreFloat3(&up, XMVector3Cross(XMLoadFloat3(&direction), right)); //finding the up vector
 
@@ -51,17 +51,17 @@ XMFLOAT4X4 Camera::GetViewMatrix()
 	return viewMatrix;
 }
 
-XMFLOAT4X4 Camera::GetProjectionMatrix()
+Matrix Camera::GetProjectionMatrix()
 {
 	return projectionMatrix;
 }
 
-XMFLOAT4X4 Camera::GetInverseProjection()
+Matrix Camera::GetInverseProjection()
 {
 	XMMATRIX inverseProjTemp = XMLoadFloat4x4(&projectionMatrix);
 	inverseProjTemp = XMMatrixInverse(nullptr, inverseProjTemp);
 
-	XMFLOAT4X4 invP;
+	Matrix invP;
 	XMStoreFloat4x4(&invP, inverseProjTemp);
 
 	return invP;
@@ -81,7 +81,7 @@ void Camera::CreateProjectionMatrix(float aspectRatio)
 
 }
 
-void Camera::SetPositionTargetAndUp(XMFLOAT3 position, XMFLOAT3 direction, XMFLOAT3 up)
+void Camera::SetPositionTargetAndUp(Vector3 position, Vector3 direction, Vector3 up)
 {
 	xRotation = 0.0f;
 	yRotation = 0.0f;
@@ -99,58 +99,57 @@ void Camera::SetPositionTargetAndUp(XMFLOAT3 position, XMFLOAT3 direction, XMFLO
 	XMStoreFloat4x4(&viewMatrix, XMMatrixTranspose(tempView));
 }
 
-void Camera::ManageKeyboard(float deltaTime)
+void Camera::ManageKeyboard(float deltaTime, std::unique_ptr<Mouse>& mouse, std::unique_ptr<Keyboard>& keyboard)
 {	
+
+	auto state = mouse->GetState();
+	auto kb = keyboard->GetState();
 	//move back
-
-	if (GetAsyncKeyState('W') & 0x8000)
+	if (state.rightButton) 
 	{
-		XMVECTOR tempPosition = XMLoadFloat3(&position) + XMLoadFloat3(&direction) * deltaTime * 10;//moving the camera forward
-		XMStoreFloat3(&position, tempPosition);// storing the position	
-	}
+		if (kb.W)
+		{
+			position = position + direction * deltaTime * 10;//moving the camera forward
+		}
 
-	if (GetAsyncKeyState('S') & 0x8000)
-	{
-		XMVECTOR tempPosition = XMLoadFloat3(&position) - XMLoadFloat3(&direction) * deltaTime * 10;//moving the camera forward
-		XMStoreFloat3(&position, tempPosition);// storing the position	
-	}
+		if (kb.S)
+		{
+			position = position - direction * deltaTime * 10;//moving the camera forward
+		}
 
-	//move right
-	if (GetAsyncKeyState('D') & 0x8000)
-	{
-		XMFLOAT3 worldUp(0.0f, 1.0f, 0.0f);
-		XMVECTOR right = XMVector3Cross(XMLoadFloat3(&worldUp), XMLoadFloat3(&direction)); //finding the right vector
-		XMVECTOR tempPosition = XMLoadFloat3(&position) + right * deltaTime * 5;//moving the camera forward
-		XMStoreFloat3(&position, tempPosition);// storing the position	
-	}
+		//move right
+		if (kb.D)
+		{
+			Vector3 worldUp(0.0f, 1.0f, 0.0f);
+			auto right = worldUp.Cross(direction);
+			position = position + right * deltaTime * 5;//moving the camera forward
+		}
 
-	//move left
-	if (GetAsyncKeyState('A') & 0x8000)
-	{
-		XMFLOAT3 worldUp(0.0f, 1.0f, 0.0f);
-		XMVECTOR right = XMVector3Cross(XMLoadFloat3(&worldUp), XMLoadFloat3(&direction)); //finding the right vector
-		XMVECTOR tempPosition = XMLoadFloat3(&position) - right * deltaTime * 5;//moving the camera forward
-		XMStoreFloat3(&position, tempPosition);// storing the position
-	}
+		//move left
+		if (kb.A)
+		{
+			Vector3 worldUp(0.0f, 1.0f, 0.0f);
+			auto right = worldUp.Cross(direction);
+			position = position - right * deltaTime * 5;//moving the camera forward
+		}
 
-	//move down
-	if (GetAsyncKeyState('Q') & 0x8000)
-	{
-		XMFLOAT3 worldUp(0.0f, 1.0f, 0.0f);
-		XMVECTOR right = XMVector3Cross(XMLoadFloat3(&worldUp), XMLoadFloat3(&direction)); //finding the right vector
-		XMStoreFloat3(&up, XMVector3Cross(XMLoadFloat3(&direction), right));
-		XMVECTOR tempPosition = XMLoadFloat3(&position) - XMLoadFloat3(&worldUp) * deltaTime;//moving the camera forward
-		XMStoreFloat3(&position, tempPosition);// storing the position
-	}
+		//move down
+		if (kb.Q)
+		{
+			Vector3 worldUp(0.0f, 1.0f, 0.0f);
+			auto right = worldUp.Cross(direction);//finding the right vector
+			up = direction.Cross(right); 
+		    position = position - worldUp * deltaTime;//moving the camera forward
+		}
 
-	//move up
-	if (GetAsyncKeyState('E') & 0x8000)
-	{
-		XMFLOAT3 worldUp(0.0f, 1.0f, 0.0f);
-		XMVECTOR right = XMVector3Cross(XMLoadFloat3(&worldUp), XMLoadFloat3(&direction)); //finding the right vector
-		XMStoreFloat3(&up, XMVector3Cross(XMLoadFloat3(&direction), right));
-		XMVECTOR tempPosition = XMLoadFloat3(&position) + XMLoadFloat3(&worldUp) * deltaTime;//moving the camera forward
-		XMStoreFloat3(&position, tempPosition);// storing the position
+		//move up
+		if (kb.E)
+		{
+			Vector3 worldUp(0.0f, 1.0f, 0.0f);
+			auto right = worldUp.Cross(direction);//finding the right vector
+			up = direction.Cross(right);
+			position = position + worldUp * deltaTime;//moving the camera forward
+		}
 	}
 }
 
@@ -167,17 +166,17 @@ void Camera::ChangeYawAndPitch(float deltaX, float deltaY)
 		yRotation = -85.0f;
 }
 
-XMFLOAT3 Camera::GetPosition()
+Vector3 Camera::GetPosition()
 {
 	return position;
 }
 
-XMFLOAT3 Camera::GetDirection()
+Vector3 Camera::GetDirection()
 {
 	return direction;
 }
 
-void Camera::SetPosition(XMFLOAT3 pos)
+void Camera::SetPosition(Vector3 pos)
 {
 	position = pos;
 }
@@ -187,31 +186,46 @@ void Camera::InvertPitch()
 	yRotation *= -1;
 }
 
-void Camera::Update(float deltaTime)
+void Camera::GetRayOriginAndDirection(int xPos, int yPos, float width, float height, Vector4& origin, Vector4& direction)
+{
+	auto proj = GetProjectionMatrix();
+	proj.Transpose();
+
+	float vX = (2.0f * xPos / width - 1.0f) / proj(0, 0);
+	float vY = (-2.0f * yPos / height + 1) / proj(1, 1);
+
+	origin = Vector4(0.f, 0.f, 0.f, 1.0f);
+	direction = Vector4(vX, vY, 1.0f, 0.0f);
+}
+
+
+void Camera::Update(float deltaTime, std::unique_ptr<Mouse>& mouse, std::unique_ptr<Keyboard>& keyboard)
 {
 
 	//managing keyboard input
-	ManageKeyboard(deltaTime);
+	ManageKeyboard(deltaTime, mouse, keyboard);
 
 	//creating a camera rotation matrix based on the x and y values
-	XMVECTOR cameraRot = XMQuaternionRotationRollPitchYaw(XMConvertToRadians(yRotation), XMConvertToRadians(xRotation), 0.0f);
+	Quaternion cameraRot = Quaternion::CreateFromYawPitchRoll(XMConvertToRadians(xRotation), XMConvertToRadians(yRotation), 0.0f);
 
 	//rotating the direction vector
-	XMFLOAT3 unitZ(0.0f, 0.0f, 1.0f);
-	XMVECTOR tempRotation = XMVector3Rotate(XMLoadFloat3(&unitZ), cameraRot);
+	Vector3 unitZ(0.0f, 0.0f, 1.0f);
+	//XMVECTOR tempRotation = XMVector3Rotate(XMLoadFloat3(&unitZ), cameraRot);
+	direction = Vector3::Transform(unitZ, cameraRot);
 
-	//storing the direction vector
-	XMStoreFloat3(&direction, tempRotation);
-
-	XMFLOAT3 worldUp(0.0f, 1.0f, 0.0f);
-	XMVECTOR right = XMVector3Cross(XMLoadFloat3(&worldUp), XMLoadFloat3(&direction)); //finding the right vector
-	XMStoreFloat3(&up, XMVector3Cross(XMLoadFloat3(&direction), right)); //finding the up vector
+	Vector3 worldUp(0.0f, 1.0f, 0.0f);
+	auto right = worldUp.Cross(direction);//XMVector3Cross(XMLoadFloat3(&worldUp), XMLoadFloat3(&direction)); //finding the right vector
+	up = direction.Cross(right);
 
 	//calculating the view matrix
 	//calculating the view matrix of the camera
-	auto tempView = XMMatrixLookToLH(XMLoadFloat3(&this->position),
-		XMLoadFloat3(&this->direction), XMLoadFloat3(&this->up));
+	//auto tempView = XMMatrixLookToLH(XMLoadFloat3(&this->position),
+	//	XMLoadFloat3(&this->direction), XMLoadFloat3(&this->up));
+	//
+	////storing this value in view matrix
+	//XMStoreFloat4x4(&viewMatrix, XMMatrixTranspose(tempView));
 
-	//storing this value in view matrix
-	XMStoreFloat4x4(&viewMatrix, XMMatrixTranspose(tempView));
+	viewMatrix = Matrix::CreateLookAt(position, position + direction, up);
+
+	viewMatrix.Transpose();
 }

@@ -91,7 +91,7 @@ std::shared_ptr<Mesh>& Skybox::GetMesh()
 	return this->skyboxMesh;
 }
 
-void Skybox::PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition)
+void Skybox::PrepareForDraw(Matrix view, Matrix proj, Vector3 camPosition)
 {
 	XMStoreFloat4x4(&skyboxData.world, XMMatrixIdentity());
 	skyboxData.projection = proj;

@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 RWTexture2D<float4> heightMapDX: register(u1);
 RWTexture2D<float4> heightMapDY: register(u2);
 RWTexture2D<float4> foldingMap: register(u3);

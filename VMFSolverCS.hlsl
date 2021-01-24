@@ -1,4 +1,5 @@
 #include "SphericalGaussian.hlsli"
+#include "Common.hlsl"
 
 //input normal map
 Texture2D normalMap : register(t0);

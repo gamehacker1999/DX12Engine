@@ -1,3 +1,8 @@
+#ifndef COMMON_HLSL
+#define COMMON_HLSL
+#define WIDTH 1920.0f
+#define HEIGHT 1080.0f
+
 // Hit information, aka ray payload
 // This sample only carries a shading color and hit distance.
 // Note that the payload should be kept as small as possible,
@@ -170,3 +175,4 @@ matrix InvertMatrix(matrix m)
 
     return ret;
 }
+#endif

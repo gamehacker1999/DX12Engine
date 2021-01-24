@@ -30,6 +30,8 @@ cbuffer PerFrameCB : register(b0)
     uint IMAGE_WIDTH;
     uint IMAGE_HEIGHT;
 };
+#include "Common.hlsl"
+
 
 struct VertexToPixel
 {

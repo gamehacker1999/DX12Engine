@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 struct VertexToPixel
 {
 	float4 position : SV_POSITION;

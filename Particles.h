@@ -7,11 +7,11 @@ using namespace DirectX;
 struct Particle
 {
 	float spawnTime;
-	XMFLOAT3 startPosition;
+	Vector3 startPosition;
 
 	float rotationStart;
-	XMFLOAT3 startVelocity;
+	Vector3 startVelocity;
 
 	float rotationEnd;
-	XMFLOAT3 padding;
+	Vector3 padding;
 };

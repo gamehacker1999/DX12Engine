@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 #define MAX_INDICES 256
 #define mod(x,y) (x-y*floor(x/y))
 static const float PI = 3.14159f;

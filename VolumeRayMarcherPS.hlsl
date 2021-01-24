@@ -1,3 +1,5 @@
+#include "Common.hlsl"
+
 struct Ray
 {
 	float3 origin;
@@ -140,7 +142,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	Ray ray;
 	ray.origin = cameraPosition;//mul(float4(0,0,0,1),viewInv).xyz;
 	float3 dir = input.worldPos - cameraPosition;
-	ray.direction.xy = ((input.position.xy * 2.0) - 1.0) * float2(1280, 720);
+	ray.direction.xy = ((input.position.xy * 2.0) - 1.0) * float2(WIDTH, HEIGHT);
 	ray.direction.y *= -1;
 	ray.direction.z = focalLength;
 	ray.direction = mul(ray.direction, (float3x3)viewInv);

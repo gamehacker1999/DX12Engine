@@ -28,13 +28,30 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 	scissorRect.right = static_cast<LONG>(width);
 	scissorRect.bottom = static_cast<LONG>(height);
 
+	mouse = std::make_unique<Mouse>();
+	keyboard = std::make_unique<Keyboard>();
+
 	__int64 perfFreq;
 	QueryPerformanceFrequency((LARGE_INTEGER*)&perfFreq);
 	perfCounterSeconds = 1 / (double)perfFreq;
+
+	// Setup Dear ImGui context
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
 }
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT DXCore::WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	ImGuiIO& io = ImGui::GetIO();
+	ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
+	if (io.WantCaptureMouse && (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP || uMsg == WM_MOUSEWHEEL || uMsg == WM_MOUSEMOVE))
+	{
+		return TRUE;
+	}
+
+
 	return DXCoreInstance->ProcessMessage(hWnd, uMsg, wParam, lParam);
 }
 
@@ -82,6 +99,7 @@ LRESULT DXCore::ProcessMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 	case WM_MBUTTONDOWN:
 	case WM_RBUTTONDOWN:
 		OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		Mouse::ProcessMessage(uMsg, wParam, lParam);
 		return 0;
 
 		// Mouse button being released (while the cursor is currently over our window)
@@ -89,17 +107,30 @@ LRESULT DXCore::ProcessMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 	case WM_MBUTTONUP:
 	case WM_RBUTTONUP:
 		OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		Mouse::ProcessMessage(uMsg, wParam, lParam);
+
 		return 0;
 
 		// Cursor moves over the window (or outside, while we're currently capturing it)
 	case WM_MOUSEMOVE:
+
+		Mouse::ProcessMessage(uMsg, wParam, lParam);
+
 		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 
 		// Mouse wheel is scrolled
 	case WM_MOUSEWHEEL:
+		Mouse::ProcessMessage(uMsg, wParam, lParam);
+
 		OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
+
+	case WM_KEYDOWN:
+	case WM_KEYUP:
+	case WM_SYSKEYUP:
+		Keyboard::ProcessMessage(uMsg, wParam, lParam);
+		break;
 	}
 
 	// Let Windows handle any messages we're not touching
@@ -171,10 +202,24 @@ HRESULT DXCore::InitWindow()
 		return HRESULT_FROM_WIN32(error);
 	}
 
+	mouse->SetWindow(hWnd);
+
+
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+	// Setup Dear ImGui style
+	ImGui::StyleColorsDark();
+	//ImGui::StyleColorsClassic();
+
+	// Setup Platform/Renderer backends
+	ImGui_ImplWin32_Init(hWnd);
+
 	// The window exists but is not visible yet
 	// We need to tell Windows to show it, and how to show it
 	ShowWindow(hWnd, SW_SHOW);
-
+	UpdateWindow(hWnd);
 
 	// Return an "everything is ok" HRESULT value
 	return S_OK;
@@ -267,9 +312,19 @@ HRESULT DXCore::InitDirectX()
 	hr = (factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 	if (FAILED(hr)) return hr;
 
+	//Setting the descriptor heap for the GUI
+	//initilize the gui
+	guiDescriptorHeap.Create(device, 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
+
+	InitGUI();
 	// Return an "everything is ok" HRESULT value
 	return S_OK;
+}
+
+void DXCore::InitGUI()
+{
+
 }
 
 HRESULT DXCore::Run()
@@ -310,6 +365,11 @@ HRESULT DXCore::Run()
 		}
 	}
 
+
+	// Cleanup
+	ImGui_ImplDX12_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
 	// We'll end up here once we get a WM_QUIT message,
 	// which usually comes from the user closing the window
 	return (HRESULT)msg.wParam;

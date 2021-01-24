@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 #include "Utils.hlsli"
 
 //struct to represent the vertex shader input

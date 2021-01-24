@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 
 // Constant Buffer
 cbuffer externalData : register(b0)

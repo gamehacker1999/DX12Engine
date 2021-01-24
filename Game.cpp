@@ -18,8 +18,8 @@ Game::Game(HINSTANCE hInstance)
 	: DXCore(
 		hInstance,		   // The application's handle
 		"DirectX Game",	   // Text for the window's title bar
-		1280,			   // Width of the window's client area
-		720,			   // Height of the window's client area
+		1920,			   // Width of the window's client area
+		1080,			   // Height of the window's client area
 		true)			   // Show extra stats (fps) in title bar?
 {
 
@@ -30,6 +30,8 @@ Game::Game(HINSTANCE hInstance)
 	CreateConsoleWindow(500, 120, 32, 120);
 	printf("Console window created successfully.  Feel free to printf() here.\n");
 #endif
+	gizmoMode = ImGuizmo::TRANSLATE;
+	pickingIndex = -1;
 	constantBufferBegin = nullptr;
 	cameraBufferBegin = 0;
 	lightCbufferBegin = 0;
@@ -39,6 +41,7 @@ Game::Game(HINSTANCE hInstance)
 	previousBuffer = nullptr;
 	lightCount = 0;
 	raster = true;
+	inlineRaytracing = true;
 
 	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
 	memset(&lightingData, 0, sizeof(LightingData));
@@ -49,6 +52,9 @@ Game::Game(HINSTANCE hInstance)
 	enableSSS = false;
 	visibleLightIndices = nullptr;
 	visibleLightIndicesResource = 0;
+
+	keys.Reset();
+	mouseButtons.Reset();
 
 	lights = nullptr;
 
@@ -558,7 +564,11 @@ HRESULT Game::Init()
 		CreateShaderBindingTable();
 	}
 
+	InitializeGUI();
+
+
 	return S_OK;
+
 }
 
 void Game::InitComputeEngine()
@@ -571,6 +581,32 @@ void Game::InitComputeEngine()
 	//Creating the compute command queue
 	ThrowIfFailed(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&computeCommandQueue)));
 
+
+}
+
+void Game::InitializeGUI()
+{
+	
+	ImGui_ImplDX12_Init(device.Get(), 3,
+		DXGI_FORMAT_R8G8B8A8_UNORM, gpuHeapRingBuffer->GetDescriptorHeap().GetHeapPtr(),
+		gpuHeapRingBuffer->GetDescriptorHeap().GetCPUHandle(gpuHeapRingBuffer->GetDescriptorHeap().GetLastResourceIndex()),
+		gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(gpuHeapRingBuffer->GetDescriptorHeap().GetLastResourceIndex()));
+
+	// Load Fonts
+	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
+	// - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
+	// - If the file cannot be loaded, the function will return NULL. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
+	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
+	// - Read 'docs/FONTS.md' for more instructions and details.
+	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
+	//io.Fonts->AddFontDefault();
+	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
+	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
+	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
+	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
+	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
+	//IM_ASSERT(font != NULL);
+	// Our state
 
 }
 
@@ -1580,8 +1616,8 @@ void Game::CreateBasicGeometry()
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
 	material1 = std::make_shared<Material>(
-		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/LayeredNormal.png",
-		L"../../Assets/Textures/GoldRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
+		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
+		L"../../Assets/Textures/GoldRoughness.png", L"../../Assets/Textures/GoldMetallic.png");
 	material2 = std::make_shared<Material>(
 		L"../../Assets/Textures/LayeredDiffuse.png", L"../../Assets/Textures/LayeredNormal.png",
 		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
@@ -2688,13 +2724,19 @@ void Game::CreateGbufferRaytracingPipeline()
 // --------------------------------------------------------
 void Game::Update(float deltaTime, float totalTime)
 {
+
+	auto kb = keyboard->GetState();
+	auto mouseState = mouse->GetState();
+
 	// Quit if the escape key is pressed
-	if (GetAsyncKeyState(VK_ESCAPE))
+	if (kb.Escape)
 		Quit();
 
+	keys.Update(kb);
+	mouseButtons.Update(mouseState);
 	
 	numFrames++;
-	mainCamera->Update(deltaTime);
+	mainCamera->Update(deltaTime, mouse, keyboard);
 
 	bmfrPreProcData.view = mainCamera->GetViewMatrix();
 	bmfrPreProcData.proj = mainCamera->GetProjectionMatrix();
@@ -2702,32 +2744,55 @@ void Game::Update(float deltaTime, float totalTime)
 
 	memcpy(bmfrPreprocessBegin, &bmfrPreProcData, sizeof(bmfrPreProcData));
 
-
-	if (GetAsyncKeyState('R') && !rtToggle)
+	if (mouseButtons.leftButton == DirectX::Mouse::ButtonStateTracker::RELEASED)
 	{
-		rtToggle = true;
+		pickingIndex = -1;
+		bool intersects = false;
+		Vector4 origin;
+		Vector4 dir;
+		mainCamera->GetRayOriginAndDirection(mouseState.x, mouseState.y, width, height ,origin, dir);
+		float minDist = FLT_MAX;
+		for (size_t i = 0; i < entities.size(); i++)
+		{
+			float objSpaceDist = 0;
+			intersects = entities[i]->RayBoundIntersection(origin, dir, objSpaceDist, mainCamera->GetViewMatrix());
 
-		if (isRaytracingAllowed)
-			raster = !raster;
+			if (intersects)
+			{
+				auto distance = Vector3::Distance(entities[i]->GetPosition(), mainCamera->GetPosition());
+
+				if (minDist >= distance)
+				{
+					minDist = distance;
+					pickingIndex = i;
+				}
+			}
+
+		}
+
 	}
 
-	else if (GetAsyncKeyState('R') == 0)
-	{
-		rtToggle = false;
-	}
 
+	if (!mouse->GetState().rightButton)
+	{
+		if (keys.released.W)
+		{
+			gizmoMode = ImGuizmo::TRANSLATE;
+		}
+
+		else if (keys.released.E)
+		{
+			gizmoMode = ImGuizmo::ROTATE;
+		}
+
+		else if (keys.released.R)
+		{
+			gizmoMode = ImGuizmo::SCALE;
+		}
+	}
 
 	lightData.cameraPosition = mainCamera->GetPosition();
 	memcpy(lightCbufferBegin, &lightData, sizeof(lightData));
-
-	//lightingData.lights[1].rectLight.rotY += 0.01 * deltaTime;
-
-	//auto initialRot = entity6->GetRotation();
-	//XMVECTOR finalRot = XMQuaternionRotationRollPitchYaw(lightingData.lights[1].rectLight.rotX * 2 * 3.14159265f, lightingData.lights[1].rectLight.rotY * 2 * 3.14159265f, lightingData.lights[1].rectLight.rotZ * 2 * 3.14159265f);
-	//XMStoreFloat4(&initialRot, finalRot);
-	//entity6->SetRotation(initialRot);
-
-	//bottomLevelBufferInstances[4].modelMatrix = entity6->GetRawModelMatrix();
 
 	lightingData.cameraPosition = mainCamera->GetPosition();
 	lightingData.lightCount = lightCount;
@@ -2745,13 +2810,10 @@ void Game::Update(float deltaTime, float totalTime)
 	for (size_t i = 0; i < entities.size(); i++)
 	{
 		entities[i]->Update(deltaTime);
-	}
 
-	//auto pos = entities[4]->GetPosition();
-	//pos.z += sin(totalTime/100.f)/10;
-	//entities[4]->SetPosition(pos);
-	//
-	//bottomLevelBufferInstances[4].modelMatrix = entities[4]->GetRawModelMatrix();
+		if(isRaytracingAllowed)
+			bottomLevelBufferInstances[i].modelMatrix = entities[i]->GetRawModelMatrix();
+	}
 
 	if (isRaytracingAllowed)
 	{
@@ -2795,6 +2857,12 @@ void Game::Update(float deltaTime, float totalTime)
 	//	flockers[i]->Update(deltaTime);
 	//}
 
+	UpdateGUI(deltaTime, totalTime);
+}
+
+void Game::UpdateGUI(float deltaTime, float totalTime)
+{
+
 }
 
 // --------------------------------------------------------
@@ -2837,6 +2905,129 @@ void Game::Draw(float deltaTime, float totalTime)
 	bmfrPreProcData.prevProj = mainCamera->GetProjectionMatrix();
 	bmfrPreProcData.view = mainCamera->GetViewMatrix();
 
+}
+
+void Game::RenderGUI(float deltaTime, float totalTime)
+{
+
+	// Start the Dear ImGui frame
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+	ImGuizmo::BeginFrame();
+
+	//raytrace
+	{
+		ImGui::Begin("Render Mode");
+		ImGui::Checkbox("Raster", &raster);
+		ImGui::End();
+	}
+
+
+	//{
+	//	//create our ImGui window
+	//	ImGui::Begin("Scene Window", 0, ImGuiWindowFlags_NoMouseInputs);
+	//	//get the mouse position
+	//	ImVec2 pos = ImGui::GetCursorScreenPos();
+	//
+	//	auto io = ImGui::GetIO();
+	//
+	//	ImGui::GetWindowDrawList()->AddImage(
+	//		(void*)(sharpenOutput.srvGPUHandle.ptr),
+	//		ImVec2(0,0),
+	//		ImVec2(1280, 720), 
+	//		ImVec2(0, 0), 
+	//		ImVec2(1, 1));
+	//
+	//	//we are done working with this window
+	//	ImGui::End();
+	//}
+
+	if (pickingIndex != -1)
+	{
+		ImGui::Begin("Transform");
+
+		if (ImGui::RadioButton("Translate", gizmoMode == ImGuizmo::TRANSLATE))
+			gizmoMode = ImGuizmo::TRANSLATE;
+		ImGui::SameLine();
+		if (ImGui::RadioButton("Rotate", gizmoMode == ImGuizmo::ROTATE))
+			gizmoMode = ImGuizmo::ROTATE;
+		ImGui::SameLine();
+		if (ImGui::RadioButton("Scale", gizmoMode == ImGuizmo::SCALE))
+			gizmoMode = ImGuizmo::SCALE;
+		
+		Vector4 trs = Vector4(entities[pickingIndex]->GetPosition());
+		Vector3 scal = entities[pickingIndex]->GetScale();
+		Quaternion rot = entities[pickingIndex]->GetRotation();
+
+		auto objMat = entities[pickingIndex]->GetModelMatrix();
+
+		auto scale = XMVECTOR(scal);
+		auto rotation = XMVECTOR(rot);
+		auto translation = XMVECTOR(trs);
+
+		XMMatrixDecompose(&scale, &rotation, &translation, XMMATRIX(objMat));
+
+		float matrixTranslation[] = { trs.x, trs.y, trs.z };
+		float matrixRotation[] = { rot.x, rot.y, rot.z };
+		float matrixScale[] = { scal.x, scal.y, scal.z };
+
+		ImGui::InputFloat3("Position", matrixTranslation);
+		ImGui::InputFloat3("Rotation", matrixRotation);
+		ImGui::InputFloat3("Scale", matrixScale);
+
+		ImGui::End();
+
+		entities[pickingIndex]->SetPosition(Vector3(matrixTranslation[0], matrixTranslation[1], matrixTranslation[2]));
+		entities[pickingIndex]->SetScale(Vector3(matrixScale[0], matrixScale[1], matrixScale[2]));
+		entities[pickingIndex]->SetRotation(XMConvertToRadians(matrixRotation[1]), XMConvertToRadians(matrixRotation[0]), XMConvertToRadians(matrixRotation[2]));
+
+		entities[pickingIndex]->ManipulateTransforms(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), gizmoMode);
+	}
+
+	if (pickingIndex != -1)
+	{
+
+		//create our ImGui window
+		bool close=true;
+		ImGui::Begin("Material Window", &close);
+		//get the mouse position
+		ImVec2 pos = ImGui::GetCursorScreenPos();
+
+		auto io = ImGui::GetIO();
+		auto meshes = entities[pickingIndex]->GetModel()->GetMeshes();
+
+		auto id = meshes[0]->GetMaterialID();
+		int h = 128;
+		int w = 128;
+
+		auto handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id);
+		ImGui::Text("Albedo");
+		ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
+
+		handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id+1);
+		ImGui::Text("Normal");
+		ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
+
+		handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id + 2);
+		ImGui::Text("Roughness");
+		ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
+
+		handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id + 3);
+		ImGui::Text("Metalness");
+		ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
+
+		ImGui::End();
+	}
+
+	
+	// Rendering
+	ImGui::Render();
+	//setting the constant buffer descriptor table
+	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeapPtr() };
+
+	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
 }
 
 void Game::RaytracingPrePass()
@@ -3114,8 +3305,10 @@ void Game::PopulateCommandList()
 		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
 		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityLTCSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(ltcLUT.heapOffset));
 		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EnableIndirectLighting, raster, 0);
-		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EnableIndirectLighting, isRaytracingAllowed, 1);
-		commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::AccelerationStructureSRV, topLevelAsBuffers.pResult->GetGPUVirtualAddress());
+		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EnableIndirectLighting, inlineRaytracing, 1);
+
+		if(isRaytracingAllowed)
+			commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::AccelerationStructureSRV, topLevelAsBuffers.pResult->GetGPUVirtualAddress());
 
 		for (UINT i = 0; i < entities.size(); i++)
 		{
@@ -3165,9 +3358,10 @@ void Game::PopulateCommandList()
 
 	}
 
-	RaytracingPrePass();
 	if (!raster && isRaytracingAllowed)
 	{
+		RaytracingPrePass();
+
 		ID3D12DescriptorHeap* ppHeaps[] = { rtDescriptorHeap.GetHeap().Get() };
 
 		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
@@ -3182,19 +3376,19 @@ void Game::PopulateCommandList()
 		CreateIndirectSpecularRays();
 
 		
-		CopyResource(commandList, tempRTIndDiffuse, rtIndirectDiffuseOutPut);
-
-		BMFRPreprocess(tempRTIndDiffuse, rtNormals, rtPosition, prevNoisy, prevNormals, prevPosition, acceptBools,
-			outPrevFramePixels, bmfrPreProcessCBV, numFrames, renderTargetSRVHeap.GetHeap(), rtCombineOutput.rtvCPUHandle);
-
-		CopyResource(commandList, rtIndirectDiffuseOutPut, tempRTIndDiffuse);
-
-		CopyResource(commandList, tempRTIndSpec, rtIndirectSpecularOutPut);
-
-		BMFRPreprocess(tempRTIndSpec, rtNormals, rtPosition, prevNoisy, prevNormals, prevPosition, acceptBools,
-			outPrevFramePixels, bmfrPreProcessCBV, numFrames, renderTargetSRVHeap.GetHeap(), rtCombineOutput.rtvCPUHandle);
-
-		CopyResource(commandList, rtIndirectSpecularOutPut, tempRTIndSpec);
+		//CopyResource(commandList, tempRTIndDiffuse, rtIndirectDiffuseOutPut);
+		//
+		//BMFRPreprocess(tempRTIndDiffuse, rtNormals, rtPosition, prevNoisy, prevNormals, prevPosition, acceptBools,
+		//	outPrevFramePixels, bmfrPreProcessCBV, numFrames, renderTargetSRVHeap.GetHeap(), rtCombineOutput.rtvCPUHandle);
+		//
+		//CopyResource(commandList, rtIndirectDiffuseOutPut, tempRTIndDiffuse);
+		//
+		//CopyResource(commandList, tempRTIndSpec, rtIndirectSpecularOutPut);
+		//
+		//BMFRPreprocess(tempRTIndSpec, rtNormals, rtPosition, prevNoisy, prevNormals, prevPosition, acceptBools,
+		//	outPrevFramePixels, bmfrPreProcessCBV, numFrames, renderTargetSRVHeap.GetHeap(), rtCombineOutput.rtvCPUHandle);
+		//
+		//CopyResource(commandList, rtIndirectSpecularOutPut, tempRTIndSpec);
 
 		//RT combine
 		{
@@ -3300,6 +3494,9 @@ void Game::PopulateCommandList()
 		}
 
 	}
+
+	RenderGUI(deltaTime, totalTime);
+
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 	// Indicate that the back buffer will now be used to present.
@@ -3866,13 +4063,17 @@ void Game::OnMouseMove(WPARAM buttonState, int x, int y)
 {
 	// Save the previous mouse position, so we have it for the future
 
-	if (buttonState & 0x0001)
+
+	if (buttonState & 0x0002)
 	{
 		int deltaX = x - prevMousePos.x;
 		int deltaY = y - prevMousePos.y;
 
 		//changing the yaw and pitch of the camera
+
+
 		mainCamera->ChangeYawAndPitch((float)deltaX, (float)deltaY);
+		
 	}
 	// Save the previous mouse position, so we have it for the future
 	prevMousePos.x = x;

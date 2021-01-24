@@ -43,7 +43,7 @@ float4 ClipToView(float4 clip)
 float4 ScreenToView(float4 screen)
 {
     // Convert to normalized texture coordinates
-    float2 texCoord = screen.xy / float2(1280,720);
+    float2 texCoord = screen.xy / float2(WIDTH,HEIGHT);
  
     // Convert to clip space
     float4 clip = float4(float2(texCoord.x, 1.0f - texCoord.y) * 2.0f - 1.0f, screen.z, screen.w);
@@ -57,7 +57,7 @@ ViewFrustum CreateFrustum(int2 tileID, float fMinDepth, float fMaxDepth)
 
     matrix inverseProjView = InvertMatrix(viewProjection);
 
-    float2 ndcSizePerTile = 2 * float2(TILE_SIZE, TILE_SIZE) / float2(1280,720);
+    float2 ndcSizePerTile = 2 * float2(64, 64) / float2(WIDTH,HEIGHT);
 
     float2 ndcPoints[4]; // corners of tile in ndc
     ndcPoints[0] = ndcUpperLeft + tileID * ndcSizePerTile; // upper left
@@ -121,6 +121,7 @@ bool IsCollided(Light light, ViewFrustum frustum)
 
     return true;
 }
+#include "Common.hlsl"
 
 
 [numthreads(TILE_SIZE, TILE_SIZE, 1)]
@@ -132,7 +133,7 @@ uint groupIndex : SV_GroupIndex)
     uint2 location = (dispatchThreadID.xy);
     uint2 itemID = (groupThreadID.xy);
     uint2 tileID = (groupID.xy);
-    uint2 tileNumber = (uint2(1280 / TILE_SIZE, 720 / TILE_SIZE));
+    uint2 tileNumber = (uint2(WIDTH / TILE_SIZE, HEIGHT / TILE_SIZE));
     uint index = tileID.y * tileNumber.x + tileID.x;
     
     float depth = depthMap.Load(uint3(location, 0)).r;

@@ -21,6 +21,8 @@
 #include"DXRHelper.h"
 
 
+
+
 using namespace Microsoft::WRL;
 // We can include the correct library files here
 // instead of in Visual Studio settings if we want
@@ -48,6 +50,7 @@ public:
 	HRESULT InitWindow();
 	void EnableShaderBasedValidation();
 	HRESULT InitDirectX();
+	void InitGUI();
 	HRESULT Run();
 	void Quit();
 	virtual void OnResize();
@@ -90,6 +93,7 @@ protected:
 	ComPtr<ID3D12CommandQueue> commandQueue;
 	ComPtr<ID3D12RootSignature> rootSignature;
 	//ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
+	DescriptorHeapWrapper guiDescriptorHeap;
 	DescriptorHeapWrapper rtvDescriptorHeap;
 	ComPtr<ID3D12PipelineState> pipelineState;
 	ComPtr<ID3D12GraphicsCommandList6> commandList;
@@ -97,6 +101,15 @@ protected:
 
 	ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dredSettings;
 
+	// Our state
+	bool show_demo_window;
+	bool show_another_window;
+	ImVec4 clear_color;
+
+	std::unique_ptr<Mouse> mouse;
+	std::unique_ptr<Keyboard> keyboard;
+	Keyboard::KeyboardStateTracker keys;
+	Mouse::ButtonStateTracker mouseButtons;
 
 	//synchronization objects
 	UINT frameIndex;

@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 cbuffer externalData: register(b0)
 {
 	matrix view;

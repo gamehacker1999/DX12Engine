@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 Texture2D inputTex : register(t0);
 SamplerState pointSampler : register(s0);
 
@@ -10,5 +11,6 @@ struct VertexToPixel
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
-    return (inputTex.Sample(pointSampler, input.uv));
+    return inputTex.Sample(pointSampler, input.uv);
+    //return (float4(0,0,0,1));
 }

@@ -3,6 +3,8 @@
 #include<random>
 #include"ResourceUploadBatch.h"
 #include <WICTextureLoader.h>
+#include <Keyboard.h>
+#include<Mouse.h>
 #include<DDSTextureLoader.h>
 #include<d3d12.h>
 #include"d3dx12Residency.h"
@@ -12,6 +14,12 @@
 #include<stdexcept>
 #include"d3dx12.h"
 #include"RootIndices.h"
+#include <SimpleMath.h>
+
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_win32.h"
+#include "imgui/imgui_impl_dx12.h"
+#include "imgui/ImGuizmo.h"
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -21,6 +29,7 @@
 using namespace Microsoft::WRL;
 
 using namespace DirectX;
+using namespace DirectX::SimpleMath;
 
 class Game;
 
@@ -92,16 +101,28 @@ inline float halton(int i, int b)
 	return r;
 }
 
-inline XMFLOAT2* GenerateHaltonJitters()
+inline Vector2* GenerateHaltonJitters()
 {
-	XMFLOAT2* jitters = new XMFLOAT2[16];
+	Vector2* jitters = new Vector2[16];
 
 	for (size_t i = 0; i < 16; i++)
 	{
-		jitters[i] = XMFLOAT2((halton(i, 2) - 0.5) * 2, (halton(i, 3) - 0.5) * 2);
+		jitters[i] = Vector2((halton(i, 2) - 0.5) * 2, (halton(i, 3) - 0.5) * 2);
 	}
 
 	return jitters;
+}
+
+inline float Float3Distance(Vector3 pos1, Vector3 pos2)
+{
+	XMVECTOR vector1 = XMLoadFloat3(&pos1);
+	XMVECTOR vector2 = XMLoadFloat3(&pos2);
+	XMVECTOR vectorSub = XMVectorSubtract(vector1, vector2);
+	XMVECTOR length = XMVector3Length(vectorSub);
+
+	float distance = 0.0f;
+	XMStoreFloat(&distance, length);
+	return distance;
 }
 
 
@@ -160,14 +181,14 @@ struct EntityInstance
 	DirectX::XMMATRIX modelMatrix;
 };
 
-inline XMFLOAT3 GetRandomFloat3(float minRange, float maxRange)
+inline Vector3 GetRandomFloat3(float minRange, float maxRange)
 {
 	//random position and veloctiy of the particle
 	std::random_device rd;
 	std::mt19937 randomGenerator(rd());
 	std::uniform_real_distribution<float> dist(minRange,maxRange);
 
-	return XMFLOAT3(dist(randomGenerator), dist(randomGenerator), dist(randomGenerator));
+	return Vector3(dist(randomGenerator), dist(randomGenerator), dist(randomGenerator));
 }
 
 void InitResources(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12GraphicsCommandList> computeCommandList,
@@ -208,7 +229,7 @@ void BMFRPreprocess(ManagedResource rtOutput, ManagedResource normals, ManagedRe
 void BMFRRegression(ManagedResource rtOutput, ManagedResource normals, ManagedResource position,
 	ManagedResource prevOutput, ManagedResource prevNormals, ManagedResource prevPos,
 	ManagedResource acceptBools, ManagedResource outPrevPixelFrame, ComPtr<ID3D12Resource> cbvData,
-	UINT frameIndex, ComPtr<ID3D12DescriptorHeap> srvUavHeap, );
+	UINT frameIndex, ComPtr<ID3D12DescriptorHeap> srvUavHeap);
 
 ComPtr<ID3D12PipelineState> CreatePipelineState();
 

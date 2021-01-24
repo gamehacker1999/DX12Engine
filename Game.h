@@ -33,41 +33,41 @@
 struct LightData
 {
 	DirectionalLight light1;
-	XMFLOAT3 cameraPosition;
+	Vector3 cameraPosition;
 	float padding;
 };
 
 struct LightingData
 {
-	XMFLOAT3 cameraPosition;
+	Vector3 cameraPosition;
 	UINT lightCount;
 };
 
 struct LightCullingExternalData
 {
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 projection;
-	XMFLOAT4X4 inverseProjection;
-	XMFLOAT3 cameraPosition;
+	Matrix view;
+	Matrix projection;
+	Matrix inverseProjection;
+	Vector3 cameraPosition;
 	int lightCount;
 };
 
 struct VelocityConstantBuffer
 {
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 projection;
-	XMFLOAT4X4 world;
-	XMFLOAT4X4 prevView;
-	XMFLOAT4X4 prevProjection;
-	XMFLOAT4X4 prevWorld;
+	Matrix view;
+	Matrix projection;
+	Matrix world;
+	Matrix prevView;
+	Matrix prevProjection;
+	Matrix prevWorld;
 };
 
 struct BMFRPreProcessData
 {
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 proj;
-	XMFLOAT4X4 prevView;
-	XMFLOAT4X4 prevProj;
+	Matrix view;
+	Matrix proj;
+	Matrix prevView;
+	Matrix prevProj;
 	UINT frame_number;
 	UINT IMAGE_WIDTH;
 	UINT IMAGE_HEIGHT;
@@ -95,10 +95,10 @@ inline ID3D12Resource* CreateRBBuffer(ID3D12Resource* buffer, ID3D12Device* devi
 
 struct RayTraceCameraData
 {
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 proj;
-	XMFLOAT4X4 iView;
-	XMFLOAT4X4 iProj;
+	Matrix view;
+	Matrix proj;
+	Matrix iView;
+	Matrix iProj;
 };
 
 class Game
@@ -113,6 +113,7 @@ public:
 	// will be called automatically
 	HRESULT Init();
 	void InitComputeEngine();
+	void InitializeGUI();
 	HRESULT InitEnvironment();
 	void OnResize();
 	void ExecuteAndResetGraphicsCommandList(ComPtr<ID3D12GraphicsCommandList> commandList,
@@ -176,7 +177,9 @@ public:
 	void RenderVelocityBuffer();
 	void LightCullingPass();
 	void Update(float deltaTime, float totalTime);
+	void UpdateGUI(float deltaTime, float totalTime);
 	void Draw(float deltaTime, float totalTime);
+	void RenderGUI(float deltaTime, float totalTime);
 	void PopulateCommandList();
 	void RenderPostProcessing(ManagedResource inputTexture);
 	void WaitForPreviousFrame();
@@ -218,9 +221,9 @@ private:
 	ComPtr<ID3D12CommandAllocator> bundleAllocator;
 
 	// The matrices to go from model space to screen space
-	DirectX::XMFLOAT4X4 worldMatrix;
-	DirectX::XMFLOAT4X4 viewMatrix;
-	DirectX::XMFLOAT4X4 projectionMatrix;
+	Matrix worldMatrix;
+	Matrix viewMatrix;
+	Matrix projectionMatrix;
 
 	//ComPtr<ID3D12DescriptorHeap> mainBufferHeap;
 	DescriptorHeapWrapper mainBufferHeap;
@@ -394,6 +397,7 @@ private:
 
 	bool raster;
 	bool isRaytracingAllowed;
+	bool inlineRaytracing;
 	bool rtToggle;
 	ComPtr<ID3D12Resource> bottomLevelAs; //storage for bottom level as
 	nv_helpers_dx12::TopLevelASGenerator topLevelAsGenerator;
@@ -547,5 +551,8 @@ private:
 	// Keeps track of the old mouse position.  Useful for 
 	// determining how far the mouse moved in a single frame.
 	POINT prevMousePos;
+
+	ImGuizmo::OPERATION gizmoMode;
+	int pickingIndex;
 };
 

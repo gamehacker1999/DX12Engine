@@ -78,7 +78,7 @@ std::shared_ptr<Mesh> MyModel::ProcessMesh(aiMesh* mesh, const aiScene* scene)
 			indices.push_back(face.mIndices[j]);
 	}
 
-	std::shared_ptr<Mesh> finalMesh = std::make_shared<Mesh>(&vertices[0], vertices.size(), &indices[0], indices.size());
+	std::shared_ptr<Mesh> finalMesh = std::make_shared<Mesh>(vertices, vertices.size(), indices, indices.size());
 
 	return finalMesh;
 }

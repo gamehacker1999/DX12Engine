@@ -1,10 +1,12 @@
 #include "Mesh.h"
-Mesh::Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
+Mesh::Mesh(std::vector<Vertex> vertices, unsigned int numVertices, std::vector<UINT> indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
 {
 	ComPtr<ID3D12Resource> vertexBufferDeafult;
-	vertexBuffer = CreateVBView(vertices, numVertices, GetAppResources().device, GetAppResources().commandList, defaultHeap,uploadHeap);
-	indexBuffer = CreateIBView(indices, numIndices, GetAppResources().device, GetAppResources().commandList, defaultIndexHeap, uploadIndexHeap);
+	vertexBuffer = CreateVBView(&vertices[0], numVertices, GetAppResources().device, GetAppResources().commandList, defaultHeap,uploadHeap);
+	indexBuffer = CreateIBView(&indices[0], numIndices, GetAppResources().device, GetAppResources().commandList, defaultIndexHeap, uploadIndexHeap);
 
+	this->vertices = vertices;
+	this->indices = indices;
 	//WaitForPreviousFrame();
 	//game->WaitForPreviousFrame();
 	this->numIndices = numIndices;
@@ -35,7 +37,7 @@ Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12Graph
 
 }
 
-void Mesh::CalculateTangents(std::vector<Vertex>& vertices, std::vector<XMFLOAT3>& position, std::vector<XMFLOAT2>& uvs, unsigned int vertCount)
+void Mesh::CalculateTangents(std::vector<Vertex>& vertices, std::vector<Vector3>& position, std::vector<Vector2>& uvs, unsigned int vertCount)
 {
 	//compute the tangents and bitangents for each triangle
 	for (size_t i = 0; i < vertCount; i += 3)
@@ -111,9 +113,38 @@ unsigned int Mesh::GetVertexCount()
 }
 
 
-std::vector<XMFLOAT3> Mesh::GetPoints()
+std::vector<Vector3> Mesh::GetPoints()
 {
-	return std::vector<XMFLOAT3>();
+	return std::vector<Vector3>();
+}
+
+std::vector<Vertex> Mesh::GetVerts()
+{
+	return vertices;
+}
+
+bool Mesh::RayMeshTest(Vector4 origin, Vector4 direction)
+{
+	auto triCount = numIndices / 3.0f;
+	for (size_t i = 0; i < triCount; i++)
+	{
+		UINT i0 = indices[i * 3 + 0];
+		UINT i1 = indices[i * 3 + 1];
+		UINT i2 = indices[i * 3 + 2];
+
+		auto v0 = XMLoadFloat3(&vertices[i0].Position);
+		auto v1 = XMLoadFloat3(&vertices[i1].Position);
+		auto v2 = XMLoadFloat3(&vertices[i2].Position);
+
+		float t = 0.0f;
+
+		if (TriangleTests::Intersects(origin, direction, v0, v1, v2, t))
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void Mesh::LoadFBX(ComPtr<ID3D12Device> device, std::string& filename)
@@ -161,11 +192,11 @@ void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID
 	if (ifile.is_open())
 	{
 		//making a list of the position, normals and uvs
-		std::vector<XMFLOAT3> positions;
-		std::vector<XMFLOAT3> normals;
-		std::vector<XMFLOAT2> uvs;
-		std::vector<XMFLOAT3> tangents;
-		std::vector<XMFLOAT3> bitangents;
+		std::vector<Vector3> positions;
+		std::vector<Vector3> normals;
+		std::vector<Vector2> uvs;
+		std::vector<Vector3> tangents;
+		std::vector<Vector3> bitangents;
 
 		//num of verts and indices
 		UINT vertCount = 0;

@@ -1,3 +1,5 @@
+
+#include "Common.hlsl"
 // Struct representing a single vertex worth of data
 struct VertexShaderInput
 {

@@ -24,7 +24,7 @@ class Mesh
 
 	unsigned int numIndices; //number of indices in the mesh
 	unsigned int numVertices; //number of indices in the mesh
-	std::vector<XMFLOAT3> points;
+	std::vector<Vector3> points;
 
 	//list of vertices and indices
 	std::vector<Vertex> vertices;
@@ -33,10 +33,10 @@ class Mesh
 	UINT materialID;
 
 public:
-	Mesh(Vertex* vertices, unsigned int numVertices, unsigned int* indices, int numIndices, ComPtr<ID3D12Device> device = nullptr , ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
+	Mesh(std::vector<Vertex> vertices, unsigned int numVertices, std::vector<UINT> indices, int numIndices, ComPtr<ID3D12Device> device = nullptr , ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
 	Mesh(std::string fileName, ComPtr<ID3D12Device> device,ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
-	void CalculateTangents(std::vector<Vertex>& vertices, std::vector<XMFLOAT3>& position,
-		std::vector<XMFLOAT2>& uvs, unsigned int vertCount);
+	void CalculateTangents(std::vector<Vertex>& vertices, std::vector<Vector3>& position,
+		std::vector<Vector2>& uvs, unsigned int vertCount);
 	~Mesh();
 
 	std::pair<ComPtr<ID3D12Resource>, UINT> GetVertexBufferResourceAndCount();
@@ -46,7 +46,10 @@ public:
 	ComPtr<ID3D12Resource> GetVertexBufferResource();
 	unsigned int GetIndexCount();
 	unsigned int GetVertexCount();
-	std::vector<XMFLOAT3> GetPoints();
+	std::vector<Vector3> GetPoints();
+	std::vector<Vertex> GetVerts();
+
+	bool RayMeshTest(Vector4 origin, Vector4 direction);
 
 	//load fbx files
 	void LoadFBX(ComPtr<ID3D12Device> device , std::string& filename);

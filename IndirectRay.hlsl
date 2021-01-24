@@ -1,3 +1,5 @@
+#include "Common.hlsl"
+
 #include"RTUtils.hlsli"
 
 struct IndirectPayload

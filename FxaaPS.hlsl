@@ -1,8 +1,9 @@
+#include "Common.hlsl"
 Texture2D taaOutput : register(t0);
 SamplerState pointSampler : register(s0);
 #define FXAA_SPAN_MAX	48.0
 #define FXAA_REDUCE_MUL 1.0/48.0
-#define FXAA_REDUCE_MIN 1.0/128.0
+#define FXAA_REDUCE_MIN 1.0/192.0
 struct VertexToPixel
 {
     float4 position : SV_POSITION;
@@ -14,7 +15,7 @@ struct VertexToPixel
 float4 main(VertexToPixel input) : SV_TARGET
 {
 
-    float2 add = float2(1.0, 1.0) / float2(1280, 720);
+    float2 add = float2(1.0, 1.0) / float2(WIDTH, HEIGHT);
 			
     float3 rgbNW = taaOutput.Sample(pointSampler, (input.uv + float2(-add.x, -add.y)));
     float3 rgbNE = taaOutput.Sample(pointSampler, (input.uv + float2(add.x, -add.y)));

@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 #include "Lighting.hlsli"
 
 //cbuffer LightData: register(b1)
@@ -37,7 +38,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 {
     uint2 location = uint2(input.position.xy);
     uint2 tileID = location / uint2(16, 16);
-    uint numberOfTilesX = 1280 / 16;
+    uint numberOfTilesX = WIDTH / 16;
     uint tileIndex = tileID.y * numberOfTilesX + tileID.x;
 
 	uint index = entityIndex.index;

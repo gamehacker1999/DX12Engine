@@ -1,3 +1,5 @@
+#include "Common.hlsl"
+
 cbuffer philipsSpectrum: register(b0)
 {
 	int fftRes;

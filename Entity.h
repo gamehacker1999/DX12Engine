@@ -10,15 +10,15 @@
 #include<memory>
 #include<entity\registry.hpp>
 #include"Velocity.h"
+#include <DirectXCollision.h>
 //#include "RigidBody.h"
 //#include"Material.h"
-
 struct SceneConstantBuffer
 {
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 projection;
-	XMFLOAT4X4 world;
-	XMFLOAT4X4 worldInvTranspose;
+	Matrix view;
+	Matrix projection;
+	Matrix world;
+	Matrix worldInvTranspose;
 };
 
 
@@ -26,17 +26,17 @@ class Entity
 {
 protected:
 	//vectors for scale and position
-	XMFLOAT3 position;
-	XMFLOAT3 scale;
+	Vector3 position;
+	Vector3 scale;
 
 	//quaternion for rotation
-	XMFLOAT4 rotation;
+	Quaternion rotation;
 
 	//model matrix of the entity
-	XMFLOAT4X4 modelMatrix;
+	Matrix modelMatrix;
 
 	//model matrix of the entity
-	XMFLOAT4X4 prevModelMatrix;
+	Matrix prevModelMatrix;
 
 	bool recalculateMatrix; // boolean to check if any transform has changed
 
@@ -69,6 +69,8 @@ protected:
 	//pipeline and root sig
 	ComPtr<ID3D12PipelineState> pipelineState;
 	ComPtr<ID3D12RootSignature> rootSig;
+	//bounding box
+	DirectX::BoundingBox bounds;
 
 public:
 	//constructor which accepts a mesh
@@ -76,25 +78,26 @@ public:
 	virtual ~Entity();
 
 	//getters and setters
-	void SetPosition(XMFLOAT3 position);
-	void SetRotation(XMFLOAT4 rotation);
-	void SetOriginalRotation(XMFLOAT4 rotation);
-	void SetScale(XMFLOAT3 scale);
-	void SetModelMatrix(XMFLOAT4X4 matrix);
+	void SetPosition(Vector3 position);
+	void SetRotation(Vector4 rotation);
+	void SetRotation(float yaw, float pitch, float roll);
+	void SetOriginalRotation(Vector4 rotation);
+	void SetScale(Vector3 scale);
+	void SetModelMatrix(Matrix matrix);
 	void Draw(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer);
 	//void SetRigidBody(std::shared_ptr<RigidBody> body);
 	//std::shared_ptr<RigidBody> GetRigidBody();
 	void UseRigidBody();
 
-	XMFLOAT3 GetPosition();
-	XMFLOAT3 GetForward();
-	XMFLOAT3 GetRight();
-	XMFLOAT3 GetUp();
+	Vector3 GetPosition();
+	Vector3 GetForward();
+	Vector3 GetRight();
+	Vector3 GetUp();
 
-	XMFLOAT3 GetScale();
-	XMFLOAT4 GetRotation();
-	XMFLOAT4X4 GetModelMatrix();
-	XMFLOAT4X4 GetPrevModelMatrix();
+	Vector3 GetScale();
+	Quaternion GetRotation();
+	Matrix GetModelMatrix();
+	Matrix GetPrevModelMatrix();
 	XMMATRIX GetRawModelMatrix();
 
 	entt::entity GetEntityID();
@@ -117,15 +120,23 @@ public:
 	std::shared_ptr<MyModel> GetModel();
 	void AddMaterial(unsigned int matId);
 
+	DirectX::BoundingBox GetBounds();
+
 	//std::shared_ptr<Material> GetMaterial();
+
+	void ManipulateTransforms(Matrix view, Matrix proj, ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE);
 
 	//method that prepares the material and sends it to the gpu
 	void PrepareConstantBuffers(ComPtr<ID3D12Device> device,D3DX12Residency::ResidencyManager resManager,
 		std::shared_ptr<D3DX12Residency::ResidencySet>& residencySet);
-	void PrepareMaterial(XMFLOAT4X4 view, XMFLOAT4X4 projection);
+	void PrepareMaterial(Matrix view, Matrix projection);
 
 	virtual void Update(float deltaTime);
 	virtual void GetInput(float deltaTime);
+
+	void CreateBounds();
+
+	bool RayBoundIntersection(Vector4 origin, Vector4 direction, float& dist, Matrix viewMat);
 
 	virtual bool IsColliding(std::shared_ptr<Entity> other);
 };

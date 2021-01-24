@@ -6,8 +6,8 @@
 
 struct GenerateMapExternData
 {
-	XMFLOAT2 outputSize;
-	XMFLOAT2 textureSize;
+	Vector2 outputSize;
+	Vector2 textureSize;
 	UINT mipLevel;
 };
 

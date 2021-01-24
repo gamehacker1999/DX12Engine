@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 #include "Utils.hlsli"
 Texture2D currentFrame: register(t0);
 Texture2D previousFrame: register(t1);
@@ -21,7 +22,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float3 currentColor = currentFrame.SampleLevel(pointSampler, input.uv, 0);
 	float4 previousColor = previousFrame.SampleLevel(pointSampler, input.uv, 0);
-    float2 pixelSize = float2(1.0 / 1280.0, 1.0 / 720.0); //Need to pass this later
+    float2 pixelSize = float2(1.0 / float(WIDTH), 1.0 / float(HEIGHT)); //Need to pass this later
 
 	if (frameNum == frameNum)
 	{
@@ -54,7 +55,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     float2 vel = velocityBuffer.SampleLevel(pointSampler, input.uv, 0).xy;
     float2 historyUV = input.uv + vel;
 	
-    float2 historySize = float2(1280, 720);
+    float2 historySize = float2(WIDTH, HEIGHT);
     float4 history = ConvertToYCoCg(SampleTextureCatmullRom(previousFrame, basicSampler, historyUV, historySize));
 	
     const float3 origin = history.rgb - 0.5f * (minimum.rgb + maximum.rgb);

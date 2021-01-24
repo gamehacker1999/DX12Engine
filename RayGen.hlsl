@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 #include "RayGenIncludes.hlsli"
 
 

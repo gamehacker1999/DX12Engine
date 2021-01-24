@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 cbuffer externData: register(b0)
 {
 	int pingpong;

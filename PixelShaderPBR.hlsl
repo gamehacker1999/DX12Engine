@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 #include "Lighting.hlsli"
 
 cbuffer LightingData : register(b1)
@@ -33,7 +34,7 @@ struct VertexToPixel
 
 };
 
-#define TILE_SIZE 16
+#define TILE_SIZE 8
 
 Texture2D material[]: register(t0);
 TextureCube irradianceMap: register(t0, space1);
@@ -48,7 +49,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 {
     uint2 location = uint2(input.position.xy);
     uint2 tileID = location / uint2(TILE_SIZE, TILE_SIZE);
-    uint numberOfTilesX = 1280 / TILE_SIZE;
+    uint numberOfTilesX = WIDTH / TILE_SIZE;
     uint tileIndex = tileID.y * numberOfTilesX + tileID.x;
 
 	uint index = entityIndex.index;
@@ -88,8 +89,6 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float newRoughness = prefilteredRoughnessMap.Sample(basicSampler, input.uv).x;
 	float vmf = vmfMap.Sample(basicSampler, input.uv).x;
 	
-    roughness = min(roughness, 0.2);
-
 	//step 1 --- Solving the radiance integral for direct lighting, the integral is just the number of light sources
 	// the solid angle on the hemisphere in infinitely small, so the wi is just a direction vector
 	//for now radiance is just the color of the direction light, the diffuse part is lambertian*c/pi
@@ -115,7 +114,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	
     float3 shadow = float3(1, 1, 1);
 	
-	if(indLighting.inlineRaytrace && indLighting.enableIndirectLighting)
+	if(false && indLighting.enableIndirectLighting)
     {
     
 	    //creating the rayDescription

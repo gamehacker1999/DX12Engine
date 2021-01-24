@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 #include "RTUtils.hlsli"
 
 // Raytracing output texture, accessed as a UAV

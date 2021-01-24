@@ -4,6 +4,7 @@
 	matrix projection;
 	matrix world;
 };*/
+#include "Common.hlsl"
 
 struct CameraConstantBuffer
 {

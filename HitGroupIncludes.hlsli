@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 #include "RTUtils.hlsli"
 
 void GetPrimitiveProperties(inout float3 texColor, inout float3 position, inout float3 normal, inout float3 metalColor, inout float roughness, Attributes attrib)

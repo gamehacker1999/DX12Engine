@@ -28,7 +28,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 	this->volumeRenderRootSignature = volumeRoot;
 	this->volumeMesh = mesh;
 
-	position = XMFLOAT3(0, 0, 0);/**/
+	position = Vector3(0, 0, 0);/**/
 
 
 	/**/std::ifstream ifile;
@@ -89,7 +89,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 }
 
-void RaymarchedVolume::SetPosition(XMFLOAT3 pos)
+void RaymarchedVolume::SetPosition(Vector3 pos)
 {
 	position = pos;
 }
@@ -124,12 +124,12 @@ std::shared_ptr<Mesh>& RaymarchedVolume::GetMesh()
 	return volumeMesh;
 }
 
-void RaymarchedVolume::PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition, float totalTime)
+void RaymarchedVolume::PrepareForDraw(Matrix view, Matrix proj, Vector3 camPosition, float totalTime)
 {
 	XMStoreFloat4x4(&volumeData.model,XMMatrixTranspose(XMMatrixTranslationFromVector(XMLoadFloat3(&position))));
 	XMStoreFloat4x4(&volumeData.inverseModel, XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranslationFromVector(XMLoadFloat3(&position)))));
 	volumeData.view = view;
-	XMFLOAT4X4 viewTrans;
+	Matrix viewTrans;
 	XMStoreFloat4x4(&viewTrans, XMMatrixTranspose(XMLoadFloat4x4(&view)));
 	XMStoreFloat4x4(&volumeData.viewInv, XMMatrixTranspose(XMMatrixInverse(nullptr, XMLoadFloat4x4(&viewTrans))));
 	volumeData.proj = proj;

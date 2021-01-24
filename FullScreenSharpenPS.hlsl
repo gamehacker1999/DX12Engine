@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 Texture2D taaOutput : register(t0);
 SamplerState pointSampler : register(s0);
 
@@ -10,7 +11,7 @@ struct VertexToPixel
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
-    float2 pixelSize = float2(1.0 / 1280.0, 1.0 / 720.0);
+    float2 pixelSize = float2(1.0 / float(WIDTH), 1.0 / float(HEIGHT));
     float4 center = taaOutput.Sample(pointSampler, input.uv);
     float4 left = taaOutput.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y));
     float4 down = taaOutput.Sample(pointSampler, float2(input.uv.x, input.uv.y + pixelSize.y));

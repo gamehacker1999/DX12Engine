@@ -1,4 +1,5 @@
 //based on regression by https://github.com/gztong/BMFR-DXR-Denoiser/blob/master/BMFR_Denoiser/Data/regressionCP.hlsl
+#include "Common.hlsl"
 
 cbuffer PerFrameCB: register(b0)
 {

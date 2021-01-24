@@ -1,3 +1,6 @@
+
+#include "Common.hlsl"
+
 #include "Utils.hlsli"
 
 struct VertexToPixel

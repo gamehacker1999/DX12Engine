@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 /*cbuffer SceneConstantBuffer: register(b0)
 {
 	matrix view;

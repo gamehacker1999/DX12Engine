@@ -9,14 +9,14 @@ using namespace DirectX;
 
 struct ParticleExternalData
 {
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 projection;
+	Matrix view;
+	Matrix projection;
 
 	int startIndex;
-	XMFLOAT3 acceleration;
+	Vector3 acceleration;
 
-	XMFLOAT4 startColor;
-	XMFLOAT4 endColor;
+	Vector4 startColor;
+	Vector4 endColor;
 
 	float startSize;
 	float endSize;
@@ -34,14 +34,14 @@ public:
 		float lifetime,
 		float startSize,
 		float endSize,
-		XMFLOAT4 startColor,
-		XMFLOAT4 endColor,
-		XMFLOAT3 startVelocity,
-		XMFLOAT3 velocityRandomRange,
-		XMFLOAT3 emitterPosition,
-		XMFLOAT3 positionRandomRange,
-		XMFLOAT4 rotationRandomRanges,
-		XMFLOAT3 emitterAcceleration,
+		Vector4 startColor,
+		Vector4 endColor,
+		Vector3 startVelocity,
+		Vector3 velocityRandomRange,
+		Vector3 emitterPosition,
+		Vector3 positionRandomRange,
+		Vector4 rotationRandomRanges,
+		Vector3 emitterAcceleration,
 		ComPtr<ID3D12Device> device,
 		ComPtr<ID3D12GraphicsCommandList> commandList,
 		ComPtr<ID3D12CommandQueue> commandQueue,
@@ -51,12 +51,12 @@ public:
 	);
 	~Emitter();
 
-	XMFLOAT3 GetPosition();
-	void SetPosition(XMFLOAT3 pos);
-	void SetAcceleration(XMFLOAT3 acel);
+	Vector3 GetPosition();
+	void SetPosition(Vector3 pos);
+	void SetAcceleration(Vector3 acel);
 
 	void UpdateParticles(float deltaTime, float currentTime);
-	void Draw(ComPtr<ID3D12GraphicsCommandList> commandList,std::shared_ptr<GPUHeapRingBuffer> ringBuffer , XMFLOAT4X4 view, XMFLOAT4X4 projection, float currentTime);
+	void Draw(ComPtr<ID3D12GraphicsCommandList> commandList,std::shared_ptr<GPUHeapRingBuffer> ringBuffer , Matrix view, Matrix projection, float currentTime);
 
 	void SetTemporary(float emitterLife);
 	bool IsDead();
@@ -79,16 +79,16 @@ private:
 	int livingParticleCount;
 	float lifetime;
 
-	XMFLOAT3 emitterAcceleration;
-	XMFLOAT3 emitterPosition;
-	XMFLOAT3 startVelocity;
+	Vector3 emitterAcceleration;
+	Vector3 emitterPosition;
+	Vector3 startVelocity;
 
-	XMFLOAT3 positionRandomRange;
-	XMFLOAT3 velocityRandomRange;
-	XMFLOAT4 rotationRandomRanges; // Min start, max start, min end, max end
+	Vector3 positionRandomRange;
+	Vector3 velocityRandomRange;
+	Vector4 rotationRandomRanges; // Min start, max start, min end, max end
 
-	XMFLOAT4 startColor;
-	XMFLOAT4 endColor;
+	Vector4 startColor;
+	Vector4 endColor;
 	float startSize;
 	float endSize;
 

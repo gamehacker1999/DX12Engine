@@ -6,17 +6,17 @@
 
 struct EnvironmentData
 {
-	XMFLOAT4X4 world;
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 projection;
-	XMFLOAT3 cameraPos;
+	Matrix world;
+	Matrix view;
+	Matrix projection;
+	Vector3 cameraPos;
 	float padding[13];
 };
 
 class Environment
 {
-	std::vector<XMFLOAT4X4> cubemapViews;
-	XMFLOAT4X4 cubemapProj;
+	std::vector<Matrix> cubemapViews;
+	Matrix cubemapProj;
 	ManagedResource irradienceMapTexture;
 	ManagedResource irradienceDepthStencil;
 	//ManagedResource irradienceSRV;

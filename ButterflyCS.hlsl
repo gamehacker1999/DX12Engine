@@ -1,3 +1,6 @@
+#include "Common.hlsl"
+
+
 static const float PI = 3.14159f;
 
 cbuffer externData: register(b0)

@@ -11,10 +11,10 @@ using namespace DirectX;
 
 struct SkyboxData
 {
-	XMFLOAT4X4 world;
-	XMFLOAT4X4 view;
-	XMFLOAT4X4 projection;
-	XMFLOAT3 cameraPos;
+	Matrix world;
+	Matrix view;
+	Matrix projection;
+	Vector3 cameraPos;
 };
 
 class Skybox
@@ -56,7 +56,7 @@ public:
 	ManagedResource& GetSkyboxTexture();
 	std::shared_ptr<Mesh>& GetMesh();
 
-	void PrepareForDraw(XMFLOAT4X4 view, XMFLOAT4X4 proj, XMFLOAT3 camPosition);
+	void PrepareForDraw(Matrix view, Matrix proj, Vector3 camPosition);
 
 	DescriptorHeapWrapper GetEnvironmentHeap();
 

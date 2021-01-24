@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 
 #include "HitGroupIncludes.hlsli"
 

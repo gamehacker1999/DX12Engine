@@ -1,3 +1,5 @@
+#include "Common.hlsl"
+
 //based on postprocess by https://github.com/gztong/BMFR-DXR-Denoiser/blob/master/BMFR_Denoiser/Data/postprocess.ps.hlsl
 
 #define SECOND_BLEND_ALPHA 0.1f

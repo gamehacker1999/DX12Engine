@@ -1,9 +1,9 @@
 #include "Emitter.h"
 
 Emitter::Emitter(int maxParticles, int particlesPerSecond, float lifetime, 
-	float startSize, float endSize, XMFLOAT4 startColor, XMFLOAT4 endColor, 
-	XMFLOAT3 startVelocity, XMFLOAT3 velocityRandomRange, XMFLOAT3 emitterPosition, 
-	XMFLOAT3 positionRandomRange, XMFLOAT4 rotationRandomRanges, XMFLOAT3 emitterAcceleration, 
+	float startSize, float endSize, Vector4 startColor, Vector4 endColor, 
+	Vector3 startVelocity, Vector3 velocityRandomRange, Vector3 emitterPosition, 
+	Vector3 positionRandomRange, Vector4 rotationRandomRanges, Vector3 emitterAcceleration, 
 	ComPtr<ID3D12Device> device,ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue,
 	ComPtr<ID3D12PipelineState> particlePipeline,
 	ComPtr<ID3D12RootSignature> particleRoot, 
@@ -98,17 +98,17 @@ Emitter::~Emitter()
 	delete[] particles;
 }
 
-XMFLOAT3 Emitter::GetPosition()
+Vector3 Emitter::GetPosition()
 {
 	return emitterPosition;
 }
 
-void Emitter::SetPosition(XMFLOAT3 pos)
+void Emitter::SetPosition(Vector3 pos)
 {
 	emitterPosition = pos;
 }
 
-void Emitter::SetAcceleration(XMFLOAT3 acel)
+void Emitter::SetAcceleration(Vector3 acel)
 {
 	emitterAcceleration = acel;
 }
@@ -169,7 +169,7 @@ void Emitter::UpdateParticles(float deltaTime, float currentTime)
 	}
 }
 
-void Emitter::Draw(ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer,XMFLOAT4X4 view, XMFLOAT4X4 projection, float currentTime)
+void Emitter::Draw(ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer,Matrix view, Matrix projection, float currentTime)
 {
 	memcpy(particleDataBegin, particles, sizeof(Particle) * maxParticles);
 

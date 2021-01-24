@@ -1,4 +1,4 @@
-#define TILE_SIZE 16
+#define TILE_SIZE 8
 #define MAX_LIGHTS 20000
 
 #ifdef __cplusplus
@@ -23,35 +23,35 @@ struct AreaLight
 	float rotY;
 	float rotZ;
 	float rotX;
-	XMFLOAT3 padding;
+	Vector3 padding;
 };
 
 struct Light
 {
 	int type;
-	XMFLOAT3 direction;
+	Vector3 direction;
 	float range;
-	XMFLOAT3 position;
+	Vector3 position;
 	float intensity;
-	XMFLOAT3 diffuse;
+	Vector3 diffuse;
 	float spotFalloff;
-	XMFLOAT3 color;
+	Vector3 color;
 
 	AreaLight rectLight;
 };
 
 struct Decal
 {
-	XMFLOAT4X4 decalProjection;
-	XMFLOAT3 scale;
+	Matrix decalProjection;
+	Vector3 scale;
 };
 
 struct DirectionalLight
 {
-	XMFLOAT4 ambientColor;
-	XMFLOAT4 diffuse;
-	XMFLOAT4 specularity;
-	XMFLOAT3 direction;
+	Vector4 ambientColor;
+	Vector4 diffuse;
+	Vector4 specularity;
+	Vector3 direction;
 	float padding;
 };
 

@@ -1,4 +1,5 @@
 
+#include "Common.hlsl"
 
 //input normal map
 Texture2D LTCTexture : register(t0);
