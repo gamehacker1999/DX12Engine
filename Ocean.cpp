@@ -12,8 +12,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	this->computePipelineState = computePipelineState;
 
 	//creating the necessary descriptor heaps
-	rtvDescriptorHeap.Create(device, 6, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	srvcbvuavDescriptorHeap.Create(device, 24, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	rtvDescriptorHeap.Create(6, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	srvcbvuavDescriptorHeap.Create(24, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	//creating the necessary textures, SRVs, and UAVs
 	texSize = 256;
@@ -36,8 +36,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	h0Texture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating h0 uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(h0Texture,RESOURCE_TYPE_SRV,device,0,texSize,texSize,0,1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(h0Texture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(h0Texture,RESOURCE_TYPE_SRV,0,texSize,texSize,0,1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(h0Texture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the h0minus texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -46,8 +46,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	h0MinusTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating h0 minus uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(h0MinusTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(h0MinusTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(h0MinusTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(h0MinusTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the hty texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -56,8 +56,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	htyTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating hty uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(htyTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(htyTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(htyTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(htyTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the htx texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -65,8 +65,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	htxTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating hty uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(htxTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(htxTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(htxTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(htxTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the hty texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -74,8 +74,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	htzTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating hty uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(htzTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(htzTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(htzTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(htzTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the twiddle indices texture
 	int bits = (int)(log(texSize), log(2));
@@ -86,8 +86,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	twiddleTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating twiddle uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(twiddleTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(twiddleTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(twiddleTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(twiddleTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	h0TexDesc.Width = texSize;
 
@@ -98,8 +98,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	pingpong0Texture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating pingpong uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(pingpong0Texture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(pingpong0Texture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(pingpong0Texture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(pingpong0Texture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the dy texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -107,8 +107,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	dyTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating dy uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(dyTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(dyTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(dyTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(dyTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the dx texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -116,8 +116,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	dxTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating dx uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(dxTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(dxTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(dxTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(dxTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the dz texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -125,8 +125,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	dzTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating dz uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(dzTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(dzTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(dzTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(dzTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the normal texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -134,8 +134,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	normalMapTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating normal map uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(normalMapTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(normalMapTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(normalMapTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(normalMapTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 	//creating the folding map texture
 	ThrowIfFailed(device->CreateCommittedResource(&GetAppResources().defaultHeapType, D3D12_HEAP_FLAG_NONE, &h0TexDesc,
@@ -143,8 +143,8 @@ Ocean::Ocean(std::shared_ptr<Mesh> waterMesh,
 	foldingMapTexture.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	//creating folding map uav and srv
-	srvcbvuavDescriptorHeap.CreateDescriptor(foldingMapTexture, RESOURCE_TYPE_SRV, device, 0, texSize, texSize, 0, 1);
-	srvcbvuavDescriptorHeap.CreateDescriptor(foldingMapTexture, RESOURCE_TYPE_UAV, device, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(foldingMapTexture, RESOURCE_TYPE_SRV, 0, texSize, texSize, 0, 1);
+	srvcbvuavDescriptorHeap.CreateDescriptor(foldingMapTexture, RESOURCE_TYPE_UAV, 0, texSize, texSize, 0, 1);
 
 }
 

@@ -118,7 +118,7 @@ namespace ImGuizmo
    IMGUI_API void SetDrawlist(ImDrawList* drawlist = nullptr);
 
    // call BeginFrame right after ImGui_XXXX_NewFrame();
-   IMGUI_API void BeginFrame();
+   IMGUI_API void BeginFrame(ImVec2 size, ImVec2 origin = ImVec2(0,0));
 
    // this is necessary because when imguizmo is compiled into a dll, and imgui into another
    // globals are not shared between them.

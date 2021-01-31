@@ -28,9 +28,9 @@ public:
 	virtual ~Camera();
 
 	//getters and setters
-	Matrix GetViewMatrix();
-	Matrix GetProjectionMatrix();
-	Matrix GetInverseProjection();
+	Matrix& GetViewMatrix();
+	Matrix& GetProjectionMatrix();
+	Matrix& GetInverseProjection();
 
 	//method to create projection matrix
 	void CreateProjectionMatrix(float aspectRatio);
@@ -45,8 +45,8 @@ public:
 	void ChangeYawAndPitch(float deltaX, float deltaY);
 
 	//getters
-	Vector3 GetPosition();
-	Vector3 GetDirection();
+	Vector3& GetPosition();
+	Vector3& GetDirection();
 	void SetPosition(Vector3 pos);
 	void InvertPitch();
 

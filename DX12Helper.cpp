@@ -362,8 +362,7 @@ void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence>
 	}
 }
 
-D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts, ComPtr<ID3D12Device> device,
-	ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource>& vertexBufferHeap, ComPtr<ID3D12Resource>& uploadHeap)
+D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts, ComPtr<ID3D12Resource>& vertexBufferHeap, ComPtr<ID3D12Resource>& uploadHeap)
 {
 	{
 
@@ -371,7 +370,7 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 
         auto vertexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
 
-		ThrowIfFailed(device->CreateCommittedResource(
+		ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
 			&defaultHeapType,
 			D3D12_HEAP_FLAG_NONE,
 			&vertexBufferDesc,
@@ -382,7 +381,7 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 
 		vertexBufferHeap->SetName(L"vertex default heap");
 
-		ThrowIfFailed(device->CreateCommittedResource(
+		ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
 			&uploadHeapType,
 			D3D12_HEAP_FLAG_NONE,
 			&vertexBufferDesc,
@@ -396,14 +395,14 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 		bufferData.RowPitch = vertexBufferSize;
 		bufferData.SlicePitch = vertexBufferSize;
 
-		UpdateSubresources<1>(commandList.Get(), vertexBufferHeap.Get(), uploadHeap.Get(), 0, 0, 1, &bufferData);
+		UpdateSubresources<1>(GetAppResources().commandList.Get(), vertexBufferHeap.Get(), uploadHeap.Get(), 0, 0, 1, &bufferData);
 		//copy triangle data to vertex buffer
 		//UINT8* vertexDataBegin;
 		CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 
         auto transition = CD3DX12_RESOURCE_BARRIER::Transition(vertexBufferHeap.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		commandList->ResourceBarrier(1, &transition);
+        GetAppResources().commandList->ResourceBarrier(1, &transition);
 
 		//command lists are created in record state but since there is nothing to record yet
 		//close it for the main loop
@@ -419,13 +418,13 @@ D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,
 	}
 }
 
-D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList,
+D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIndices, 
 	ComPtr<ID3D12Resource>& indexBufferHeap, ComPtr<ID3D12Resource>& uploadIndexHeap)
 {
 	{
 		UINT indexBufferSize = numIndices * sizeof(unsigned int);
         auto indexBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
-		ThrowIfFailed(device->CreateCommittedResource(
+		ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
 			&defaultHeapType,
 			D3D12_HEAP_FLAG_NONE,
 			&indexBufferDesc,
@@ -436,7 +435,7 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 
 		indexBufferHeap->SetName(L"index default heap");
 
-		ThrowIfFailed(device->CreateCommittedResource(
+		ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
 			&uploadHeapType,
 			D3D12_HEAP_FLAG_NONE,
 			&indexBufferDesc,
@@ -450,14 +449,14 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 		bufferData.RowPitch = indexBufferSize;
 		bufferData.SlicePitch = indexBufferSize;
 
-		UpdateSubresources<1>(commandList.Get(), indexBufferHeap.Get(), uploadIndexHeap.Get(), 0, 0, 1, &bufferData);
+		UpdateSubresources<1>(GetAppResources().commandList.Get(), indexBufferHeap.Get(), uploadIndexHeap.Get(), 0, 0, 1, &bufferData);
 		//copy triangle data to vertex buffer
 		//UINT8* vertexDataBegin;
 		CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
 
         auto transition = CD3DX12_RESOURCE_BARRIER::Transition(indexBufferHeap.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_INDEX_BUFFER);
-		commandList->ResourceBarrier(1, &transition);
+        GetAppResources().commandList->ResourceBarrier(1, &transition);
 
 		D3D12_INDEX_BUFFER_VIEW indexBufferView = {};
 		indexBufferView.BufferLocation = indexBufferHeap->GetGPUVirtualAddress();
@@ -468,18 +467,17 @@ D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIn
 	}
 }
 
-void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, ComPtr<ID3D12CommandQueue>& commandQueue, 
-    ComPtr<ID3D12GraphicsCommandList> commandList, ID3D12Resource* uploadRes, TEXTURE_TYPES type)
+void LoadTexture(ComPtr<ID3D12Resource>& tex, std::wstring textureName, ID3D12Resource* uploadRes, TEXTURE_TYPES type)
 {
 
 	if (type == TEXTURE_TYPE_DDS)
 	{
-		ResourceUploadBatch resourceUpload(device.Get());
+		ResourceUploadBatch resourceUpload(appResources.device.Get());
 		resourceUpload.Begin();
 
-		ThrowIfFailed(CreateDDSTextureFromFile(device.Get(), resourceUpload, textureName.c_str(), tex.GetAddressOf(), true));
+		ThrowIfFailed(CreateDDSTextureFromFile(appResources.device.Get(), resourceUpload, textureName.c_str(), tex.GetAddressOf(), true));
 
-		auto uploadResourceFinish = resourceUpload.End(commandQueue.Get());
+		auto uploadResourceFinish = resourceUpload.End(appResources.graphicsQueue.Get());
 
 		uploadResourceFinish.wait();
 	}
@@ -492,7 +490,7 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
         pixels = ReadHDR(textureName.c_str(), &width, &height);
 
         auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, 1, 5, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-        ThrowIfFailed(device->CreateCommittedResource(
+        ThrowIfFailed(appResources.device->CreateCommittedResource(
             &defaultHeapType,
             D3D12_HEAP_FLAG_NONE,
             &texDesc,
@@ -504,7 +502,7 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
         const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.Get(), 0, 1);
 
         auto uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
-        ThrowIfFailed(device->CreateCommittedResource(
+        ThrowIfFailed(appResources.device->CreateCommittedResource(
             &uploadHeapType,
             D3D12_HEAP_FLAG_NONE,
             &uploadBufferDesc,
@@ -530,13 +528,13 @@ void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std:
 	else
 	{   
 		//loading texture from filename
-		ResourceUploadBatch resourceUpload(device.Get());
+		ResourceUploadBatch resourceUpload(appResources.device.Get());
 
 		resourceUpload.Begin();
 
-		ThrowIfFailed(CreateWICTextureFromFileEx(device.Get(), resourceUpload, textureName.c_str(), 0Ui64, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, WIC_LOADER_MIP_AUTOGEN, tex.GetAddressOf()));
+		ThrowIfFailed(CreateWICTextureFromFileEx(appResources.device.Get(), resourceUpload, textureName.c_str(), 0Ui64, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, WIC_LOADER_MIP_AUTOGEN, tex.GetAddressOf()));
 
-		auto uploadedResourceFinish = resourceUpload.End(commandQueue.Get());
+		auto uploadedResourceFinish = resourceUpload.End(appResources.graphicsQueue.Get());
 
 		uploadedResourceFinish.wait();
 	}
@@ -573,7 +571,7 @@ void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter)
 	*ppAdapter = adapter.Detach();
 }
 
-void GenerateMipMaps(ComPtr<ID3D12Resource> texture)
+void GenerateMipMaps(ComPtr<ID3D12Resource>& texture)
 {
 
     auto transition = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
@@ -832,7 +830,7 @@ void BMFRPreprocess(ManagedResource rtOutput, ManagedResource normals, ManagedRe
 
 }
 
-void TransitionResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedResource& resource, D3D12_RESOURCE_STATES afterState)
+void TransitionManagedResource(const ComPtr<ID3D12GraphicsCommandList>& commandList, ManagedResource& resource, D3D12_RESOURCE_STATES afterState)
 {
     if (resource.currentState == afterState)
     {
@@ -845,18 +843,18 @@ void TransitionResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedRe
     resource.currentState = afterState;
 }
 
-void CopyResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedResource& dst, ManagedResource& src)
+void CopyResource(ComPtr<ID3D12GraphicsCommandList>& commandList, ManagedResource& dst, ManagedResource& src)
 {
     auto destBefore = dst.currentState;
     auto srcBefore = src.currentState;
 
-    TransitionResource(commandList, dst, D3D12_RESOURCE_STATE_COPY_DEST);
-    TransitionResource(commandList, src, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    TransitionManagedResource(commandList, dst, D3D12_RESOURCE_STATE_COPY_DEST);
+    TransitionManagedResource(commandList, src, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
     commandList->CopyResource(dst.resource.Get(), src.resource.Get());
 
-    TransitionResource(commandList, dst, destBefore);
-    TransitionResource(commandList, src, srcBefore);
+    TransitionManagedResource(commandList, dst, destBefore);
+    TransitionManagedResource(commandList, src, srcBefore);
 }
 
 UINT DispatchSize(UINT tgSize, UINT numElements)
@@ -1065,7 +1063,7 @@ ApplicationResources& GetAppResources()
     return appResources;
 }
 
-void SubmitGraphicsCommandList(ComPtr<ID3D12GraphicsCommandList> commandList)
+void SubmitGraphicsCommandList(const ComPtr<ID3D12GraphicsCommandList>& commandList)
 {
 
     commandList->Close();
@@ -1083,7 +1081,7 @@ void SubmitGraphicsCommandList(ComPtr<ID3D12GraphicsCommandList> commandList)
     appResources.fenceValues[appResources.frameIndex]++;
 }
 
-void SubmitComputeCommandList(ComPtr<ID3D12GraphicsCommandList> computeCommandList, ComPtr<ID3D12GraphicsCommandList> commandList)
+void SubmitComputeCommandList(const ComPtr<ID3D12GraphicsCommandList>& computeCommandList, const ComPtr<ID3D12GraphicsCommandList>& commandList)
 {
 
     computeCommandList->Close();

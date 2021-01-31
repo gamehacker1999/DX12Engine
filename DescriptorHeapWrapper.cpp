@@ -5,7 +5,7 @@ DescriptorHeapWrapper::DescriptorHeapWrapper()
 	memset(this, 0, sizeof(*this));
 }
 
-HRESULT DescriptorHeapWrapper::Create(ComPtr<ID3D12Device> device, UINT numDesc, bool isShaderVis, D3D12_DESCRIPTOR_HEAP_TYPE heapType)
+HRESULT DescriptorHeapWrapper::Create(UINT numDesc, bool isShaderVis, D3D12_DESCRIPTOR_HEAP_TYPE heapType)
 {
 	this->isShaderVisible = isShaderVis;
 	this->numDescriptor = numDesc;
@@ -17,11 +17,11 @@ HRESULT DescriptorHeapWrapper::Create(ComPtr<ID3D12Device> device, UINT numDesc,
 	heapDesc.Type = this->heapType;
 	heapDesc.Flags = (isShaderVis ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
-	ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(descriptorHeap.GetAddressOf())));
+	ThrowIfFailed(GetAppResources().device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(descriptorHeap.GetAddressOf())));
 
 	cpuHandle = descriptorHeap->GetCPUDescriptorHandleForHeapStart();
 	gpuHandle = descriptorHeap->GetGPUDescriptorHandleForHeapStart();
-	this->handleIncrementSize = device->GetDescriptorHandleIncrementSize(heapDesc.Type);
+	this->handleIncrementSize = GetAppResources().device->GetDescriptorHandleIncrementSize(heapDesc.Type);
 
 	return S_OK;
 }
@@ -70,7 +70,7 @@ UINT DescriptorHeapWrapper::GetDescriptorIncrementSize()
 }
 
 void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,
-	ComPtr<ID3D12Device> device, size_t cbufferSize, UINT width, UINT height, UINT firstArraySlice, UINT mipLevel, bool isArray)
+size_t cbufferSize, UINT width, UINT height, UINT firstArraySlice, UINT mipLevel, bool isArray)
 {
 
 
@@ -79,7 +79,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(cbufferSize);
 	if (resourceType == RESOURCE_TYPE_CBV)
 	{
-		ThrowIfFailed(device->CreateCommittedResource(
+		ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
 			&uploadHeapProp,
 			D3D12_HEAP_FLAG_NONE,
 			&bufferDesc,
@@ -91,7 +91,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 		D3D12_CONSTANT_BUFFER_VIEW_DESC sceneConstantBufferViewDesc = {};
 		sceneConstantBufferViewDesc.BufferLocation = resource.resource->GetGPUVirtualAddress();
 		sceneConstantBufferViewDesc.SizeInBytes = (UINT)cbufferSize;
-		device->CreateConstantBufferView(&sceneConstantBufferViewDesc,
+		GetAppResources().device->CreateConstantBufferView(&sceneConstantBufferViewDesc,
 			GetCPUHandle(lastResourceIndex));
 
 		resource.resourceType = resourceType;
@@ -111,7 +111,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 		dsDesc.Flags = D3D12_DSV_FLAG_NONE;
 		dsDesc.Texture2D.MipSlice = 0;
 
-		device->CreateDepthStencilView(resource.resource.Get(), &dsDesc, GetCPUHandle(lastResourceIndex));
+		GetAppResources().device->CreateDepthStencilView(resource.resource.Get(), &dsDesc, GetCPUHandle(lastResourceIndex));
 
 		resource.resourceType = resourceType;
 
@@ -130,7 +130,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 			uavDesc.Texture2D.MipSlice = mipLevel;
 		}
 		uavDesc.Format = resource.resource->GetDesc().Format;
-		device->CreateUnorderedAccessView(resource.resource.Get(), nullptr, &uavDesc, GetCPUHandle(lastResourceIndex));
+		GetAppResources().device->CreateUnorderedAccessView(resource.resource.Get(), nullptr, &uavDesc, GetCPUHandle(lastResourceIndex));
 		resource.uavGPUHandle = GetGPUHandle(lastResourceIndex);
 		resource.uavCPUHandle = GetCPUHandle(lastResourceIndex);
 		resource.heapOffset = lastResourceIndex;
@@ -185,7 +185,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 			srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
 		}
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		device->CreateShaderResourceView(resource.resource.Get(), &srvDesc, GetCPUHandle(lastResourceIndex));
+		GetAppResources().device->CreateShaderResourceView(resource.resource.Get(), &srvDesc, GetCPUHandle(lastResourceIndex));
 		resource.srvGPUHandle = GetGPUHandle(lastResourceIndex);
 		resource.srvCPUHandle = GetCPUHandle(lastResourceIndex);
 		resource.heapOffset = lastResourceIndex;
@@ -210,7 +210,7 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
 		rtvDesc.Format = resourceDesc.Format;
-		device->CreateRenderTargetView(resource.resource.Get(), &rtvDesc, GetCPUHandle(lastResourceIndex));
+		GetAppResources().device->CreateRenderTargetView(resource.resource.Get(), &rtvDesc, GetCPUHandle(lastResourceIndex));
 
 		resource.rtvGPUHandle = GetGPUHandle(lastResourceIndex);
 		resource.rtvCPUHandle = GetCPUHandle(lastResourceIndex);
@@ -223,13 +223,13 @@ void DescriptorHeapWrapper::CreateDescriptor(ManagedResource& resource, RESOURCE
 }
 
 void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResource& resource, 
-	RESOURCE_TYPE resourceType, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue,
-	TEXTURE_TYPES type, bool isCube, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource> uploadRes)
+	RESOURCE_TYPE resourceType,
+	TEXTURE_TYPES type, bool isCube, ComPtr<ID3D12Resource> uploadRes)
 {
 	if (resourceType == RESOURCE_TYPE_SRV)
 	{
-		LoadTexture(device, resource.resource, resName, commandQueue, commandList, uploadRes.Get(), type);
-		CreateShaderResourceView(device.Get(), resource.resource.Get(), GetCPUHandle(lastResourceIndex), isCube);
+		LoadTexture(resource.resource, resName, uploadRes.Get(), type);
+		CreateShaderResourceView(GetAppResources().device.Get(), resource.resource.Get(), GetCPUHandle(lastResourceIndex), isCube);
 
 		auto desc = resource.resource->GetDesc();
 
@@ -282,28 +282,28 @@ void DescriptorHeapWrapper::CreateStructuredBuffer(ManagedResource& resource, Co
 	lastResourceIndex++;
 }
 
-void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer)
+void DescriptorHeapWrapper::CreateRaytracingAccelerationStructureDescriptor(AccelerationStructureBuffers topLevelASBuffer)
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.RaytracingAccelerationStructure.Location = topLevelASBuffer.pResult->GetGPUVirtualAddress();
-	device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(lastResourceIndex));
+	GetAppResources().device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(lastResourceIndex));
 
 	topLevelASBuffer.srvIndex = lastResourceIndex;
 
 	lastResourceIndex++;
 }
 
-void DescriptorHeapWrapper::UpdateRaytracingAccelerationStruct(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer)
+void DescriptorHeapWrapper::UpdateRaytracingAccelerationStruct(AccelerationStructureBuffers topLevelASBuffer)
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.RaytracingAccelerationStructure.Location = topLevelASBuffer.pResult->GetGPUVirtualAddress();
-	device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(topLevelASBuffer.srvIndex));
+	GetAppResources().device->CreateShaderResourceView(nullptr, &srvDesc, GetCPUHandle(topLevelASBuffer.srvIndex));
 
 	//topLevelASBuffer.srvIndex = lastResourceIndex;
 }

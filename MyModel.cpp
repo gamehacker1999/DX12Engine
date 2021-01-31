@@ -88,7 +88,7 @@ std::vector<std::shared_ptr<Mesh>> MyModel::GetMeshes()
 	return meshes;
 }
 
-void MyModel::Draw(ComPtr<ID3D12GraphicsCommandList> commandList, bool drawMats)
+void MyModel::Draw(const ComPtr<ID3D12GraphicsCommandList>& commandList, bool drawMats)
 {
 	for (size_t i = 0; i < meshes.size(); i++)
 	{

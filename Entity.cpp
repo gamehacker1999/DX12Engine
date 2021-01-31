@@ -1,6 +1,6 @@
 #include "Entity.h"
 
-Entity::Entity(entt::registry& registry, ComPtr<ID3D12PipelineState> pipelineState, ComPtr<ID3D12RootSignature> rootSig)
+Entity::Entity(entt::registry& registry, ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig, std::string name)
 {
 
 	this->pipelineState = pipelineState;
@@ -15,6 +15,8 @@ Entity::Entity(entt::registry& registry, ComPtr<ID3D12PipelineState> pipelineSta
 	position = Vector3(0.0f, 0.0f, 0.0f);
 	scale = Vector3(1.0f, 1.0f, 1.0f);
 
+	angles = {};
+
 	XMStoreFloat4(&rotation, XMQuaternionIdentity()); //identity quaternion
 
 	//body = nullptr;
@@ -22,7 +24,7 @@ Entity::Entity(entt::registry& registry, ComPtr<ID3D12PipelineState> pipelineSta
 	//don't need to recalculate matrix now
 	recalculateMatrix = false;
 
-	tag = "default";
+	tag = name;
 
 	isAlive = true;
 
@@ -43,15 +45,19 @@ void Entity::SetPosition(Vector3 position)
 	recalculateMatrix = true; //need to recalculate model matrix now
 }
 
-void Entity::SetRotation(Vector4 rotation)
+void Entity::SetRotation(Quaternion rotation)
 {
 	this->rotation = rotation;
+	angles = ToEulerAngles(rotation);
+	angles = { XMConvertToDegrees(angles.pitch), XMConvertToDegrees(angles.yaw), XMConvertToDegrees(angles.roll) };
 	recalculateMatrix = true; //need to recalculate model matrix now
 }
 
 void Entity::SetRotation(float yaw, float pitch, float roll)
 {
 	rotation = Quaternion::CreateFromYawPitchRoll(yaw, pitch, roll);
+	angles = ToEulerAngles(rotation);
+	angles = { XMConvertToDegrees(angles.pitch), XMConvertToDegrees(angles.yaw), XMConvertToDegrees(angles.roll) };
 	recalculateMatrix = true;
 }
 
@@ -70,11 +76,11 @@ void Entity::SetModelMatrix(Matrix matrix)
 	this->modelMatrix = matrix;
 }
 
-void Entity::Draw(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer)
+void Entity::Draw(const ComPtr<ID3D12GraphicsCommandList>& commandList, std::shared_ptr<GPUHeapRingBuffer>& ringBuffer)
 {
     commandList->SetGraphicsRootSignature(GetRootSignature().Get());
 
-	ringBuffer->AddDescriptor(device, 1, GetDescriptorHeap(), 0);
+	ringBuffer->AddDescriptor(1, GetDescriptorHeap(), 0);
 
 	commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityVertexCBV, ringBuffer->GetDynamicResourceOffset());
 
@@ -111,43 +117,43 @@ void Entity::Draw(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList>
 	useRigidBody = true;
 }*/
 
-Vector3 Entity::GetPosition()
+Vector3& Entity::GetPosition()
 {
 	return position;
 }
 
-Vector3 Entity::GetForward()
+Vector3& Entity::GetForward()
 {
 	Vector3 forward;
 	XMStoreFloat3(&forward, XMVector3Rotate(XMVectorSet(0, 0, 1, 0), XMLoadFloat4(&rotation)));
 	return forward;
 }
 
-Vector3 Entity::GetRight()
+Vector3& Entity::GetRight()
 {
 	Vector3 right;
 	XMStoreFloat3(&right, XMVector3Rotate(XMVectorSet(1, 0, 0, 0), XMLoadFloat4(&rotation)));
 	return right;
 }
 
-Vector3 Entity::GetUp()
+Vector3& Entity::GetUp()
 {
 	Vector3 up;
 	XMStoreFloat3(&up, XMVector3Rotate(XMVectorSet(0, 1, 0, 0), XMLoadFloat4(&rotation)));
 	return up;
 }
 
-Vector3 Entity::GetScale()
+Vector3& Entity::GetScale()
 {
 	return scale;
 }
 
-Quaternion Entity::GetRotation()
+Quaternion& Entity::GetRotation()
 {
 	return rotation;
 }
 
-Matrix Entity::GetModelMatrix()
+Matrix& Entity::GetModelMatrix()
 {
 	//check if matrix has to be recalculated
 	//if yes then calculate it 
@@ -170,22 +176,23 @@ Matrix Entity::GetModelMatrix()
 	return modelMatrix;
 }
 
-Matrix Entity::GetPrevModelMatrix()
+Matrix& Entity::GetPrevModelMatrix()
 {
 	return prevModelMatrix;
 }
 
-XMMATRIX Entity::GetRawModelMatrix()
+XMMATRIX& Entity::GetRawModelMatrix()
 {
 	//getting the translation, scale, and rotation matrices
 	XMMATRIX translate = XMMatrixTranslationFromVector(XMLoadFloat3(&position));
 	XMMATRIX scaleMat = XMMatrixScalingFromVector(XMLoadFloat3(&scale));
 	XMMATRIX rotationMat = XMMatrixRotationQuaternion(XMLoadFloat4(&rotation));
 
-	return scaleMat * rotationMat * translate;
+	auto mat = scaleMat * rotationMat * translate;
+	return mat;
 }
 
-entt::entity Entity::GetEntityID()
+entt::entity& Entity::GetEntityID()
 {
 	return entityID;
 }
@@ -210,12 +217,12 @@ bool Entity::GetAliveState()
 	return isAlive;
 }
 
-std::shared_ptr<Mesh> Entity::GetMesh()
+std::shared_ptr<Mesh>& Entity::GetMesh()
 {
 	return mesh;
 }
 
-UINT Entity::GetMaterialIndex()
+UINT& Entity::GetMaterialIndex()
 {
 	return this->material->materialIndex;
 }
@@ -242,14 +249,15 @@ void Entity::AddModel(std::string pathToFile)
 	CreateBounds();
 }
 
-std::shared_ptr<MyModel> Entity::GetModel()
+std::shared_ptr<MyModel>& Entity::GetModel()
 {
 	if (model != nullptr)
 	{
 		return model;
 	}
 
-	return nullptr;
+	std::shared_ptr<MyModel> temp = nullptr;
+	return temp;
 }
 
 void Entity::AddMaterial(unsigned int matId)
@@ -286,7 +294,7 @@ DirectX::BoundingBox Entity::GetBounds()
 }
 
 
-void Entity::ManipulateTransforms(Matrix view, Matrix proj, ImGuizmo::OPERATION op)
+void Entity::ManipulateTransforms(Matrix& view, Matrix& proj, ImGuizmo::OPERATION op)
 {
 
 	float tr[3];
@@ -306,55 +314,35 @@ void Entity::ManipulateTransforms(Matrix view, Matrix proj, ImGuizmo::OPERATION 
 	tempProjMat = XMMatrixTranspose(tempProjMat);
 	XMStoreFloat4x4(&proj, tempProjMat);
 
-	XMVECTOR tempScale;
-	XMVECTOR tempTrans;
-	XMVECTOR tempRot;
+	Vector3 tempScale;
+	Vector3 tempTrans;
+	Quaternion tempRot;
 
-	XMMatrixDecompose(&tempScale, &tempRot, &tempTrans, XMMATRIX(objmat));
+	objmat.Decompose(tempScale, tempRot, tempTrans);
 
-	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::SetOrthographic(true);
 	ImGuiIO& io = ImGui::GetIO();
 	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
 
 	Matrix deltaMatrix;
-	ImGuizmo::Manipulate(*view.m, *proj.m, op, ImGuizmo::LOCAL, *objmat.m, *deltaMatrix.m);
-	//now we should have object matrix updated, update the object
+	ImGuizmo::Manipulate(*view.m, *proj.m, op, ImGuizmo::WORLD, *objmat.m, *deltaMatrix.m);
+
+	objmat.Decompose(tempScale, tempRot, tempTrans);
 
 
-
-	XMMATRIX tempMat = XMLoadFloat4x4(&objmat);
-
-	XMMatrixDecompose(&tempScale, &tempRot, &tempTrans, tempMat);
-
-	Vector3 finalTrans;
-
-	XMStoreFloat3(&finalTrans, tempTrans);
-
-	Vector3 finalScale;
-
-	XMStoreFloat3(&finalScale, tempScale);
-
-	Quaternion finalRotation;
-
-	XMStoreFloat4(&finalRotation, tempRot);
-
-	auto curRot = GetRotation();
-
-	finalRotation = Quaternion::Concatenate(finalRotation, curRot);
-
-	SetPosition(finalTrans);
-	SetScale(finalScale);
-	SetRotation(finalRotation.y, finalRotation.x, finalRotation.z);
+	SetPosition(tempTrans);
+	SetScale(tempScale);
+	SetRotation(tempRot);
 }
 
-void Entity::PrepareConstantBuffers(ComPtr<ID3D12Device> device, D3DX12Residency::ResidencyManager resManager,
+void Entity::PrepareConstantBuffers(D3DX12Residency::ResidencyManager resManager,
 	std::shared_ptr<D3DX12Residency::ResidencySet>& residencySet)
 {
 
 
-	ThrowIfFailed(descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	ThrowIfFailed(descriptorHeap.Create(1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
-	descriptorHeap.CreateDescriptor(sceneConstantBufferResource, RESOURCE_TYPE_CBV, device, sizeof(SceneConstantBuffer));
+	descriptorHeap.CreateDescriptor(sceneConstantBufferResource, RESOURCE_TYPE_CBV, sizeof(SceneConstantBuffer));
 
 	managedCBV.Initialize(sceneConstantBufferResource.resource.Get(), sizeof(SceneConstantBuffer));
 
@@ -406,7 +394,7 @@ void Entity::CreateBounds()
 	XMStoreFloat3(&bounds.Extents, 0.5f * (vMax - vMin));
 }
 
-bool Entity::RayBoundIntersection(Vector4 origin, Vector4 direction, float& dist, Matrix viewMat)
+bool Entity::RayBoundIntersection(Vector4& origin, Vector4& direction, float& dist, Matrix& viewMat)
 {
 	auto rayOrigin = XMLoadFloat4(&origin);
 	auto rayDir = XMLoadFloat4(&direction);

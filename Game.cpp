@@ -55,6 +55,7 @@ Game::Game(HINSTANCE hInstance)
 
 	keys.Reset();
 	mouseButtons.Reset();
+	entityNames.resize(10000000);
 
 	lights = nullptr;
 
@@ -81,6 +82,7 @@ Game::~Game()
 	{
 		registry.destroy(flockers[i]->GetEntityID());
 	}
+
 
 	delete[] jitters;
 
@@ -115,12 +117,45 @@ HRESULT Game::Init()
 
 	jitters = GenerateHaltonJitters();
 
+	InitComputeEngine();
+
+
+	//create synchronization object and wait till the objects have been passed to the gpu
+	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
+	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(computeFence.GetAddressOf())));
+	fenceValues[frameIndex]++;
+	//fence event handle for synchronization
+	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+	if (fenceEvent == nullptr)
+	{
+		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+	}
+
+	for (size_t n = 0; n < frameCount; n++)
+	{
+
+		hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocators[n])));
+		if (FAILED(hr)) return hr;
+
+		//creating the compute command allocators
+		ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(computeCommandAllocator[n].GetAddressOf())));
+	}
+
+	//create command list
+	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[frameIndex].Get(), pipelineState.Get(),
+		IID_PPV_ARGS(commandList.GetAddressOf())));
+	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, computeCommandAllocator[frameIndex].Get(), computePipelineState.Get(), IID_PPV_ARGS(&computeCommandList)));
+
+	InitResources(device, commandList, computeCommandList, commandQueue, commandAllocators,
+		computeCommandQueue, computeCommandAllocator, fence, computeFence, fenceValues, fenceEvent);
+
 	// Create descriptor heaps.
 	{
 
-		ThrowIfFailed(rtvDescriptorHeap.Create(device, frameCount + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+		ThrowIfFailed(rtvDescriptorHeap.Create(frameCount + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
-		ThrowIfFailed(dsDescriptorHeap.Create(device, 10, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
+		ThrowIfFailed(dsDescriptorHeap.Create(10, false, D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 
 	}
 
@@ -138,41 +173,15 @@ HRESULT Game::Init()
 			rtvDescriptorHeap.IncrementLastResourceIndex(1);
 			//rtvHandle.Offset(1, rtvDescriptorSize);
 
-			hr = (device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocators[n])));
-			if (FAILED(hr)) return hr;
-
-			//creating the compute command allocators
-			ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(computeCommandAllocator[n].GetAddressOf())));
 		}
 
 	}
 
-	InitComputeEngine();
-
-
-	//create synchronization object and wait till the objects have been passed to the gpu
-	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
-	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(computeFence.GetAddressOf())));
-	fenceValues[frameIndex]++;
-	//fence event handle for synchronization
-	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-
-	if (fenceEvent == nullptr)
-	{
-		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-	}
-
-	//create command list
-	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[frameIndex].Get(), pipelineState.Get(),
-		IID_PPV_ARGS(commandList.GetAddressOf())));
-	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, computeCommandAllocator[frameIndex].Get(), computePipelineState.Get(), IID_PPV_ARGS(&computeCommandList)));
-
-	InitResources(device, commandList, computeCommandList, commandQueue, commandAllocators,
-		computeCommandQueue, computeCommandAllocator, fence, computeFence, fenceValues, fenceEvent);
 
 
 
-	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>(device);
+
+	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>();
 
 	//residencyManager = std::make_shared<D3DX12Residency::ResidencyManager>();
 	residencyManager.Initialize(device.Get(), 0, adapter.Get(), frameCount);
@@ -298,7 +307,22 @@ HRESULT Game::Init()
 
 	tonemappingOutput.resource->SetName(L"tonemapping output");
 
+	//renderTexureDesc.Width = 1920;
+	//renderTexureDesc.Height = 720;
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		&rtvClearVal,
+		IID_PPV_ARGS(editorWindowTarget.resource.GetAddressOf())
+	));
 
+	editorWindowTarget.resource->SetName(L"editor window");
+	editorWindowTarget.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+	renderTexureDesc.Width = width;
+	renderTexureDesc.Height = height;
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
@@ -368,17 +392,23 @@ HRESULT Game::Init()
 	fxaaOutput.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	rtvDescriptorHeap.IncrementLastResourceIndex(1);
 
+	device->CreateRenderTargetView(editorWindowTarget.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	editorWindowTarget.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	editorWindowTarget.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
 
-	renderTargetSRVHeap.Create(device, 100, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	renderTargetSRVHeap.CreateDescriptor(taaInput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(taaHistoryBuffer, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(finalRenderTarget, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(taaOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(sharpenOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
+
+	renderTargetSRVHeap.Create(100, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	renderTargetSRVHeap.CreateDescriptor(taaInput, RESOURCE_TYPE_SRV,0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(taaHistoryBuffer, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_SRV,0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(finalRenderTarget, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(taaOutput, RESOURCE_TYPE_SRV,0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(sharpenOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+
 
 
 	//optimized clear value for depth stencil buffer
@@ -398,7 +428,7 @@ HRESULT Game::Init()
 		IID_PPV_ARGS(depthStencilBuffer.resource.GetAddressOf())
 	));
 
-	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer, RESOURCE_TYPE_DSV, device, 0, width, height);
+	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer, RESOURCE_TYPE_DSV, 0, width, height);
 
 	//creating the default resource heap for the depth stencil
 	texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R24G8_TYPELESS, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
@@ -411,7 +441,7 @@ HRESULT Game::Init()
 		IID_PPV_ARGS(depthStencilBuffer2.resource.GetAddressOf())
 	));
 
-	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer2, RESOURCE_TYPE_DSV, device, 0, width, height);
+	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer2, RESOURCE_TYPE_DSV, 0, width, height);
 
 	D3D12_RESOURCE_DESC depthTexDesc = {};
 	depthTexDesc.Width = width;
@@ -437,10 +467,10 @@ HRESULT Game::Init()
 	));
 
 	depthTex.currentState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-	dsDescriptorHeap.CreateDescriptor(depthTex, RESOURCE_TYPE_DSV, device, 0, width, height);
+	dsDescriptorHeap.CreateDescriptor(depthTex, RESOURCE_TYPE_DSV, 0, width, height);
 
-	depthDesc.Create(device, 2, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	depthDesc.CreateDescriptor(depthTex, RESOURCE_TYPE_SRV, device, 0, 0, 0, 0, 1);
+	depthDesc.Create(2, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	depthDesc.CreateDescriptor(depthTex, RESOURCE_TYPE_SRV, 0, 0, 0, 0, 1);
 
 
 	//creating the skybox bundle
@@ -456,17 +486,13 @@ HRESULT Game::Init()
 
 	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
 
-	for (size_t i = 0; i < 100; i++)
-	{
-		VelocityConstantBuffer tempData = {};
 
-		velocityBufferData.emplace_back(tempData);
 
-		velocityBufferData[i].view = mainCamera->GetViewMatrix();
-		velocityBufferData[i].projection = mainCamera->GetProjectionMatrix();
-		velocityBufferData[i].prevProjection = mainCamera->GetProjectionMatrix();
-		velocityBufferData[i].prevView = mainCamera->GetViewMatrix();
-	}
+
+	velocityBufferData.view = mainCamera->GetViewMatrix();
+	velocityBufferData.projection = mainCamera->GetProjectionMatrix();
+	velocityBufferData.prevProjection = mainCamera->GetProjectionMatrix();
+	velocityBufferData.prevView = mainCamera->GetViewMatrix();
 
 
 	LoadShaders();
@@ -489,17 +515,18 @@ HRESULT Game::Init()
 	if (isRaytracingAllowed)
 		CreateAccelerationStructures();
 
-	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, skybox->GetDescriptorHeap());
+	gpuHeapRingBuffer->AllocateStaticDescriptors(1, skybox->GetDescriptorHeap());
 	skybox->skyboxTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
-	skybox->CreateEnvironment(commandList, device, skyboxRootSignature, skyboxRootSignature, irradiencePSO, prefilteredMapPSO, brdfLUTPSO, dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
-	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 3, skybox->GetEnvironmentHeap());
+	skybox->CreateEnvironment(skyboxRootSignature, skyboxRootSignature, irradiencePSO, prefilteredMapPSO, brdfLUTPSO, dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
+	auto heap = skybox->GetEnvironmentHeap();
+	gpuHeapRingBuffer->AllocateStaticDescriptors(3, heap);
 	skybox->environmentTexturesIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1 - 2;
 
 	CreateLTCTexture();
 
 	flame = std::make_shared<RaymarchedVolume>(L"../../Assets/Textures/clouds.dds", mesh2, volumePSO,
-		volumeRootSignature, device, commandQueue, mainBufferHeap, commandList);
-	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, flame->GetDescriptorHeap());
+		volumeRootSignature, mainBufferHeap);
+	gpuHeapRingBuffer->AllocateStaticDescriptors(1, flame->GetDescriptorHeap());
 	flame->volumeTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 
 	emitter1 = std::make_shared<Emitter>(10000, //max particles
@@ -515,16 +542,16 @@ HRESULT Game::Init()
 		XMFLOAT3(0.1f, 0.1f, 0.1f), //position deviation range
 		XMFLOAT4(-2, 2, -2, 2), //rotation around z axis
 		XMFLOAT3(0.f, 1.f, 0.f),  //acceleration	
-		device, commandList, commandQueue, particlesPSO, particleRootSig, L"../../Assets/Textures/particle.jpg");
+		particlesPSO, particleRootSig, L"../../Assets/Textures/particle.jpg");
 	emitters.emplace_back(emitter1);
 
 	for (int i = 0; i < emitters.size(); i++)
 	{
-		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, emitters[i]->GetDescriptor());
+		gpuHeapRingBuffer->AllocateStaticDescriptors(1, emitters[i]->GetDescriptor());
 		emitters[i]->particleTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 	}
 
-	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 1, depthDesc);
+	gpuHeapRingBuffer->AllocateStaticDescriptors(1, depthDesc);
 	depthTex.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 
 	ThrowIfFailed(commandList->Close());
@@ -551,6 +578,7 @@ HRESULT Game::Init()
 	residencySet->Close();
 
 	WaitForPreviousFrame();
+	commandAllocators[frameIndex]->Reset();
 
 	ThrowIfFailed(
 		commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
@@ -563,9 +591,7 @@ HRESULT Game::Init()
 		CreateRaytracingDescriptorHeap();
 		CreateShaderBindingTable();
 	}
-
-	InitializeGUI();
-
+	//InitializeGUI();
 
 	return S_OK;
 
@@ -586,7 +612,8 @@ void Game::InitComputeEngine()
 
 void Game::InitializeGUI()
 {
-	
+	gpuHeapRingBuffer->GetDescriptorHeap().CreateDescriptor(editorWindowTarget, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	gpuHeapRingBuffer->IncrementNumStaticResources(1);
 	ImGui_ImplDX12_Init(device.Get(), 3,
 		DXGI_FORMAT_R8G8B8A8_UNORM, gpuHeapRingBuffer->GetDescriptorHeap().GetHeapPtr(),
 		gpuHeapRingBuffer->GetDescriptorHeap().GetCPUHandle(gpuHeapRingBuffer->GetDescriptorHeap().GetLastResourceIndex()),
@@ -1477,20 +1504,16 @@ void Game::CreateBasicGeometry()
 		IID_PPV_ARGS(bmfrPreProcessCBV.GetAddressOf())
 	));
 
-	for (int i = 0; i < 100; i++)
-	{
-		ComPtr<ID3D12Resource> tempCBV;
-		ThrowIfFailed(device->CreateCommittedResource(
-			&GetAppResources().uploadHeapType,
-			D3D12_HEAP_FLAG_NONE,
-			&bufferDesc,
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(tempCBV.GetAddressOf())
-		));
 
-		velocityCBVData.emplace_back(tempCBV);
-	}
+	ComPtr<ID3D12Resource> tempCBV;
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().uploadHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(velocityCBVData.GetAddressOf())
+	));
 
 	ZeroMemory(&lightData, sizeof(lightData));
 	ZeroMemory(&lightingData, sizeof(lightingData));
@@ -1589,24 +1612,24 @@ void Game::CreateBasicGeometry()
 	lightListResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&lightBufferBegin));
 	memcpy(lightBufferBegin, lights, MAX_LIGHTS * sizeof(Light));
 
-	for (size_t i = 0; i < velocityCBVData.size(); i++)
+	for (size_t i = 0; i < 1000; i++)
 	{
 		UINT8* tempDataBegin;
-		velocityCBVData[i]->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&tempDataBegin));
+		velocityCBVData->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&tempDataBegin));
 		velocityDataBegin.emplace_back(tempDataBegin);
 	}
 
 	bmfrPreProcessCBV->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&bmfrPreprocessBegin));
 
 	UINT64 cbufferOffset = 0;
-	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj", device, commandList);
-	mesh2 = std::make_shared<Mesh>("../../Assets/Models/cube.obj", device, commandList);
-	mesh3 = std::make_shared<Mesh>("../../Assets/Models/Cerebrus.obj", device, commandList);
-	sharkMesh = std::make_shared<Mesh>("../../Assets/Models/bird2.obj", device, commandList);
-	faceMesh = std::make_shared<Mesh>("../../Assets/Models/face.obj", device, commandList);
-	skyDome = std::make_shared<Mesh>("../../Assets/Models/sky_dome.obj", device, commandList);
-	rect = std::make_shared<Mesh>("../../Assets/Models/RectLight.obj", device, commandList);
-	disk = std::make_shared<Mesh>("../../Assets/Models/disk.obj", device, commandList);
+	mesh1 = std::make_shared<Mesh>("../../Assets/Models/sphere.obj");
+	mesh2 = std::make_shared<Mesh>("../../Assets/Models/cube.obj");
+	mesh3 = std::make_shared<Mesh>("../../Assets/Models/Cerebrus.obj");
+	sharkMesh = std::make_shared<Mesh>("../../Assets/Models/bird2.obj");
+	faceMesh = std::make_shared<Mesh>("../../Assets/Models/face.obj");
+	skyDome = std::make_shared<Mesh>("../../Assets/Models/sky_dome.obj");
+	rect = std::make_shared<Mesh>("../../Assets/Models/RectLight.obj");
+	disk = std::make_shared<Mesh>("../../Assets/Models/disk.obj");
 
 
 
@@ -1645,11 +1668,11 @@ void Game::CreateBasicGeometry()
 	//allocate volumes and skyboxes here
 	for (size_t i = 0; i < materials.size(); i++)
 	{
-		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, materials[i]->GetDescriptorHeap());
+		gpuHeapRingBuffer->AllocateStaticDescriptors(4, materials[i]->GetDescriptorHeap());
 		materials[i]->materialIndex = gpuHeapRingBuffer->GetNumStaticResources()-4;
 	}
 
-	gpuHeapRingBuffer->AllocateStaticDescriptors(device, 4, interiorMaterial->GetDescriptorHeap());
+	gpuHeapRingBuffer->AllocateStaticDescriptors(4, interiorMaterial->GetDescriptorHeap());
 	interiorMaterial->materialIndex = gpuHeapRingBuffer->GetNumStaticResources() - 4;
 
 	auto numStaticResources = gpuHeapRingBuffer->GetNumStaticResources();
@@ -1692,33 +1715,35 @@ void Game::CreateBasicGeometry()
 			commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
 	}
 
-	entity1 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	entity1 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, "entity1");
 	entity1->AddModel("../../Assets/Models/cube.obj");
 	entity1->AddMaterial(material1->materialIndex);
 
-	entity2 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	entity2 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, "entity2");
 	entity2->AddModel("../../Assets/Models/sphere.obj");
 	entity2->AddMaterial(material2->materialIndex);
 
-	entity3 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	entity3 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, "entity3");
 	entity3->AddModel("../../Assets/Models/sphere.obj");
 	entity3->AddMaterial(material2->materialIndex);
 
-	entity4 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	entity4 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, "entity4");
 	entity4->AddModel("../../Assets/Models/cube.obj");
 	entity4->AddMaterial(material1->materialIndex);
 
-	entity6 = std::make_shared<Entity>(registry, interiorMappingPSO, interiorMappingRootSig);
+	entity6 = std::make_shared<Entity>(registry, interiorMappingPSO, interiorMappingRootSig, "entity5");
 	entity6->AddModel("../../Assets/Models/cube.obj");
 	//entity6->AddMaterial(interiorMaterial->materialIndex);
 
-	diskEntity = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
+	diskEntity = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, "entity6");
 	diskEntity->AddModel("../../Assets/Models/disk.obj");
 	diskEntity->AddMaterial(material2->materialIndex);
+	diskEntity->SetTag("diskEntity");
 
 	cerebrus = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature);
 	cerebrus->AddModel("../../Assets/Models/Cerebrus.obj");
 	cerebrus->AddMaterial(material3->materialIndex);
+	cerebrus->SetTag("cerebrus");
 
 	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
 	entity1->SetScale(XMFLOAT3(100, 10, 100));
@@ -1736,13 +1761,13 @@ void Game::CreateBasicGeometry()
 	XMStoreFloat4(&initialRot, finalRot);
 	entity6->SetRotation(initialRot);
 
-	entity1->PrepareConstantBuffers(device, residencyManager, residencySet);
-	entity2->PrepareConstantBuffers(device, residencyManager, residencySet);
-	entity3->PrepareConstantBuffers(device, residencyManager, residencySet);
-	entity4->PrepareConstantBuffers(device, residencyManager, residencySet);
-	entity6->PrepareConstantBuffers(device, residencyManager, residencySet);
-	diskEntity->PrepareConstantBuffers(device, residencyManager, residencySet);
-	cerebrus->PrepareConstantBuffers(device, residencyManager, residencySet);
+	entity1->PrepareConstantBuffers(residencyManager, residencySet);
+	entity2->PrepareConstantBuffers(residencyManager, residencySet);
+	entity3->PrepareConstantBuffers(residencyManager, residencySet);
+	entity4->PrepareConstantBuffers(residencyManager, residencySet);
+	entity6->PrepareConstantBuffers(residencyManager, residencySet);
+	diskEntity->PrepareConstantBuffers(residencyManager, residencySet);
+	cerebrus->PrepareConstantBuffers(residencyManager, residencySet);
 
 
 	entities.emplace_back(entity1);
@@ -1753,8 +1778,8 @@ void Game::CreateBasicGeometry()
 
 	for (int i = 0; i < 10; i++)
 	{
-		flockers.emplace_back(std::make_shared<Entity>(registry, pipelineState, rootSignature));
-		flockers[i]->PrepareConstantBuffers(device, residencyManager, residencySet);
+		flockers.emplace_back(std::make_shared<Entity>(registry, pipelineState, rootSignature, "flocker"+std::to_string(i)));
+		flockers[i]->PrepareConstantBuffers(residencyManager, residencySet);
 		const auto enttID = flockers[i]->GetEntityID();
 
 		flockers[i]->SetPosition(XMFLOAT3(static_cast<float>(i + 6), static_cast<float>(i - 6), 0.f));
@@ -1769,6 +1794,12 @@ void Game::CreateBasicGeometry()
 		flocker.maxSpeed = 2;
 		flocker.safeDistance = 1;
 	}
+
+	for (size_t i = 0; i < entities.size(); i++)
+	{
+		entityNames[i] = entities[i]->GetTag();
+	}
+
 
 }
 
@@ -2451,27 +2482,27 @@ void Game::CreateRaytracingDescriptorHeap()
 {
 	//creating the descriptor heap, it will contain two descriptors
 	//one for the UAV output and an SRV for the acceleration structure
-	rtDescriptorHeap.Create(device, 10000, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	rtDescriptorHeap.CreateDescriptor(rtOutPut, rtOutPut.resourceType, device);
-	rtDescriptorHeap.CreateDescriptor(rtIndirectDiffuseOutPut, rtOutPut.resourceType, device);
-	rtDescriptorHeap.CreateDescriptor(rtIndirectSpecularOutPut, rtOutPut.resourceType, device);
-	rtDescriptorHeap.CreateDescriptor(rtDiffuse, rtDiffuse.resourceType, device);
-	rtDescriptorHeap.CreateDescriptor(rtPosition, rtPosition.resourceType, device);
-	rtDescriptorHeap.CreateDescriptor(rtNormals, rtNormals.resourceType, device);
-	rtDescriptorHeap.CreateDescriptor(rtAlbedo, rtAlbedo.resourceType, device);
-	renderTargetSRVHeap.CreateDescriptor(rtOutPut, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(rtIndirectDiffuseOutPut, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(rtIndirectSpecularOutPut, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(prevPosition, prevPosition.resourceType, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(prevNormals, prevNormals.resourceType, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(prevNoisy, prevNoisy.resourceType, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(currentNoisy, currentNoisy.resourceType, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(acceptBools, acceptBools.resourceType, device, 0, width, height, 0, 0);
-	renderTargetSRVHeap.CreateDescriptor(outPrevFramePixels, outPrevFramePixels.resourceType, device, 0, width, height, 0, 0);
-	renderTargetSRVHeap.CreateDescriptor(rtPosition, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(rtNormals, RESOURCE_TYPE_SRV, device, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(tempRTIndDiffuse, RESOURCE_TYPE_UAV, device);
-	renderTargetSRVHeap.CreateDescriptor(tempRTIndSpec, RESOURCE_TYPE_UAV, device);
+	rtDescriptorHeap.Create(10000, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	rtDescriptorHeap.CreateDescriptor(rtOutPut, rtOutPut.resourceType);
+	rtDescriptorHeap.CreateDescriptor(rtIndirectDiffuseOutPut, rtOutPut.resourceType);
+	rtDescriptorHeap.CreateDescriptor(rtIndirectSpecularOutPut, rtOutPut.resourceType);
+	rtDescriptorHeap.CreateDescriptor(rtDiffuse, rtDiffuse.resourceType);
+	rtDescriptorHeap.CreateDescriptor(rtPosition, rtPosition.resourceType);
+	rtDescriptorHeap.CreateDescriptor(rtNormals, rtNormals.resourceType);
+	rtDescriptorHeap.CreateDescriptor(rtAlbedo, rtAlbedo.resourceType);
+	renderTargetSRVHeap.CreateDescriptor(rtOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtIndirectDiffuseOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtIndirectSpecularOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(prevPosition, prevPosition.resourceType, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(prevNormals, prevNormals.resourceType, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(prevNoisy, prevNoisy.resourceType, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(currentNoisy, currentNoisy.resourceType, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(acceptBools, acceptBools.resourceType, 0, width, height, 0, 0);
+	renderTargetSRVHeap.CreateDescriptor(outPrevFramePixels, outPrevFramePixels.resourceType, 0, width, height, 0, 0);
+	renderTargetSRVHeap.CreateDescriptor(rtPosition, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtNormals, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(tempRTIndDiffuse, RESOURCE_TYPE_UAV);
+	renderTargetSRVHeap.CreateDescriptor(tempRTIndSpec, RESOURCE_TYPE_UAV);
 
 
 
@@ -2479,9 +2510,9 @@ void Game::CreateRaytracingDescriptorHeap()
 	//ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kUploadHeapProps, D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(1024 * 64),
 		//D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(cameraData.resource.GetAddressOf())));
 
-	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(device, topLevelAsBuffers);
-	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, device, sizeof(RayTraceCameraData));
-	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox4.hdr", skyboxTexResource, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_HDR, false);
+	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(topLevelAsBuffers);
+	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, sizeof(RayTraceCameraData));
+	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox4.hdr", skyboxTexResource, RESOURCE_TYPE_SRV, TEXTURE_TYPE_HDR, false);
 
 	static UINT numStaticResources = 0;
 	for (int i = 0; i < materials.size(); i++)
@@ -2826,12 +2857,12 @@ void Game::Update(float deltaTime, float totalTime)
 		XMStoreFloat4x4(&rtCamera.iProj, XMMatrixTranspose(XMMatrixInverse(nullptr, projTranspose)));
 		//
 		memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
-		CreateTopLevelAS(bottomLevelBufferInstances, true);
+		//CreateTopLevelAS(bottomLevelBufferInstances, true);
 	}
 
 	for (int i = 0; i < emitters.size(); i++)
 	{
-		emitters[i]->UpdateParticles(deltaTime, totalTime);
+		//emitters[i]->UpdateParticles(deltaTime, totalTime);
 	}
 
 
@@ -2844,13 +2875,14 @@ void Game::Update(float deltaTime, float totalTime)
 
 	FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
 
-	for (size_t i = 0; i < 100; i++)
+
+	velocityBufferData.projection = mainCamera->GetProjectionMatrix();
+	velocityBufferData.view = mainCamera->GetViewMatrix();
+
+	for (size_t i = 0; i < entities.size(); i++)
 	{
-		velocityBufferData[i].projection = mainCamera->GetProjectionMatrix();
-		velocityBufferData[i].view = mainCamera->GetViewMatrix();
+		entityNames[i] = entities[i]->GetTag();
 	}
-
-
 
 	//for (size_t i = 0; i < flockers.size(); i++)
 	//{
@@ -2874,33 +2906,15 @@ void Game::Draw(float deltaTime, float totalTime)
 	const float color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
 
 	PopulateCommandList();
-
-	if (true)
-	{
-		ID3D12CommandList* pcommandLists[] = { computeCommandList.Get() };
-		computeCommandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
-		auto lol = device->GetDeviceRemovedReason();
-
-		ThrowIfFailed(computeCommandQueue->Signal(computeFence.Get(), fenceValues[frameIndex]));
-
-		ThrowIfFailed(commandQueue->Wait(computeFence.Get(), fenceValues[frameIndex]));
-	}
-
-	//execute the commanf list
-	ID3D12CommandList* pcommandLists[] = { commandList.Get() };
-	D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
-	commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
-	//residencyManager.ExecuteCommandLists(commandQueue.Get(), pcommandLists, ppSets, 1);
-	//present the frame
+	SubmitComputeCommandList(computeCommandList, commandList);
+	SubmitGraphicsCommandList(commandList);
 	ThrowIfFailed(swapChain->Present(1, 0));
 
 	MoveToNextFrame();
 
-	for (size_t i = 0; i < 100; i++)
-	{
-		velocityBufferData[i].prevView = mainCamera->GetViewMatrix();
-		velocityBufferData[i].prevProjection = mainCamera->GetProjectionMatrix();
-	}
+
+	velocityBufferData.prevView = mainCamera->GetViewMatrix();
+	velocityBufferData.prevProjection = mainCamera->GetProjectionMatrix();
 
 	bmfrPreProcData.prevProj = mainCamera->GetProjectionMatrix();
 	bmfrPreProcData.view = mainCamera->GetViewMatrix();
@@ -2914,8 +2928,21 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
-	ImGuizmo::BeginFrame();
+	ImGuizmo::BeginFrame(ImVec2(1920, 1080));
 
+
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	auto rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);
+	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+	//commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	//setting the constant buffer descriptor table
+	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeapPtr() };
+
+	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 	//raytrace
 	{
 		ImGui::Begin("Render Mode");
@@ -2924,28 +2951,66 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 	}
 
 
-	//{
-	//	//create our ImGui window
-	//	ImGui::Begin("Scene Window", 0, ImGuiWindowFlags_NoMouseInputs);
-	//	//get the mouse position
-	//	ImVec2 pos = ImGui::GetCursorScreenPos();
-	//
-	//	auto io = ImGui::GetIO();
-	//
-	//	ImGui::GetWindowDrawList()->AddImage(
-	//		(void*)(sharpenOutput.srvGPUHandle.ptr),
-	//		ImVec2(0,0),
-	//		ImVec2(1280, 720), 
-	//		ImVec2(0, 0), 
-	//		ImVec2(1, 1));
-	//
-	//	//we are done working with this window
-	//	ImGui::End();
-	//}
+	if(pickingIndex!=-1)
+		entities[pickingIndex]->ManipulateTransforms(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), gizmoMode);
 
+	static std::string entityName;
+	if(pickingIndex != -1)
+	{
+		ImGui::Begin("Entity Name");
+		entityName = entities[pickingIndex]->GetTag();
+		if(ImGui::InputText("##Input", &entityName))
+			entities[pickingIndex]->SetTag(entityName);
+		ImGui::End();
+	}
+
+	ImGui::Begin("Scene Objects");
+	{
+		for (size_t i = 0; i < entities.size(); i++)
+		{
+			
+			bool selected = false;
+			if (i == pickingIndex)
+				selected = true;
+			auto temp = entityNames[i];
+			auto id = entt::to_integral(entities[i]->GetEntityID());
+
+			if (ImGui::SelectableInput((char*)std::to_string(id).c_str(), selected, 0, temp))
+			{
+				pickingIndex = i;
+				entities[i]->SetTag(temp);
+				//entityNames[i] = temp;
+			}
+
+		}
+	}
+	ImGui::End();
+
+	ImGuiWindowFlags flags = 0;
+	ImGui::SetNextWindowBgAlpha(0);
+
+	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+	ImGui::Begin("GameWindow", NULL, flags);
+	{
+		if (ImGui::IsWindowDocked())
+		{
+			ImGui::SetNextWindowBgAlpha(0);
+		}
+		if (ImGui::IsWindowHovered())
+		{
+			ImGui::CaptureMouseFromApp(false);
+		}
+	}
+	ImGui::End();
+	ImGui::PopStyleColor();
+
+	ImGui::SetNextWindowBgAlpha(1.0f);
+	//io.WantCaptureMouse = true;
+	//flags = ImGuiWindowFlags_NoBackground;
 	if (pickingIndex != -1)
 	{
-		ImGui::Begin("Transform");
+
+		ImGui::Begin("Transform", NULL, flags);
 
 		if (ImGui::RadioButton("Translate", gizmoMode == ImGuizmo::TRANSLATE))
 			gizmoMode = ImGuizmo::TRANSLATE;
@@ -2962,35 +3027,31 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 
 		auto objMat = entities[pickingIndex]->GetModelMatrix();
 
-		auto scale = XMVECTOR(scal);
-		auto rotation = XMVECTOR(rot);
-		auto translation = XMVECTOR(trs);
-
-		XMMatrixDecompose(&scale, &rotation, &translation, XMMATRIX(objMat));
+		auto angles = ToEulerAngles(rot);
 
 		float matrixTranslation[] = { trs.x, trs.y, trs.z };
-		float matrixRotation[] = { rot.x, rot.y, rot.z };
+		float matrixRotation[] = { angles.pitch, angles.yaw, angles.roll };
 		float matrixScale[] = { scal.x, scal.y, scal.z };
 
-		ImGui::InputFloat3("Position", matrixTranslation);
-		ImGui::InputFloat3("Rotation", matrixRotation);
-		ImGui::InputFloat3("Scale", matrixScale);
+		gizmoMode = ImGui::InputFloat3("Position", matrixTranslation)? gizmoMode = ImGuizmo::TRANSLATE:gizmoMode;
+		gizmoMode = ImGui::InputFloat3("Rotation", matrixRotation) ? gizmoMode = ImGuizmo::ROTATE : gizmoMode;
+		gizmoMode = ImGui::InputFloat3("Scale", matrixScale) ? gizmoMode = ImGuizmo::SCALE : gizmoMode;
 
 		ImGui::End();
 
 		entities[pickingIndex]->SetPosition(Vector3(matrixTranslation[0], matrixTranslation[1], matrixTranslation[2]));
 		entities[pickingIndex]->SetScale(Vector3(matrixScale[0], matrixScale[1], matrixScale[2]));
-		entities[pickingIndex]->SetRotation(XMConvertToRadians(matrixRotation[1]), XMConvertToRadians(matrixRotation[0]), XMConvertToRadians(matrixRotation[2]));
+		entities[pickingIndex]->SetRotation(matrixRotation[0], matrixRotation[1], matrixRotation[2]);
 
-		entities[pickingIndex]->ManipulateTransforms(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), gizmoMode);
+
 	}
 
+	ImGui::SetNextWindowBgAlpha(1.0f);
 	if (pickingIndex != -1)
 	{
-
 		//create our ImGui window
 		bool close=true;
-		ImGui::Begin("Material Window", &close);
+		ImGui::Begin("Material Window", &close,flags);
 		//get the mouse position
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 
@@ -3023,9 +3084,35 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 	
 	// Rendering
 	ImGui::Render();
+
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
+}
+
+void Game::RenderEditorWindow()
+{
+	// Start the Dear ImGui frame
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+	ImGuizmo::BeginFrame(ImVec2(1920, 1080));
+	
+	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = editorWindowTarget.rtvCPUHandle;//(rtvDescriptorHeap.GetHeap()->GetCPUDescriptorHandleForHeapStart(),
+	
+	// Render Dear ImGui graphics
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, NULL);
+
+	if (pickingIndex != -1)
+	{
+		entities[pickingIndex]->ManipulateTransforms(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), gizmoMode);
+	}
+
+
+	// Rendering
+	ImGui::Render();
 	//setting the constant buffer descriptor table
 	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeapPtr() };
-
+	
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
 }
@@ -3108,12 +3195,17 @@ void Game::DepthPrePass()
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetBeginningStaticResourceOffset();//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
 	commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityMaterials, gpuCBVSRVUAVHandle);
 	gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetStaticDescriptorOffset();
+	float xRand = jitters[numFrames % 16].x / width;
+	float yRand = jitters[numFrames % 16].y / height;
+	auto projectionMat = mainCamera->GetProjectionMatrix();
 
+	projectionMat._13 = xRand;
+	projectionMat._23 = yRand;
 	for (UINT i = 0; i < entities.size(); i++)
 	{
-		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
+		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), projectionMat);
 		commandList->SetPipelineState(depthPrePassPipelineState.Get());
-		entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
+		entities[i]->Draw(commandList, gpuHeapRingBuffer);
 	}
 
 	//for (UINT i = 0; i < flockers.size(); i++)
@@ -3131,7 +3223,7 @@ void Game::DepthPrePass()
 	commandList->ResourceBarrier(1, &transition);
 	visibleLightIndicesBuffer.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
-	commandList->Close();
+	auto lol = commandList->Close();
 	ID3D12CommandList* ppCommandLists[] = { commandList.Get() };
 	commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
@@ -3172,11 +3264,11 @@ void Game::RenderVelocityBuffer()
 	for (UINT i = 0; i < entities.size(); i++)
 	{
 
-		velocityBufferData[i].world = entities[i]->GetModelMatrix();
-		velocityBufferData[i].prevWorld = entities[i]->GetPrevModelMatrix();
-		memcpy(velocityDataBegin[i], &velocityBufferData[i], sizeof(velocityBufferData[i]));
+		velocityBufferData.world = entities[i]->GetModelMatrix();
+		velocityBufferData.prevWorld = entities[i]->GetPrevModelMatrix();
+		memcpy(velocityDataBegin[i], &velocityBufferData, sizeof(velocityBufferData));
 
-		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[i]->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData->GetGPUVirtualAddress());
 
 		auto model = entities[i]->GetModel();
 
@@ -3186,29 +3278,6 @@ void Game::RenderVelocityBuffer()
 		}
 
 	}
-
-	//for (UINT i = 0; i < flockers.size(); i++)
-	//{
-	//	//entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
-	//	//commandList->SetPipelineState(depthPrePassPipelineState.Get());
-	//	//entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
-	//
-	//	int j = i + entities.size();
-	//	velocityBufferData[j].world = flockers[i]->GetModelMatrix();
-	//	velocityBufferData[j].prevWorld = flockers[i]->GetPrevModelMatrix();
-	//	memcpy(velocityDataBegin[j], &velocityBufferData[i], sizeof(velocityBufferData[i]));
-	//
-	//	commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData[j]->GetGPUVirtualAddress());
-	//
-	//	D3D12_VERTEX_BUFFER_VIEW vertexBuffer = flockers[i]->GetMesh()->GetVertexBuffer();
-	//	auto indexBuffer = flockers[i]->GetMesh()->GetIndexBuffer();
-	//
-	//	commandList->IASetVertexBuffers(0, 1, &vertexBuffer);
-	//	commandList->IASetIndexBuffer(&indexBuffer);
-	//
-	//	commandList->DrawIndexedInstanced(flockers[i]->GetMesh()->GetIndexCount(), 1, 0, 0, 0);
-	//
-	//}
 
 	//transition render target to readable texture and then transition it back to render target
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -3234,7 +3303,9 @@ void Game::LightCullingPass()
 
 	computeCommandList->Dispatch(width / TILE_SIZE, height / TILE_SIZE, 1);
 
-	ThrowIfFailed(computeCommandList->Close());
+	//ThrowIfFailed(computeCommandList->Close());
+
+	//SubmitComputeCommandList(computeCommandList, commandList);
 
 }
 
@@ -3245,9 +3316,9 @@ void Game::PopulateCommandList()
 	residencySet->Open();
 
 	RenderVelocityBuffer();
-
+	
 	DepthPrePass();
-
+	
 	LightCullingPass();
 
 	//set necessary state
@@ -3314,7 +3385,7 @@ void Game::PopulateCommandList()
 		{
 			entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), projectionMat);
 			commandList->SetPipelineState(entities[i]->GetPipelineState().Get());
-			entities[i]->Draw(device, commandList, gpuHeapRingBuffer);
+			entities[i]->Draw(commandList, gpuHeapRingBuffer);
 		}
 
 		commandList->SetGraphicsRootSignature(entity6->GetRootSignature().Get());
@@ -3346,7 +3417,7 @@ void Game::PopulateCommandList()
 		commandList->ExecuteBundle(skyboxBundle.Get());
 
 		flame->PrepareForDraw(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), mainCamera->GetPosition(), totalTime);
-		flame->Render(device, commandList, gpuHeapRingBuffer);
+		flame->Render(gpuHeapRingBuffer);
 
 		for (int i = 0; i < emitters.size(); i++)
 		{
@@ -3493,9 +3564,12 @@ void Game::PopulateCommandList()
 
 		}
 
-	}
 
-	RenderGUI(deltaTime, totalTime);
+	}
+	//RenderEditorWindow();
+	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	//RenderGUI(deltaTime, totalTime);
+	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
@@ -3504,12 +3578,12 @@ void Game::PopulateCommandList()
 
 
 
-	commandList->Close();
+	//commandList->Close();
 	residencySet->Close();
 
 }
 
-void Game::RenderPostProcessing(ManagedResource inputTexture)
+void Game:: RenderPostProcessing(ManagedResource inputTexture)
 {
 
 	commandList->RSSetViewports(1, &viewport);
@@ -3738,7 +3812,7 @@ void Game::RenderPostProcessing(ManagedResource inputTexture)
 		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 	
 		auto rtvHandle = rtvDescriptorHeap.GetCPUHandle(frameIndex);
-	
+
 		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -3881,32 +3955,32 @@ void Game::CreateIndirectSpecularRays()
 
 void Game::CreateLTCTexture()
 {
-	ltcDescriptorHeap.Create(device, 3 + 1 + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	ltcTempDescriptorHeap.Create(device, 3 + 1 + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcLUT, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
-	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_2.png", ltcLUT2, RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
-	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_0.png", ltcTexture[0], RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcDescriptorHeap.Create( 3 + 1 + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	ltcTempDescriptorHeap.Create( 3 + 1 + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcLUT, RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
+	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_2.png", ltcLUT2, RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
+	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_0.png", ltcTexture[0], RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture[0].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
-	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_1.png", ltcTexture[1], RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_1.png", ltcTexture[1], RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	 transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture[1].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
-	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_2.png", ltcTexture[2], RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_2.png", ltcTexture[2], RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	 transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture[2].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
-	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_3.png", ltcTexture[3], RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_3.png", ltcTexture[3], RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	 transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture[3].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
-	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_4.png", ltcTexture[4], RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_4.png", ltcTexture[4], RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	 transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture[4].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
-	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_5.png", ltcTexture[5], RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_5.png", ltcTexture[5], RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	 transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture[5].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
-	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_6.png", ltcTexture[6], RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_6.png", ltcTexture[6], RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	 transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture[6].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
-	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_7.png", ltcTexture[7], RESOURCE_TYPE_SRV, device, commandQueue, TEXTURE_TYPE_DEAULT, false);
+	ltcTempDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick_7.png", ltcTexture[7], RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	 transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcTexture[7].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
 
@@ -3965,12 +4039,12 @@ void Game::CreateLTCTexture()
 	 transition = CD3DX12_RESOURCE_BARRIER::Transition(ltcPrefilterTexture.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	commandList->ResourceBarrier(1, &transition);
 
-	ltcDescriptorHeap.CreateDescriptor(ltcPrefilterTexture, RESOURCE_TYPE_SRV, GetAppResources().device, 0, 0, 0, 0, desc.MipLevels, true);
+	ltcDescriptorHeap.CreateDescriptor(ltcPrefilterTexture, RESOURCE_TYPE_SRV, 0, 0, 0, 0, desc.MipLevels, true);
 
 
 	if (gpuHeapRingBuffer != nullptr)
 	{
-		gpuHeapRingBuffer->AllocateStaticDescriptors(device, 3, ltcDescriptorHeap);
+		gpuHeapRingBuffer->AllocateStaticDescriptors(3, ltcDescriptorHeap);
 		ltcLUT.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 3;
 	}
 }
@@ -4016,12 +4090,6 @@ void Game::MoveToNextFrame()
 
 	//set the fence value of the next frame
 	fenceValues[frameIndex] = currentFenceValues + 1;
-
-	ThrowIfFailed(commandAllocators[frameIndex]->Reset());
-	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
-
-	ThrowIfFailed(computeCommandAllocator[frameIndex]->Reset());
-	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
 }
 
 

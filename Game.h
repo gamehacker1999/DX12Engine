@@ -180,6 +180,7 @@ public:
 	void UpdateGUI(float deltaTime, float totalTime);
 	void Draw(float deltaTime, float totalTime);
 	void RenderGUI(float deltaTime, float totalTime);
+	void RenderEditorWindow();
 	void PopulateCommandList();
 	void RenderPostProcessing(ManagedResource inputTexture);
 	void WaitForPreviousFrame();
@@ -266,9 +267,9 @@ private:
 	ComPtr<ID3D12Resource> lightCullingCBVResource;
 
 	//velocity pass
-	std::vector<VelocityConstantBuffer> velocityBufferData;
+	VelocityConstantBuffer velocityBufferData;
 	std::vector<UINT8*> velocityDataBegin;
-	std::vector<ComPtr<ID3D12Resource>> velocityCBVData;
+	ComPtr<ID3D12Resource> velocityCBVData;
 	ManagedResource velocityBuffer;
 
 
@@ -295,6 +296,8 @@ private:
 	//post processing
 	DescriptorHeapWrapper renderTargetSRVHeap;
 	ManagedResource finalRenderTarget;
+	ManagedResource editorWindowTarget;
+	ManagedResource guiTarget;
 	ManagedResource taaOutput;
 	ManagedResource tonemappingOutput;
 	ManagedResource sharpenOutput;
@@ -333,6 +336,7 @@ private:
 
 	std::vector<std::shared_ptr<Entity>> entities;
 	std::vector<std::shared_ptr<Material>> materials;
+	std::vector<std::string> entityNames;
 
 	//environment variables
 	ComPtr<ID3D12RootSignature> skyboxRootSignature;

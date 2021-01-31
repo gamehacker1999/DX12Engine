@@ -33,30 +33,30 @@ class Mesh
 	UINT materialID;
 
 public:
-	Mesh(std::vector<Vertex> vertices, unsigned int numVertices, std::vector<UINT> indices, int numIndices, ComPtr<ID3D12Device> device = nullptr , ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
-	Mesh(std::string fileName, ComPtr<ID3D12Device> device,ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue = nullptr);
+	Mesh(std::vector<Vertex> vertices, unsigned int numVertices, std::vector<UINT> indices, int numIndices);
+	Mesh(std::string fileName);
 	void CalculateTangents(std::vector<Vertex>& vertices, std::vector<Vector3>& position,
 		std::vector<Vector2>& uvs, unsigned int vertCount);
 	~Mesh();
 
 	std::pair<ComPtr<ID3D12Resource>, UINT> GetVertexBufferResourceAndCount();
 
-	D3D12_VERTEX_BUFFER_VIEW GetVertexBuffer();
-	D3D12_INDEX_BUFFER_VIEW GetIndexBuffer();
-	ComPtr<ID3D12Resource> GetVertexBufferResource();
-	unsigned int GetIndexCount();
-	unsigned int GetVertexCount();
-	std::vector<Vector3> GetPoints();
-	std::vector<Vertex> GetVerts();
+	D3D12_VERTEX_BUFFER_VIEW& GetVertexBuffer();
+	D3D12_INDEX_BUFFER_VIEW& GetIndexBuffer();
+	ComPtr<ID3D12Resource>& GetVertexBufferResource();
+	unsigned int& GetIndexCount();
+	unsigned int& GetVertexCount();
+	std::vector<Vector3>& GetPoints();
+	std::vector<Vertex>& GetVerts();
 
 	bool RayMeshTest(Vector4 origin, Vector4 direction);
 
 	//load fbx files
-	void LoadFBX(ComPtr<ID3D12Device> device , std::string& filename);
+	void LoadFBX(std::string& filename);
 	//method to load obj files
-	void LoadOBJ(ComPtr<ID3D12Device> device , std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList);
+	void LoadOBJ(std::string& fileName);
 	//sdk meshes
-	void LoadSDKMesh(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue);
+	void LoadSDKMesh(std::string& fileName);
 
 	void SetMaterialID(UINT id);
 

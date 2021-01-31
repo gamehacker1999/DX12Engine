@@ -20,7 +20,7 @@ class DescriptorHeapWrapper
 public:
 
 	DescriptorHeapWrapper();
-	HRESULT Create(ComPtr<ID3D12Device> device, UINT numDesc, bool isShaderVis, D3D12_DESCRIPTOR_HEAP_TYPE heapType);
+	HRESULT Create(UINT numDesc, bool isShaderVis, D3D12_DESCRIPTOR_HEAP_TYPE heapType);
 	D3D12_DESCRIPTOR_HEAP_TYPE GetDescriptorHeapType();
 	ComPtr<ID3D12DescriptorHeap>& GetHeap();
 	ID3D12DescriptorHeap* GetHeapPtr();
@@ -29,14 +29,13 @@ public:
 	UINT GetLastResourceIndex();
 	void IncrementLastResourceIndex(UINT valueToIncrementBy);
 	UINT GetDescriptorIncrementSize();
-	void CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType, 
-		ComPtr<ID3D12Device> device,size_t cbufferSize=0,UINT width = 0, UINT height = 0,UINT firstArraySlice = -1,UINT mipLevel = 0, bool isArray = false);
+	void CreateDescriptor(ManagedResource& resource, RESOURCE_TYPE resourceType,  size_t cbufferSize=0,UINT width = 0, UINT height = 0,UINT firstArraySlice = -1,UINT mipLevel = 0, bool isArray = false);
 	void CreateDescriptor(std::wstring resName, ManagedResource& resource,
-		RESOURCE_TYPE resourceType, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue,
-		TEXTURE_TYPES type = TEXTURE_TYPE_DEAULT, bool isCube = false, ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, 
+		RESOURCE_TYPE resourceType,
+		TEXTURE_TYPES type = TEXTURE_TYPE_DEAULT, bool isCube = false,
 		ComPtr<ID3D12Resource> uploadRes = nullptr);
 	void CreateStructuredBuffer(ManagedResource& resource, ComPtr<ID3D12Device> device, UINT numElements, UINT stride, UINT bufferSize);
-	void CreateRaytracingAccelerationStructureDescriptor(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer);
-	void UpdateRaytracingAccelerationStruct(ComPtr<ID3D12Device5> device, AccelerationStructureBuffers topLevelASBuffer);
+	void CreateRaytracingAccelerationStructureDescriptor(AccelerationStructureBuffers topLevelASBuffer);
+	void UpdateRaytracingAccelerationStruct(AccelerationStructureBuffers topLevelASBuffer);
 };
 

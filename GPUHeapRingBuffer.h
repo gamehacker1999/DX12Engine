@@ -14,12 +14,12 @@ class GPUHeapRingBuffer
 
 public:
 public: 
-	GPUHeapRingBuffer(ComPtr<ID3D12Device> device);
+	GPUHeapRingBuffer();
 
 	//allocate static descriptors to the beginning of the ring buffer
-	void AllocateStaticDescriptors(ComPtr<ID3D12Device> device, UINT numDescriptors, DescriptorHeapWrapper otherDescHeap);
+	void AllocateStaticDescriptors(UINT numDescriptors, DescriptorHeapWrapper& otherDescHeap);
 
-	void AddDescriptor(ComPtr<ID3D12Device> device, UINT numDescriptors, DescriptorHeapWrapper otherDescHeap, UINT frameIndex);
+	void AddDescriptor(UINT numDescriptors, DescriptorHeapWrapper& otherDescHeap, UINT frameIndex);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE GetStaticDescriptorOffset();
 

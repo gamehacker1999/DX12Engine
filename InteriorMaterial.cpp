@@ -2,30 +2,30 @@
 
 InteriorMaterial::InteriorMaterial(int numTex): Material(numTex)
 {
-	ThrowIfFailed(descriptorHeap.Create(GetAppResources().device, numTex + 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	ThrowIfFailed(textureArrayHeap.Create(GetAppResources().device, 5, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	ThrowIfFailed(descriptorHeap.Create(numTex + 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	ThrowIfFailed(textureArrayHeap.Create(5, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 	interiorMaps = new ManagedResource[5];
 
 	auto commandList = GetAppResources().commandList;
 
-	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMap.dds", interiorMaps[0], RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DDS);
+	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMap.dds", interiorMaps[0], RESOURCE_TYPE_SRV, TEXTURE_TYPE_DDS);
 	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(interiorMaps[0].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
 
-	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMapBrick.dds", interiorMaps[1], RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DDS);
+	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMapBrick.dds", interiorMaps[1], RESOURCE_TYPE_SRV, TEXTURE_TYPE_DDS);
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(interiorMaps[1].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
 
-	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMapBrown.dds", interiorMaps[2], RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DDS);
+	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMapBrown.dds", interiorMaps[2], RESOURCE_TYPE_SRV,TEXTURE_TYPE_DDS);
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(interiorMaps[2].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
 
-	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMapBrownDark.dds", interiorMaps[3], RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DDS);
+	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMapBrownDark.dds", interiorMaps[3], RESOURCE_TYPE_SRV, TEXTURE_TYPE_DDS);
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(interiorMaps[3].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
 
-	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMapDark.dds", interiorMaps[4], RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DDS);
+	descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Interiors/OfficeCubeMapDark.dds", interiorMaps[4], RESOURCE_TYPE_SRV,  TEXTURE_TYPE_DDS);
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(interiorMaps[4].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	commandList->ResourceBarrier(1, &transition);
 
@@ -108,10 +108,10 @@ InteriorMaterial::InteriorMaterial(int numTex): Material(numTex)
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(interiorMaps[4].resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	commandList->ResourceBarrier(1, &transition);
 
-	textureArrayHeap.CreateDescriptor(textureArray, RESOURCE_TYPE_SRV, GetAppResources().device, 0, 0, 0, 0, desc.MipLevels);
-	textureArrayHeap.CreateDescriptor(L"../../Assets/Textures/ExternalWall.png", externalTexture, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
-	textureArrayHeap.CreateDescriptor(L"../../Assets/Textures/BrickWall.png", capTexture, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
-	textureArrayHeap.CreateDescriptor(L"../../Assets/Textures/ExternalWallSDF.png", sdfTexture, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+	textureArrayHeap.CreateDescriptor(textureArray, RESOURCE_TYPE_SRV, 0, 0, 0, 0, desc.MipLevels);
+	textureArrayHeap.CreateDescriptor(L"../../Assets/Textures/ExternalWall.png", externalTexture, RESOURCE_TYPE_SRV,TEXTURE_TYPE_DEAULT);
+	textureArrayHeap.CreateDescriptor(L"../../Assets/Textures/BrickWall.png", capTexture, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	textureArrayHeap.CreateDescriptor(L"../../Assets/Textures/ExternalWallSDF.png", sdfTexture, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 
 }
 

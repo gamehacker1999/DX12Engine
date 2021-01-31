@@ -23,7 +23,7 @@ Camera::~Camera()
 {
 }
 
-Matrix Camera::GetViewMatrix()
+Matrix& Camera::GetViewMatrix()
 {
 	//returning view matrix
 		//creating a camera rotation matrix based on the x and y values
@@ -51,12 +51,12 @@ Matrix Camera::GetViewMatrix()
 	return viewMatrix;
 }
 
-Matrix Camera::GetProjectionMatrix()
+Matrix& Camera::GetProjectionMatrix()
 {
 	return projectionMatrix;
 }
 
-Matrix Camera::GetInverseProjection()
+Matrix& Camera::GetInverseProjection()
 {
 	XMMATRIX inverseProjTemp = XMLoadFloat4x4(&projectionMatrix);
 	inverseProjTemp = XMMatrixInverse(nullptr, inverseProjTemp);
@@ -166,12 +166,12 @@ void Camera::ChangeYawAndPitch(float deltaX, float deltaY)
 		yRotation = -85.0f;
 }
 
-Vector3 Camera::GetPosition()
+Vector3& Camera::GetPosition()
 {
 	return position;
 }
 
-Vector3 Camera::GetDirection()
+Vector3& Camera::GetDirection()
 {
 	return direction;
 }

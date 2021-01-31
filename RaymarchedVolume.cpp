@@ -1,13 +1,13 @@
 #include "RaymarchedVolume.h"
 
 RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& volumePSO, ComPtr<ID3D12RootSignature> volumeRoot, 
-	ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& commandQueue, DescriptorHeapWrapper& mainBufferHeap, ComPtr<ID3D12GraphicsCommandList> commandList)
+DescriptorHeapWrapper& mainBufferHeap)
 {
 	volumeBufferBegin = 0;
 
 	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(1024 * 64);
 	//creating the volume data resource
-	ThrowIfFailed(device->CreateCommittedResource(
+	ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
 		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
 		&bufferDesc,
@@ -20,7 +20,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 	volumeDataResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&volumeBufferBegin));
 	memcpy(volumeBufferBegin, &volumeData, sizeof(volumeData));
 
-	ThrowIfFailed(descriptorHeap.Create(device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	ThrowIfFailed(descriptorHeap.Create(1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 	//descriptorHeap.CreateDescriptor(volumeTex, volumeTexResource, RESOURCE_TYPE_SRV, device, commandQueue,TEXTURE_TYPE_DDS);
 
@@ -46,7 +46,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 	//creating the texture resource description
 	auto texDesc = CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R8G8B8A8_UNORM, 256, 256, 256);
-	ThrowIfFailed(device->CreateCommittedResource(
+	ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
 		&texDesc,
@@ -62,7 +62,7 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 
 	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
 	//create the gpu upload buffer
-	ThrowIfFailed(device->CreateCommittedResource(
+	ThrowIfFailed(GetAppResources().device->CreateCommittedResource(
 		&GetAppResources().uploadHeapType,
 		D3D12_HEAP_FLAG_NONE,
 		&bufferDesc,
@@ -76,15 +76,15 @@ RaymarchedVolume::RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh>
 	textureData.RowPitch = 256*2;
 	textureData.SlicePitch = textureData.RowPitch * 256*2;
 
-	UpdateSubresources<1>(commandList.Get(), volumeTexResource.resource.Get(), textureUpload.Get(), 0, 0, 1, &textureData);
+	UpdateSubresources<1>(GetAppResources().commandList.Get(), volumeTexResource.resource.Get(), textureUpload.Get(), 0, 0, 1, &textureData);
 
 	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(volumeTexResource.resource.Get(), volumeTexResource.currentState, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	commandList->ResourceBarrier(1, &transition);
+	GetAppResources().commandList->ResourceBarrier(1, &transition);
 
 	volumeTexResource.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
 	//create an SRV that will use this texture
-	CreateShaderResourceView(device.Get(), volumeTexResource.resource.Get(), descriptorHeap.GetCPUHandle(0), false);
+	CreateShaderResourceView(GetAppResources().device.Get(), volumeTexResource.resource.Get(), descriptorHeap.GetCPUHandle(0), false);
 
 
 }
@@ -140,16 +140,16 @@ void RaymarchedVolume::PrepareForDraw(Matrix view, Matrix proj, Vector3 camPosit
 	memcpy(volumeBufferBegin, &volumeData, sizeof(volumeData));
 }
 
-void RaymarchedVolume::Render(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, 
-	std::shared_ptr<GPUHeapRingBuffer> ringBuffer)
+void RaymarchedVolume::Render(
+	std::shared_ptr<GPUHeapRingBuffer>& ringBuffer)
 {
-	commandList->SetPipelineState(GetPipelineState().Get());
-	commandList->SetGraphicsRootSignature(GetRootSignature().Get());
-	commandList->SetGraphicsRootConstantBufferView(0, GetConstantBuffer()->GetGPUVirtualAddress());
-	commandList->SetGraphicsRootDescriptorTable(1, ringBuffer->GetDescriptorHeap().GetGPUHandle(volumeTextureIndex));
+	GetAppResources().commandList->SetPipelineState(GetPipelineState().Get());
+	GetAppResources().commandList->SetGraphicsRootSignature(GetRootSignature().Get());
+	GetAppResources().commandList->SetGraphicsRootConstantBufferView(0, GetConstantBuffer()->GetGPUVirtualAddress());
+	GetAppResources().commandList->SetGraphicsRootDescriptorTable(1, ringBuffer->GetDescriptorHeap().GetGPUHandle(volumeTextureIndex));
 	auto vBuff = GetMesh()->GetVertexBuffer();
 	auto iBuff = GetMesh()->GetIndexBuffer();
-	commandList->IASetVertexBuffers(0, 1, &vBuff);
-	commandList->IASetIndexBuffer(&iBuff);
-	commandList->DrawIndexedInstanced(GetMesh()->GetIndexCount(), 1, 0, 0, 0);
+	GetAppResources().commandList->IASetVertexBuffers(0, 1, &vBuff);
+	GetAppResources().commandList->IASetIndexBuffer(&iBuff);
+	GetAppResources().commandList->DrawIndexedInstanced(GetMesh()->GetIndexCount(), 1, 0, 0, 0);
 }

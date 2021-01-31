@@ -8,9 +8,9 @@ Skybox::Skybox(std::wstring skyboxTex, std::shared_ptr<Mesh> mesh,ComPtr<ID3D12P
 	CreateShaderResourceView(device.Get(), skyboxTexResource.Get(), cbvSRVDescriptorHandle, true);
 	cbvSRVDescriptorHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));*/
 
-	ThrowIfFailed(descriptorHeap.Create(GetAppResources().device, 1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	descriptorHeap.CreateDescriptor(skyboxTex, skyboxTexResource, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue,
-		TEXTURE_TYPE_HDR, false, GetAppResources().commandList, textureUpload);
+	ThrowIfFailed(descriptorHeap.Create(1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	descriptorHeap.CreateDescriptor(skyboxTex, skyboxTexResource, RESOURCE_TYPE_SRV,
+		TEXTURE_TYPE_HDR, false, textureUpload);
 
 	this->skyBoxPSO = skyboxPSO;
 	this->skyboxRootSignature = skyboxRoot;
@@ -54,30 +54,29 @@ DescriptorHeapWrapper& Skybox::GetDescriptorHeap()
 	return descriptorHeap;
 }
 
-void Skybox::CreateEnvironment(ComPtr<ID3D12GraphicsCommandList> commandList, 
-	ComPtr<ID3D12Device> device, ComPtr<ID3D12RootSignature> prefilterRootSignature,
-	ComPtr<ID3D12RootSignature> brdfRootSignature,
-	ComPtr<ID3D12PipelineState> irradiencePSO, ComPtr<ID3D12PipelineState> prefilteredMapPSO, 
-	ComPtr<ID3D12PipelineState> brdfLUTPSO, D3D12_CPU_DESCRIPTOR_HANDLE depthStencilHandle)
+void Skybox::CreateEnvironment(ComPtr<ID3D12RootSignature>& prefilterRootSignature,
+	ComPtr<ID3D12RootSignature>& brdfRootSignature,
+	ComPtr<ID3D12PipelineState>& irradiencePSO, ComPtr<ID3D12PipelineState>& prefilteredMapPSO, 
+	ComPtr<ID3D12PipelineState>& brdfLUTPSO, D3D12_CPU_DESCRIPTOR_HANDLE depthStencilHandle)
 {
 
 
 	//setting the skybox descriptor heap
 	hasEnvironmentMaps = true;
 
-	dummyHeap.Create(device, 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	dummyHeap.Create(1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	descriptorHeap.GetCPUHandle(0);
 
 	dummyHeap.GetCPUHandle(0);
 
-	device->CopyDescriptorsSimple(1, dummyHeap.GetCPUHandle(0), descriptorHeap.GetCPUHandle(0), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	GetAppResources().device->CopyDescriptorsSimple(1, dummyHeap.GetCPUHandle(0), descriptorHeap.GetCPUHandle(0), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	ID3D12DescriptorHeap* ppHeaps[] = { dummyHeap.GetHeap().Get() };
-	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	GetAppResources().commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 	auto skyboxHandle = descriptorHeap.GetGPUHandle(0);
 	environment = std::make_unique<Environment>(skyboxRootSignature, skyboxRootSignature, skyboxRootSignature,irradiencePSO,prefilteredMapPSO,
-		brdfLUTPSO,device,commandList,dummyHeap.GetGPUHandle(0),depthStencilHandle,skyboxMesh->GetVertexBuffer(),skyboxMesh->GetIndexBuffer(),skyboxMesh->GetIndexCount());
+		brdfLUTPSO,dummyHeap.GetGPUHandle(0),depthStencilHandle,skyboxMesh->GetVertexBuffer(),skyboxMesh->GetIndexBuffer(),skyboxMesh->GetIndexCount());
 	
 }
 
@@ -91,7 +90,7 @@ std::shared_ptr<Mesh>& Skybox::GetMesh()
 	return this->skyboxMesh;
 }
 
-void Skybox::PrepareForDraw(Matrix view, Matrix proj, Vector3 camPosition)
+void Skybox::PrepareForDraw(Matrix& view, Matrix& proj, Vector3& camPosition)
 {
 	XMStoreFloat4x4(&skyboxData.world, XMMatrixIdentity());
 	skyboxData.projection = proj;

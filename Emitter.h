@@ -42,11 +42,8 @@ public:
 		Vector3 positionRandomRange,
 		Vector4 rotationRandomRanges,
 		Vector3 emitterAcceleration,
-		ComPtr<ID3D12Device> device,
-		ComPtr<ID3D12GraphicsCommandList> commandList,
-		ComPtr<ID3D12CommandQueue> commandQueue,
-		ComPtr<ID3D12PipelineState> particlePipeline,
-		ComPtr<ID3D12RootSignature> particleRoot,
+		ComPtr<ID3D12PipelineState>& particlePipeline,
+		ComPtr<ID3D12RootSignature>& particleRoot,
 		std::wstring textureName
 	);
 	~Emitter();
@@ -56,7 +53,7 @@ public:
 	void SetAcceleration(Vector3 acel);
 
 	void UpdateParticles(float deltaTime, float currentTime);
-	void Draw(ComPtr<ID3D12GraphicsCommandList> commandList,std::shared_ptr<GPUHeapRingBuffer> ringBuffer , Matrix view, Matrix projection, float currentTime);
+	void Draw(std::shared_ptr<GPUHeapRingBuffer>& ringBuffer , Matrix view, Matrix projection, float currentTime);
 
 	void SetTemporary(float emitterLife);
 	bool IsDead();

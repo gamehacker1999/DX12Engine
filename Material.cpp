@@ -9,7 +9,7 @@ Material::Material(int numTex)
 Material::Material(std::wstring diffuse, std::wstring normal, std::wstring roughness, std::wstring metalness)
 {
 
-	ThrowIfFailed(descriptorHeap.Create(GetAppResources().device, 4, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	ThrowIfFailed(descriptorHeap.Create(4, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 	//materialIndex = 0;
 	numTextures = 0;
@@ -17,7 +17,7 @@ Material::Material(std::wstring diffuse, std::wstring normal, std::wstring rough
 
 	if (diffuse != L"default")
 	{
-		descriptorHeap.CreateDescriptor(diffuse, diffuseTexture, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(diffuse, diffuseTexture, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 		diffuseTextureIndex = diffuseTexture.heapOffset;
 		materialOffset = diffuseTexture.heapOffset;
 		numTextures++;
@@ -25,8 +25,7 @@ Material::Material(std::wstring diffuse, std::wstring normal, std::wstring rough
 
 	else
 	{
-		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick.jpg", diffuseTexture, RESOURCE_TYPE_SRV, GetAppResources().device,
-			GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/Brick.jpg", diffuseTexture, RESOURCE_TYPE_SRV,  TEXTURE_TYPE_DEAULT);
 		diffuseTextureIndex = diffuseTexture.heapOffset;
 		materialOffset = diffuseTexture.heapOffset;
 		numTextures++;
@@ -34,45 +33,42 @@ Material::Material(std::wstring diffuse, std::wstring normal, std::wstring rough
 
 	if (normal != L"default")
 	{
-		descriptorHeap.CreateDescriptor(normal, normalTexture, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(normal, normalTexture, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 		materialOffset = normalTexture.heapOffset;
 		numTextures++;
 	}
 
 	else
 	{
-		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultNormal.png", normalTexture, RESOURCE_TYPE_SRV, GetAppResources().device,
-			GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultNormal.png", normalTexture, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 		materialOffset = normalTexture.heapOffset;
 		numTextures++;
 	}
 
 	if (roughness != L"default")
 	{
-		descriptorHeap.CreateDescriptor(roughness, roughnessTexture, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(roughness, roughnessTexture, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 		materialOffset = roughnessTexture.heapOffset;
 		numTextures++;
 	}
 
 	else
 	{
-		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultRoughness.png", roughnessTexture, RESOURCE_TYPE_SRV, GetAppResources().device,
-			GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultRoughness.png", roughnessTexture, RESOURCE_TYPE_SRV,TEXTURE_TYPE_DEAULT);
 		materialOffset = roughnessTexture.heapOffset;
 		numTextures++;
 	}
 
 	if (metalness != L"default")
 	{
-		descriptorHeap.CreateDescriptor(metalness, metallnessTexture, RESOURCE_TYPE_SRV, GetAppResources().device, GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(metalness, metallnessTexture, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 		materialOffset = metallnessTexture.heapOffset;
 		numTextures++;
 	}
 
 	else
 	{
-		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultMetallic.png", metallnessTexture, RESOURCE_TYPE_SRV, GetAppResources().device,
-			GetAppResources().graphicsQueue, TEXTURE_TYPE_DEAULT);
+		descriptorHeap.CreateDescriptor(L"../../Assets/Textures/DefaultMetallic.png", metallnessTexture, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 		materialOffset = metallnessTexture.heapOffset;
 		numTextures++;
 	}
@@ -133,7 +129,7 @@ Material::Material(std::wstring diffuse, std::wstring normal, std::wstring rough
 	}
 
 	//setting the necessary variables
-	generateMapDescriptorHeap.Create(GetAppResources().device, roughnessTexture.mipLevels * 2 + 2 + 2, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	generateMapDescriptorHeap.Create(roughnessTexture.mipLevels * 2 + 2 + 2, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	//auto transition = CD3DX12_RESOURCE_BARRIER::Transition(normalTexture.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 	//	D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -144,8 +140,8 @@ Material::Material(std::wstring diffuse, std::wstring normal, std::wstring rough
 
 }
 
-void Material::GenerateMaps(ComPtr<ID3D12PipelineState> vmfSolverPSO, ComPtr<ID3D12RootSignature> vmfRootSig,
-	std::shared_ptr<GPUHeapRingBuffer> gpuRingBuffer)
+void Material::GenerateMaps(ComPtr<ID3D12PipelineState>& vmfSolverPSO, ComPtr<ID3D12RootSignature>& vmfRootSig,
+	std::shared_ptr<GPUHeapRingBuffer>& gpuRingBuffer)
 {
 
 
@@ -167,10 +163,10 @@ void Material::GenerateMaps(ComPtr<ID3D12PipelineState> vmfSolverPSO, ComPtr<ID3
 		generateMapData[i].mipLevel = i;
 		generateMapData[i].outputSize = XMFLOAT2(texWidth, texHeight);
 
-		generateMapDescriptorHeap.CreateDescriptor(vmfMap, RESOURCE_TYPE_UAV, GetAppResources().device, 0,
+		generateMapDescriptorHeap.CreateDescriptor(vmfMap, RESOURCE_TYPE_UAV,  0,
 			roughnessTexture.width, roughnessTexture.height,
 			0, i);
-		generateMapDescriptorHeap.CreateDescriptor(generatedRoughnessMap, RESOURCE_TYPE_UAV, GetAppResources().device, 0,
+		generateMapDescriptorHeap.CreateDescriptor(generatedRoughnessMap, RESOURCE_TYPE_UAV,  0,
 			roughnessTexture.width, roughnessTexture.height,
 			0, i);
 		memcpy(generateMapDataCbufferBegin[i], &generateMapData[i], sizeof(generateMapData[i]));
@@ -188,9 +184,9 @@ void Material::GenerateMaps(ComPtr<ID3D12PipelineState> vmfSolverPSO, ComPtr<ID3
 	}
 
 
-	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(vmfMap, RESOURCE_TYPE_SRV, GetAppResources().device, 0, roughnessTexture.width,
+	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(vmfMap, RESOURCE_TYPE_SRV,0, roughnessTexture.width,
 		roughnessTexture.height, 0, roughnessTexture.mipLevels);
-	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(generatedRoughnessMap, RESOURCE_TYPE_SRV, GetAppResources().device, 0, roughnessTexture.width,
+	gpuRingBuffer->GetDescriptorHeap().CreateDescriptor(generatedRoughnessMap, RESOURCE_TYPE_SRV,  0, roughnessTexture.width,
 		roughnessTexture.height, 0, roughnessTexture.mipLevels);
 
 	gpuRingBuffer->IncrementNumStaticResources(2);

@@ -35,21 +35,21 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 	QueryPerformanceFrequency((LARGE_INTEGER*)&perfFreq);
 	perfCounterSeconds = 1 / (double)perfFreq;
 
-	// Setup Dear ImGui context
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
+	//// Setup Dear ImGui context
+	//IMGUI_CHECKVERSION();
+	//ImGui::CreateContext();
 }
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT DXCore::WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	ImGuiIO& io = ImGui::GetIO();
-	ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
-	if (io.WantCaptureMouse && (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP || uMsg == WM_MOUSEWHEEL || uMsg == WM_MOUSEMOVE))
-	{
-		return TRUE;
-	}
+	//ImGuiIO& io = ImGui::GetIO();
+	//(ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam));
+	//if (io.WantCaptureMouse && (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP || uMsg == WM_MOUSEWHEEL || uMsg == WM_MOUSEMOVE))
+	//{
+	//return TRUE;
+	//}
 
 
 	return DXCoreInstance->ProcessMessage(hWnd, uMsg, wParam, lParam);
@@ -205,21 +205,25 @@ HRESULT DXCore::InitWindow()
 	mouse->SetWindow(hWnd);
 
 
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	//ImGuiIO& io = ImGui::GetIO(); (void)io;
 	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
 	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
 	// Setup Dear ImGui style
-	ImGui::StyleColorsDark();
+	//ImGui::StyleColorsDark();
 	//ImGui::StyleColorsClassic();
 
 	// Setup Platform/Renderer backends
-	ImGui_ImplWin32_Init(hWnd);
 
 	// The window exists but is not visible yet
 	// We need to tell Windows to show it, and how to show it
 	ShowWindow(hWnd, SW_SHOW);
 	UpdateWindow(hWnd);
+
+	//ImGui_ImplWin32_Init(hWnd);
+
+	//io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
 
 	// Return an "everything is ok" HRESULT value
 	return S_OK;
@@ -250,15 +254,45 @@ HRESULT DXCore::InitDirectX()
 	//EnableShaderBasedValidation();
 
 	ComPtr<IDXGIFactory6> factory;
-	auto hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
+	dxgiFactoryFlags = 0;
 
-	if (FAILED(hr)) return hr;
+
+	dxgiFactoryFlags = 0;
+
+#if defined(_DEBUG)
+	// Enable the debug layer (requires the Graphics Tools "optional feature").
+	//
+	// NOTE: Enabling the debug layer after device creation will invalidate the active device.
+	{
+		ComPtr<ID3D12Debug> debugController;
+		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf()))))
+		{
+			debugController->EnableDebugLayer();
+		}
+		else
+		{
+			OutputDebugStringA("WARNING: Direct3D Debug Device is not available\n");
+		}
+
+		ComPtr<IDXGIInfoQueue> dxgiInfoQueue;
+		if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(dxgiInfoQueue.GetAddressOf()))))
+		{
+			dxgiFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
+
+			dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
+			dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, true);
+		}
+	}
+#endif
+
+	ThrowIfFailed(CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(factory.ReleaseAndGetAddressOf())));
+
 
 	{
 		ComPtr<IDXGIAdapter1> hardwareAdapter;
 		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
 
-		hr = D3D12CreateDevice(
+		auto hr = D3D12CreateDevice(
 			hardwareAdapter.Get(),
 			D3D_FEATURE_LEVEL_12_1,
 			IID_PPV_ARGS(&device)
@@ -279,7 +313,7 @@ HRESULT DXCore::InitDirectX()
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-	hr = device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue));
+	auto hr = device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue));
 
 	if (FAILED(hr)) return hr;
 
@@ -311,10 +345,6 @@ HRESULT DXCore::InitDirectX()
 	// This sample does not support fullscreen transitions.
 	hr = (factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 	if (FAILED(hr)) return hr;
-
-	//Setting the descriptor heap for the GUI
-	//initilize the gui
-	guiDescriptorHeap.Create(device, 1, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 
 	InitGUI();
@@ -366,10 +396,20 @@ HRESULT DXCore::Run()
 	}
 
 
+
 	// Cleanup
-	ImGui_ImplDX12_Shutdown();
-	ImGui_ImplWin32_Shutdown();
-	ImGui::DestroyContext();
+	//ImGui_ImplDX12_Shutdown();
+	//ImGui_ImplWin32_Shutdown();
+	//ImGui::DestroyContext();
+#ifdef _DEBUG
+	{
+		ComPtr<IDXGIDebug1> dxgiDebug;
+		if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
+		{
+			dxgiDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_FLAGS(DXGI_DEBUG_RLO_SUMMARY | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
+		}
+	}
+#endif
 	// We'll end up here once we get a WM_QUIT message,
 	// which usually comes from the user closing the window
 	return (HRESULT)msg.wParam;
@@ -378,6 +418,7 @@ HRESULT DXCore::Run()
 void DXCore::Quit()
 {
 	PostMessage(this->hWnd, WM_CLOSE, NULL, NULL);
+
 }
 
 void DXCore::OnResize()

@@ -1,9 +1,9 @@
 #include "Mesh.h"
-Mesh::Mesh(std::vector<Vertex> vertices, unsigned int numVertices, std::vector<UINT> indices, int numIndices, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
+Mesh::Mesh(std::vector<Vertex> vertices, unsigned int numVertices, std::vector<UINT> indices, int numIndices)
 {
 	ComPtr<ID3D12Resource> vertexBufferDeafult;
-	vertexBuffer = CreateVBView(&vertices[0], numVertices, GetAppResources().device, GetAppResources().commandList, defaultHeap,uploadHeap);
-	indexBuffer = CreateIBView(&indices[0], numIndices, GetAppResources().device, GetAppResources().commandList, defaultIndexHeap, uploadIndexHeap);
+	vertexBuffer = CreateVBView(&vertices[0], numVertices, defaultHeap,uploadHeap);
+	indexBuffer = CreateIBView(&indices[0], numIndices, defaultIndexHeap, uploadIndexHeap);
 
 	this->vertices = vertices;
 	this->indices = indices;
@@ -14,7 +14,7 @@ Mesh::Mesh(std::vector<Vertex> vertices, unsigned int numVertices, std::vector<U
 	materialID = 0;
 }
 
-Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
+Mesh::Mesh(std::string fileName)
 {
 	vertexBuffer = {};
 	indexBuffer = {};
@@ -22,17 +22,17 @@ Mesh::Mesh(std::string fileName, ComPtr<ID3D12Device> device, ComPtr<ID3D12Graph
 
 	if (fileName.find(".fbx") != std::string::npos)
 	{
-		LoadFBX(device, fileName);
+		LoadFBX(fileName);
 	}
 
 	else if (fileName.find(".obj") != std::string::npos || fileName.find(".OBJ") != std::string::npos)
 	{
-		LoadOBJ(device, fileName,commandList);
+		LoadOBJ(fileName);
 	}
 
-	else if (fileName.find(".sdkmesh") != std::string::npos && commandQueue)
+	else if (fileName.find(".sdkmesh") != std::string::npos)
 	{
-		LoadSDKMesh(device, fileName, commandList, commandQueue);
+		LoadSDKMesh(fileName);
 	}
 
 }
@@ -87,38 +87,32 @@ std::pair<ComPtr<ID3D12Resource>, UINT> Mesh::GetVertexBufferResourceAndCount()
 	return std::pair<ComPtr<ID3D12Resource>, UINT>(defaultHeap,static_cast<UINT>(numVertices));
 }
 
-D3D12_VERTEX_BUFFER_VIEW Mesh::GetVertexBuffer()
+D3D12_VERTEX_BUFFER_VIEW& Mesh::GetVertexBuffer()
 {
 	return vertexBuffer;
 }
 
-D3D12_INDEX_BUFFER_VIEW Mesh::GetIndexBuffer()
+D3D12_INDEX_BUFFER_VIEW& Mesh::GetIndexBuffer()
 {
 	return indexBuffer;
 }
 
-ComPtr<ID3D12Resource> Mesh::GetVertexBufferResource()
+ComPtr<ID3D12Resource>& Mesh::GetVertexBufferResource()
 {
 	return defaultHeap;
 }
 
-unsigned int Mesh::GetIndexCount()
+unsigned int& Mesh::GetIndexCount()
 {
 	return numIndices;
 }
 
-unsigned int Mesh::GetVertexCount()
+unsigned int& Mesh::GetVertexCount()
 {
 	return numVertices;
 }
 
-
-std::vector<Vector3> Mesh::GetPoints()
-{
-	return std::vector<Vector3>();
-}
-
-std::vector<Vertex> Mesh::GetVerts()
+std::vector<Vertex>& Mesh::GetVerts()
 {
 	return vertices;
 }
@@ -147,11 +141,11 @@ bool Mesh::RayMeshTest(Vector4 origin, Vector4 direction)
 	return false;
 }
 
-void Mesh::LoadFBX(ComPtr<ID3D12Device> device, std::string& filename)
+void Mesh::LoadFBX(std::string& filename)
 {
 }
 
-void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList)
+void Mesh::LoadOBJ(std::string& fileName)
 {
 
 	bool binExists = false;
@@ -178,8 +172,8 @@ void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID
 		fileStream.read(reinterpret_cast<char*>(&vertices[0]), sizeof(Vertex)*vertCount);
 		fileStream.read(reinterpret_cast<char*>(&indices[0]), sizeof(UINT)* indicesCount);
 		fileStream.close();
-		vertexBuffer = CreateVBView(vertices.data(), vertCount, device, commandList, defaultHeap, uploadHeap);
-		indexBuffer = CreateIBView(indices.data(), vertCount, device, commandList, defaultIndexHeap, uploadIndexHeap);
+		vertexBuffer = CreateVBView(vertices.data(), vertCount,defaultHeap, uploadHeap);
+		indexBuffer = CreateIBView(indices.data(), vertCount, defaultIndexHeap, uploadIndexHeap);
 		this->numIndices = vertCount;
 		return;
 	}
@@ -348,8 +342,8 @@ void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID
 
 		this->numIndices = vertCount;
 
-		vertexBuffer = CreateVBView(vertices.data(), vertCount, device, commandList, defaultHeap, uploadHeap);
-		indexBuffer = CreateIBView(indices.data(), vertCount, device, commandList, defaultIndexHeap, uploadIndexHeap);
+		vertexBuffer = CreateVBView(vertices.data(), vertCount, defaultHeap, uploadHeap);
+		indexBuffer = CreateIBView(indices.data(), vertCount, defaultIndexHeap, uploadIndexHeap);
 
 		if (!binExists)
 		{
@@ -394,17 +388,17 @@ void Mesh::LoadOBJ(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID
 	}
 }
 
-void Mesh::LoadSDKMesh(ComPtr<ID3D12Device> device, std::string& fileName, ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12CommandQueue> commandQueue)
+void Mesh::LoadSDKMesh(std::string& fileName)
 {
 	std::wstring name = std::wstring(fileName.begin(), fileName.end());
-	auto model = Model::CreateFromSDKMESH(name.c_str(), device.Get());
+	auto model = Model::CreateFromSDKMESH(name.c_str(), GetAppResources().device.Get());
 
-	ResourceUploadBatch resourceUploadBatch(device.Get());
+	ResourceUploadBatch resourceUploadBatch(GetAppResources().device.Get());
 
 	resourceUploadBatch.Begin();
-	model->LoadStaticBuffers(device.Get(), resourceUploadBatch);
+	model->LoadStaticBuffers(GetAppResources().device.Get(), resourceUploadBatch);
 
-	auto uploadResourcesFinished = resourceUploadBatch.End(commandQueue.Get());
+	auto uploadResourcesFinished = resourceUploadBatch.End(GetAppResources().graphicsQueue.Get());
 
 	uploadResourcesFinished.wait();
 }

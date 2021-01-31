@@ -17,6 +17,7 @@
 #include <SimpleMath.h>
 
 #include "imgui/imgui.h"
+#include "imgui/imgui_stdlib.h"
 #include "imgui/imgui_impl_win32.h"
 #include "imgui/imgui_impl_dx12.h"
 #include "imgui/ImGuizmo.h"
@@ -113,6 +114,34 @@ inline Vector2* GenerateHaltonJitters()
 	return jitters;
 }
 
+struct EulerAngles {
+	double roll, pitch, yaw;
+};
+
+inline EulerAngles ToEulerAngles(Quaternion q)
+{
+	EulerAngles angles;
+
+	// roll (x-axis rotation)
+	double sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
+	double cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
+	angles.roll = std::atan2(sinr_cosp, cosr_cosp);
+
+	// pitch (y-axis rotation)
+	double sinp = 2 * (q.w * q.y - q.z * q.x);
+	if (std::abs(sinp) >= 1)
+		angles.pitch = std::copysign(XM_PI / 2, sinp); // use 90 degrees if out of range
+	else
+		angles.pitch = std::asin(sinp);
+
+	// yaw (z-axis rotation)
+	double siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+	double cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+	angles.yaw = std::atan2(siny_cosp, cosy_cosp);
+
+	return angles;
+}
+
 inline float Float3Distance(Vector3 pos1, Vector3 pos2)
 {
 	XMVECTOR vector1 = XMLoadFloat3(&pos1);
@@ -200,22 +229,19 @@ void WaitToFlushGPU(ComPtr<ID3D12CommandQueue> commandQueue,ComPtr<ID3D12Fence> 
 
 using namespace Microsoft::WRL;
 
-D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts,ComPtr<ID3D12Device> device,
-	ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource>& vertexBufferHeap, ComPtr<ID3D12Resource>& uploadHeap);
+D3D12_VERTEX_BUFFER_VIEW CreateVBView(Vertex* vertexData, unsigned int numVerts, ComPtr<ID3D12Resource>& vertexBufferHeap, ComPtr<ID3D12Resource>& uploadHeap);
 
-D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIndices, ComPtr<ID3D12Device> device,
-	ComPtr<ID3D12GraphicsCommandList> commandList, ComPtr<ID3D12Resource>& indexBufferHeap, ComPtr<ID3D12Resource>& uploadIndexHeap);
+D3D12_INDEX_BUFFER_VIEW CreateIBView(unsigned int* indexData, unsigned int numIndices, ComPtr<ID3D12Resource>& indexBufferHeap, ComPtr<ID3D12Resource>& uploadIndexHeap);
 
-void LoadTexture(ComPtr<ID3D12Device>& device, ComPtr<ID3D12Resource>& tex, std::wstring textureName, 
-	ComPtr<ID3D12CommandQueue>& commandQueue,
-	ComPtr<ID3D12GraphicsCommandList> commandList = nullptr, ID3D12Resource* uploadRes = nullptr,
+void LoadTexture(ComPtr<ID3D12Resource>& tex, std::wstring textureName, 
+	ID3D12Resource* uploadRes = nullptr,
 	TEXTURE_TYPES type=TEXTURE_TYPE_DEAULT);
 
 void GetHardwareAdapter(IDXGIFactory2* pFactory, IDXGIAdapter1** ppAdapter);
 
-void GenerateMipMaps(ComPtr<ID3D12Resource> texture);
+void GenerateMipMaps(ComPtr<ID3D12Resource>& texture);
 
-void PrefilterLTCTexture(ComPtr<ID3D12Resource> texture);
+void PrefilterLTCTexture(ComPtr<ID3D12Resource>& texture);
 
 void DenoiseBMFR(ManagedResource inputTex, ManagedResource inputNorm, ManagedResource inputWorld,
 	ManagedResource inputAlbedo, ManagedResource prevNorm, ManagedResource prevWorld,
@@ -233,9 +259,9 @@ void BMFRRegression(ManagedResource rtOutput, ManagedResource normals, ManagedRe
 
 ComPtr<ID3D12PipelineState> CreatePipelineState();
 
-void TransitionResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedResource& resource, D3D12_RESOURCE_STATES afterState);
+void TransitionManagedResource(const ComPtr<ID3D12GraphicsCommandList>& commandList, ManagedResource& resource, D3D12_RESOURCE_STATES afterState);
 
-void CopyResource(ComPtr<ID3D12GraphicsCommandList> commandList, ManagedResource& dst, ManagedResource& src);
+void CopyResource(ComPtr<ID3D12GraphicsCommandList>& commandList, ManagedResource& dst, ManagedResource& src);
 // Computes a compute shader dispatch size given a thread group size, and number of elements to process
 UINT DispatchSize(UINT tgSize, UINT numElements);
 
@@ -245,9 +271,9 @@ void LoadPrefilteredLTCTexture(ManagedResource tex);
 
 ApplicationResources& GetAppResources();
 
-void SubmitGraphicsCommandList(ComPtr<ID3D12GraphicsCommandList> commandList);
+void SubmitGraphicsCommandList(const ComPtr<ID3D12GraphicsCommandList>& commandList);
 
-void SubmitComputeCommandList(ComPtr<ID3D12GraphicsCommandList> computeCommandList, ComPtr<ID3D12GraphicsCommandList> commandList);
+void SubmitComputeCommandList(const ComPtr<ID3D12GraphicsCommandList>& computeCommandList, const ComPtr<ID3D12GraphicsCommandList>& commandList);
 
 
 

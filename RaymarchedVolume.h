@@ -42,8 +42,8 @@ class RaymarchedVolume
 
 public:
 	RaymarchedVolume(std::wstring volumeTex, std::shared_ptr<Mesh> mesh, ComPtr<ID3D12PipelineState>& volumePSO,
-		ComPtr<ID3D12RootSignature> volumeRoot, ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& commandQueue,
-		DescriptorHeapWrapper& mainBufferHeap,ComPtr<ID3D12GraphicsCommandList> commandList);
+		ComPtr<ID3D12RootSignature> volumeRoot,
+		DescriptorHeapWrapper& mainBufferHeap);
 
 	void SetPosition(Vector3 pos);
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
@@ -56,7 +56,7 @@ public:
 
 	void PrepareForDraw(Matrix view, Matrix proj, Vector3 camPosition,float totalTime);
 
-	void Render(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer);
+	void Render(std::shared_ptr<GPUHeapRingBuffer>& ringBuffer);
 
 	UINT volumeTextureIndex;
 };

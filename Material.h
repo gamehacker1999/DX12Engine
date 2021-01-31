@@ -45,8 +45,8 @@ public:
 	Material(std::wstring diffuse = L"default", std::wstring normal = L"default", std::wstring roughness = L"default",
 		std::wstring metallnes = L"default");
 
-	void GenerateMaps(ComPtr<ID3D12PipelineState> vmfSolverPSO, ComPtr<ID3D12RootSignature> vmfRootSig,
-		std::shared_ptr<GPUHeapRingBuffer> gpuRingBuffer);
+	void GenerateMaps(ComPtr<ID3D12PipelineState>& vmfSolverPSO, ComPtr<ID3D12RootSignature>& vmfRootSig,
+		std::shared_ptr<GPUHeapRingBuffer>& gpuRingBuffer);
 
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();

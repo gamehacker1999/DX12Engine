@@ -32,6 +32,8 @@ protected:
 	//quaternion for rotation
 	Quaternion rotation;
 
+	EulerAngles angles;
+
 	//model matrix of the entity
 	Matrix modelMatrix;
 
@@ -74,33 +76,34 @@ protected:
 
 public:
 	//constructor which accepts a mesh
-	Entity(entt::registry& registry, ComPtr<ID3D12PipelineState> pipelineState, ComPtr<ID3D12RootSignature> rootSig);
+	Entity(entt::registry& registry, ComPtr<ID3D12PipelineState>& pipelineState, ComPtr<ID3D12RootSignature>& rootSig, std::string name ="default");
+
 	virtual ~Entity();
 
 	//getters and setters
 	void SetPosition(Vector3 position);
-	void SetRotation(Vector4 rotation);
+	void SetRotation(Quaternion rotation);
 	void SetRotation(float yaw, float pitch, float roll);
 	void SetOriginalRotation(Vector4 rotation);
 	void SetScale(Vector3 scale);
 	void SetModelMatrix(Matrix matrix);
-	void Draw(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> commandList, std::shared_ptr<GPUHeapRingBuffer> ringBuffer);
+	void Draw(const ComPtr<ID3D12GraphicsCommandList>& commandList, std::shared_ptr<GPUHeapRingBuffer>& ringBuffer);
 	//void SetRigidBody(std::shared_ptr<RigidBody> body);
 	//std::shared_ptr<RigidBody> GetRigidBody();
 	void UseRigidBody();
 
-	Vector3 GetPosition();
-	Vector3 GetForward();
-	Vector3 GetRight();
-	Vector3 GetUp();
+	Vector3& GetPosition();
+	Vector3& GetForward();
+	Vector3& GetRight();
+	Vector3& GetUp();
 
-	Vector3 GetScale();
-	Quaternion GetRotation();
-	Matrix GetModelMatrix();
-	Matrix GetPrevModelMatrix();
-	XMMATRIX GetRawModelMatrix();
+	Vector3& GetScale();
+	Quaternion& GetRotation();
+	Matrix& GetModelMatrix();
+	Matrix& GetPrevModelMatrix();
+	XMMATRIX& GetRawModelMatrix();
 
-	entt::entity GetEntityID();
+	entt::entity& GetEntityID();
 
 	void SetTag(std::string tag);
 	std::string GetTag();
@@ -109,25 +112,25 @@ public:
 
 	bool GetAliveState();
 
-	std::shared_ptr<Mesh> GetMesh();
-	UINT GetMaterialIndex();
+	std::shared_ptr<Mesh>& GetMesh();
+	UINT& GetMaterialIndex();
 	ComPtr<ID3D12PipelineState>& GetPipelineState();
 	ComPtr<ID3D12RootSignature>& GetRootSignature();
 
 	DescriptorHeapWrapper& GetDescriptorHeap();
 
 	void AddModel(std::string pathToFile);
-	std::shared_ptr<MyModel> GetModel();
+	std::shared_ptr<MyModel>& GetModel();
 	void AddMaterial(unsigned int matId);
 
 	DirectX::BoundingBox GetBounds();
 
 	//std::shared_ptr<Material> GetMaterial();
 
-	void ManipulateTransforms(Matrix view, Matrix proj, ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE);
+	void ManipulateTransforms(Matrix& view, Matrix& proj, ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE);
 
 	//method that prepares the material and sends it to the gpu
-	void PrepareConstantBuffers(ComPtr<ID3D12Device> device,D3DX12Residency::ResidencyManager resManager,
+	void PrepareConstantBuffers(D3DX12Residency::ResidencyManager resManager,
 		std::shared_ptr<D3DX12Residency::ResidencySet>& residencySet);
 	void PrepareMaterial(Matrix view, Matrix projection);
 
@@ -136,7 +139,7 @@ public:
 
 	void CreateBounds();
 
-	bool RayBoundIntersection(Vector4 origin, Vector4 direction, float& dist, Matrix viewMat);
+	bool RayBoundIntersection(Vector4& origin, Vector4& direction, float& dist, Matrix& viewMat);
 
 	virtual bool IsColliding(std::shared_ptr<Entity> other);
 };

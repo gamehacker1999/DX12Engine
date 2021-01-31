@@ -23,7 +23,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     float3 rgbSE = taaOutput.Sample(pointSampler, (input.uv + float2(add.x, add.y)));
     float3 rgbM =  taaOutput.Sample(pointSampler, (input.uv));
     
-    //return float4(rgbM, 1.0f);
+    return float4(rgbM, 1.0f);
 	
     float3 luma = float3(0.299, 0.587, 0.114);
     float lumaNW = dot(rgbNW, luma);

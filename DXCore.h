@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <windowsx.h>
 #include <d3d12.h>
+#include <dxgidebug.h>
 #include<dxgi1_6.h>
 #include<exception>
 #include <string>
@@ -121,6 +122,9 @@ protected:
 
 	float totalTime;
 	float deltaTime;
+
+	ImGuiIO io;
+	UINT dxgiFactoryFlags;
 
 private:
 	// Timing related data

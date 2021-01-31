@@ -15,7 +15,7 @@ public:
 
 	MyModel(std::string pathToFile);
     void SetMaterial(unsigned int id);
-    void Draw(ComPtr<ID3D12GraphicsCommandList> commandList, bool drawMats = true);
+    void Draw(const ComPtr<ID3D12GraphicsCommandList>& commandList, bool drawMats = true);
     std::vector<std::shared_ptr<Mesh>> GetMeshes();
 
 private:

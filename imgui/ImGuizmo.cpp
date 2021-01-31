@@ -858,24 +858,25 @@ namespace ImGuizmo
       ImGui::SetCurrentContext(ctx);
    }
 
-   void BeginFrame()
+   void BeginFrame(ImVec2 size, ImVec2 origin)
    {
-      const ImU32 flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus;
+       const ImU32 flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus;
 
 #ifdef IMGUI_HAS_VIEWPORT
-      ImGui::SetNextWindowSize(ImGui::GetMainViewport()->Size);
-      ImGui::SetNextWindowPos(ImGui::GetMainViewport()->Pos);
+      ImGui::SetNextWindowSize(size);
+      ImGui::SetNextWindowPos(origin);
 #else
       ImGuiIO& io = ImGui::GetIO();
-      ImGui::SetNextWindowSize(io.DisplaySize);
-      ImGui::SetNextWindowPos(ImVec2(0, 0));
+      ImGui::SetNextWindowSize(size);
+      ImGui::SetNextWindowPos(origin);
 #endif
 
       ImGui::PushStyleColor(ImGuiCol_WindowBg, 0);
       ImGui::PushStyleColor(ImGuiCol_Border, 0);
       ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 
-      ImGui::Begin("gizmo", NULL, flags);
+      bool yes;
+      ImGui::Begin("gizmo", &yes, flags);
       gContext.mDrawList = ImGui::GetWindowDrawList();
       ImGui::End();
       ImGui::PopStyleVar();

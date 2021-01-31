@@ -48,15 +48,14 @@ public:
 	ComPtr<ID3D12Resource>& GetConstantBuffer();
 	DescriptorHeapWrapper& GetDescriptorHeap();
 
-	void CreateEnvironment(ComPtr<ID3D12GraphicsCommandList> commandList,
-		ComPtr<ID3D12Device> device, ComPtr<ID3D12RootSignature> prefilterRootSignature, ComPtr<ID3D12RootSignature> brdfRootSignature,
-		ComPtr<ID3D12PipelineState> irradiencePSO, ComPtr<ID3D12PipelineState> prefilteredMapPSO,
-		ComPtr<ID3D12PipelineState> brdfLUTPSO, D3D12_CPU_DESCRIPTOR_HANDLE depthStencilHandle);
+	void CreateEnvironment(ComPtr<ID3D12RootSignature>& prefilterRootSignature, ComPtr<ID3D12RootSignature>& brdfRootSignature,
+		ComPtr<ID3D12PipelineState>& irradiencePSO, ComPtr<ID3D12PipelineState>& prefilteredMapPSO,
+		ComPtr<ID3D12PipelineState>& brdfLUTPSO, D3D12_CPU_DESCRIPTOR_HANDLE depthStencilHandle);
 
 	ManagedResource& GetSkyboxTexture();
 	std::shared_ptr<Mesh>& GetMesh();
 
-	void PrepareForDraw(Matrix view, Matrix proj, Vector3 camPosition);
+	void PrepareForDraw(Matrix& view, Matrix& proj, Vector3& camPosition);
 
 	DescriptorHeapWrapper GetEnvironmentHeap();
 

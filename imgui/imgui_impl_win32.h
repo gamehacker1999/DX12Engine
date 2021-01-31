@@ -6,6 +6,7 @@
 //  [X] Platform: Mouse cursor shape and visibility. Disable with 'io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange'.
 //  [X] Platform: Keyboard arrays indexed using VK_* Virtual Key Codes, e.g. ImGui::IsKeyPressed(VK_SPACE).
 //  [X] Platform: Gamepad support. Enabled with 'io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad'.
+//  [X] Platform: Multi-viewport support (multiple windows). Enable with 'io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable'.
 
 // You can copy and use unmodified imgui_impl_* files in your project. See examples/ folder for examples of using this.
 // If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
@@ -19,9 +20,8 @@ IMGUI_IMPL_API void     ImGui_ImplWin32_Shutdown();
 IMGUI_IMPL_API void     ImGui_ImplWin32_NewFrame();
 
 // Configuration
-// - Disable gamepad support or linking with xinput.lib
+// - Disable gamepad support
 //#define IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
-//#define IMGUI_IMPL_WIN32_DISABLE_LINKING_XINPUT
 
 // Win32 message handler your application need to call.
 // - Intentionally commented out in a '#if 0' block to avoid dragging dependencies on <windows.h> from this helper.
