@@ -1,7 +1,7 @@
 #include "Common.hlsl"
 #include "RayGenIncludes.hlsli"
 
-RWStructuredBuffer<float> newSequences : register(u0, space1);
+RWStructuredBuffer<uint> newSequences : register(u0, space1);
 
 struct RayTraceCameraData
 {
@@ -48,7 +48,7 @@ void RayGen()
 
     else
     {
-        uint rndseed = initRand(launchIndex.x , launchIndex.y );
+        uint rndseed = newSequences[launchIndex.y * 1920 + launchIndex.x];
 
         float3 V = normalize(cameraPosition - pos);
         // Do explicit direct lighting to a random light in the scene

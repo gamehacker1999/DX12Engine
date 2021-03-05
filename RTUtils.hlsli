@@ -290,7 +290,6 @@ float3 DirectLighting(float rndseed, float3 pos, float3 norm, float3 V, float me
 float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness, float rayDepth)
 {
     float probDiffuse = probabilityToSampleDiffuse(surfaceColor, f0);
-    float chooseDiffuse = (nextRand(rndseed) < probDiffuse);
     float3 response = float3(0, 0, 0);
     
     if (true)

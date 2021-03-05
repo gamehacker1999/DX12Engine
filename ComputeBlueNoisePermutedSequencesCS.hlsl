@@ -1,14 +1,15 @@
 
 Texture2D blueNoise : register(t0);
 Texture2D prevFrame : register(t1);
-RWStructuredBuffer<float> newSequences : register(u0);
+RWStructuredBuffer<uint> newSequences : register(u0);
 SamplerState pointSampler : register(s0);
 
-cbuffer ExternData : register(b0)
+#define X_OFFSET 2
+#define Y_OFFSET 2
+
+cbuffer ExternData : register(b0, space1)
 {
     uint frameNum;
-    float frameWidth;
-    float frameHeight;
 }
 
 // Generates a seed for a random number generator from 2 inputs plus a backoff
@@ -25,15 +26,19 @@ uint InitRand(uint val0, uint val1, uint backoff = 16)
     }
     return v0;
 }
+#define BLOCK 4
 
 // A function to implement bubble sort  
-void BubbleSortNoise(inout float2 arr[16])
+void BubbleSort(inout float2 arr1[BLOCK * BLOCK])
 {
+    
+    float2 arr[BLOCK*BLOCK] = arr1;
+    
     int i, j;
-    for (i = 0; i < 16 - 1; i++)
+    for (i = 0; i < BLOCK * BLOCK - 1; i++)
     {
     
-        for (j = 0; j < 16 - i - 1; j++)
+        for (j = 0; j < BLOCK * BLOCK - i - 1; j++)
         {
         
             if (arr[j].r > arr[j + 1].r)
@@ -44,6 +49,8 @@ void BubbleSortNoise(inout float2 arr[16])
             }
         }
     }
+    
+    arr1 = arr;
 }
   
 float CalcIntensity(float3 color)
@@ -51,86 +58,44 @@ float CalcIntensity(float3 color)
     return 0.299 * color.r + 0.587*color.g + 0.114*color.b;
 }
 
-groupshared float newRandSeeds[16];
 
-[numthreads(4, 4, 1)]
+groupshared uint newRandSeeds[BLOCK * BLOCK];
+groupshared float2 colors[BLOCK * BLOCK];
+groupshared float2 blueNoiseColors[BLOCK * BLOCK];
+groupshared uint randSeeds[BLOCK * BLOCK];
+
+[numthreads(BLOCK, BLOCK, 1)]
 void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dispatch.
 uint3 groupThreadID : SV_GroupThreadID, // 3D index of local thread ID in a thread group.
 uint3 dispatchThreadID : SV_DispatchThreadID, // 3D index of global thread ID in the dispatch.
 uint groupIndex : SV_GroupIndex)
 {
-    if(frameNum == 0)
-    {
-        newSequences[dispatchThreadID.y*frameWidth+dispatchThreadID.x] = InitRand(dispatchThreadID.x, dispatchThreadID.y);
-    }
+    uint initialRand = InitRand(dispatchThreadID.x, dispatchThreadID.y);
+    randSeeds[groupIndex] = initialRand;
     
-    if (groupIndex==0)
+    //float2 samplePoint = float2(dispatchThreadID.xy) / float2((1920.f), (1080.f));
+    
+    colors[groupIndex] = float2(CalcIntensity(prevFrame.Load(dispatchThreadID).rgb), groupIndex);
+    blueNoiseColors[groupIndex] = float2(blueNoise.Load(dispatchThreadID).r, groupIndex);
+    
+    GroupMemoryBarrierWithGroupSync();
+    
+    
+    if(groupIndex == 0)
     {
-        float2 colors[16];
-        float2 blueNoiseColors[16];
-        float randSeeds[16] =
-        {
-            InitRand(dispatchThreadID.x, dispatchThreadID.y),
-            InitRand(dispatchThreadID.x+1, dispatchThreadID.y),
-            InitRand(dispatchThreadID.x+2, dispatchThreadID.y),
-            InitRand(dispatchThreadID.x+3, dispatchThreadID.y),
-            InitRand(dispatchThreadID.x, dispatchThreadID.y+1),
-            InitRand(dispatchThreadID.x+1, dispatchThreadID.y+1),
-            InitRand(dispatchThreadID.x+2, dispatchThreadID.y+1),
-            InitRand(dispatchThreadID.x+3, dispatchThreadID.y+1),
-            InitRand(dispatchThreadID.x, dispatchThreadID.y + 2),
-            InitRand(dispatchThreadID.x+1, dispatchThreadID.y+2),
-            InitRand(dispatchThreadID.x+2, dispatchThreadID.y+2),
-            InitRand(dispatchThreadID.x+3, dispatchThreadID.y+2),
-            InitRand(dispatchThreadID.x, dispatchThreadID.y + 3),
-            InitRand(dispatchThreadID.x+1, dispatchThreadID.y+3),
-            InitRand(dispatchThreadID.x+2, dispatchThreadID.y+3),
-            InitRand(dispatchThreadID.x+3, dispatchThreadID.y+3),
-
-        };
-        
-        float2 samplePoints[16] =
-        {
-            float2(dispatchThreadID.xy) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 1, dispatchThreadID.y) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 2, dispatchThreadID.y) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 3, dispatchThreadID.y) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x, dispatchThreadID.y + 1) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 1, dispatchThreadID.y + 1) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 2, dispatchThreadID.y + 1) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 3, dispatchThreadID.y + 1) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x, dispatchThreadID.y + 2) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 1, dispatchThreadID.y + 2) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 2, dispatchThreadID.y + 2) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 3, dispatchThreadID.y + 2) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x, dispatchThreadID.y + 3) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 1, dispatchThreadID.y + 3) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 2, dispatchThreadID.y + 3) / float2(frameWidth, frameHeight),
-            float2(dispatchThreadID.x + 3, dispatchThreadID.y + 3) / float2(frameWidth, frameHeight)
-
-        };
-       
-        
-        for (int i = 0; i < 16; i++)
-        {
-            colors[i] = float2(CalcIntensity(prevFrame.SampleLevel(pointSampler, samplePoints[i], 0).rgb), i);
-            blueNoiseColors[i] = float2(blueNoise.SampleLevel(pointSampler, samplePoints[i], 0).r, i);
-
-        }
-        
-        BubbleSortNoise(colors);
-        BubbleSortNoise(blueNoiseColors);
-        
-        for (int i = 0; i < 16; i++)
-        {
-            newRandSeeds[blueNoiseColors[i].g] = randSeeds[colors[i].g];
-        }
-
+        BubbleSort(colors);
+        BubbleSort(blueNoiseColors);
     }
     
     GroupMemoryBarrierWithGroupSync();
     
-    newSequences[(dispatchThreadID.x) + (dispatchThreadID.y)*4] = newRandSeeds[groupIndex];
+    newRandSeeds[(blueNoiseColors[groupIndex].g)] = randSeeds[(colors[groupIndex].g)];
+    
+    GroupMemoryBarrierWithGroupSync();
+    
+    uint num = newRandSeeds[groupIndex];
+    
+    newSequences[(dispatchThreadID.x) * 1080 + (dispatchThreadID.y)] = num;
 
 
 }

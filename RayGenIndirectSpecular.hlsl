@@ -9,7 +9,7 @@ struct RayTraceCameraData
 };
 
 ConstantBuffer<RayTraceCameraData> cameraData : register(b0);
-RWStructuredBuffer<float> newSequences : register(u0, space1);
+RWStructuredBuffer<uint> newSequences : register(u0, space1);
 
 
 [shader("raygeneration")]
@@ -46,7 +46,7 @@ void IndirectSpecularRayGen()
     }
     else
     {
-        uint rndseed = newSequences[launchIndex.y*1920+launchIndex.x];
+        uint rndseed = newSequences[launchIndex.x * 1080 + launchIndex.y];
 
         float3 V = normalize(cameraPosition - pos);
 

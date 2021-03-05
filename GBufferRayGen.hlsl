@@ -13,6 +13,7 @@ struct RayTraceCameraData
 
 
 ConstantBuffer<RayTraceCameraData> cameraData: register(b0);
+RWStructuredBuffer<uint> newSequences : register(u0, space1);
 
 [shader("raygeneration")]
 void GBufferRayGen() 
@@ -26,7 +27,7 @@ void GBufferRayGen()
     float2 dims = float2(DispatchRaysDimensions().xy);
     float2 d = (((launchIndex.xy + 0.5f) / dims.xy) * 2.f - 1.f);
 
-    uint rndseed = initRand(launchIndex.x, launchIndex.y);
+    uint rndseed = newSequences[launchIndex.y * 1920 + launchIndex.x];
 
     //creating the rayDescription
     RayDesc ray;

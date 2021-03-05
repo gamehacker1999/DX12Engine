@@ -112,6 +112,11 @@ struct RayTraceCameraData
 	Matrix iProj;
 };
 
+struct BNDSExternalData
+{
+	UINT frame;
+};
+
 class Game
 	: public DXCore
 {
@@ -290,6 +295,10 @@ private:
 	TAAExternData taaData;
 	UINT8* taaDataBegin;
 	ComPtr<ID3D12Resource> taaCBResource;
+
+	BNDSExternalData bndsData;
+	UINT8* bndsDataBegin;
+	ComPtr<ID3D12Resource> bndsCBResource;
 
 	//blue noise permulation variables
 	ManagedResource blueNoiseTex;

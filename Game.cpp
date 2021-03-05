@@ -415,7 +415,7 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoise512.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoiseRes.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	blueNoiseTex.resource->SetName(L"bluenoise");
 
 
@@ -1445,7 +1445,7 @@ void Game::LoadShaders()
 			rootParams[BlueNoiseDithering::BlueNoiseTex].InitAsDescriptorTable(1, &rootRanges[0]);
 			rootParams[BlueNoiseDithering::PrevFrameNoisy].InitAsDescriptorTable(1, &rootRanges[1]);
 			rootParams[BlueNoiseDithering::NewSequences].InitAsUnorderedAccessView(0, 0);
-			rootParams[BlueNoiseDithering::FrameNum].InitAsConstants(3, 0, 0);
+			rootParams[BlueNoiseDithering::FrameNum].InitAsConstantBufferView(0,1);
 
 			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
 			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT);
@@ -1560,6 +1560,15 @@ void Game::CreateBasicGeometry()
 		IID_PPV_ARGS(taaCBResource.GetAddressOf())
 	));
 
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().uploadHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(bndsCBResource.GetAddressOf())
+	));
+
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().uploadHeapType,
@@ -1626,6 +1635,8 @@ void Game::CreateBasicGeometry()
 	));
 
 	sampleSequences.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+	bndsCBResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&bndsDataBegin));
 
 	lights = new Light[MAX_LIGHTS];
 
@@ -2205,7 +2216,8 @@ void Game::CreateShaderBindingTable()
 
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
-		GBsbtGenerator.AddRayGenerationProgram(L"GBufferRayGen", { heapPointer });
+		GBsbtGenerator.AddRayGenerationProgram(L"GBufferRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
+			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
 		GBsbtGenerator.AddMissProgram(L"GBufferMiss", { heapPointer });
 		for (size_t i = 0; i < entities.size(); i++)
 		{
@@ -2847,7 +2859,7 @@ void Game::Update(float deltaTime, float totalTime)
 	float xRand = (jitters[numFrames % 16].x * 2.0f -1.0f) / width;
 	float yRand = (jitters[numFrames % 16].y * 2.0f - 1.0f) / height;
 
-	mainCamera->JitterProjMatrix(xRand, yRand);
+	mainCamera->JitterProjMatrix(0, 0);
 
 	currentJitters = Vector2(xRand, yRand);
 
@@ -3381,23 +3393,32 @@ void Game::BNDSPrePass()
 	TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	TransitionManagedResource(commandList, blueNoiseTex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
+
+
 	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::BlueNoiseTex, blueNoiseTex.srvGPUHandle);
 	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::PrevFrameNoisy, rtCombineOutput.srvGPUHandle);
 	computeCommandList->SetComputeRootUnorderedAccessView(BlueNoiseDithering::NewSequences, sampleSequences.resource->GetGPUVirtualAddress());
 
-	float frameCount = numFrames;
+	UINT frameCount = numFrames;
 
-	if (!raster)
+	if (raster)
 	{
 		frameCount = 0;
 	}
 
-	computeCommandList->SetComputeRoot32BitConstant(BlueNoiseDithering::FrameNum, frameCount, 0);
-	computeCommandList->SetComputeRoot32BitConstant(BlueNoiseDithering::FrameNum, width, 1);
-	computeCommandList->SetComputeRoot32BitConstant(BlueNoiseDithering::FrameNum, height, 2);
+	bndsData = {};
+	bndsData.frame = frameCount;
+
+	memcpy(bndsDataBegin, &bndsData, sizeof(BNDSExternalData));
+
+	computeCommandList->SetComputeRootConstantBufferView(BlueNoiseDithering::FrameNum, bndsCBResource->GetGPUVirtualAddress());
+
 
 
 	computeCommandList->Dispatch(width / 4, height / 4, 1);
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
+	commandList->ResourceBarrier(1, &barrier);
 }
 
 void Game::RenderVelocityBuffer()
@@ -3616,21 +3637,6 @@ void Game::PopulateCommandList()
 		CreateIndirectDiffuseRays();
 		CreateIndirectSpecularRays();
 
-		
-		//CopyResource(commandList, tempRTIndDiffuse, rtIndirectDiffuseOutPut);
-		//
-		//BMFRPreprocess(tempRTIndDiffuse, rtNormals, rtPosition, prevNoisy, prevNormals, prevPosition, acceptBools,
-		//	outPrevFramePixels, bmfrPreProcessCBV, numFrames, renderTargetSRVHeap.GetHeap(), rtCombineOutput.rtvCPUHandle);
-		//
-		//CopyResource(commandList, rtIndirectDiffuseOutPut, tempRTIndDiffuse);
-		//
-		//CopyResource(commandList, tempRTIndSpec, rtIndirectSpecularOutPut);
-		//
-		//BMFRPreprocess(tempRTIndSpec, rtNormals, rtPosition, prevNoisy, prevNormals, prevPosition, acceptBools,
-		//	outPrevFramePixels, bmfrPreProcessCBV, numFrames, renderTargetSRVHeap.GetHeap(), rtCombineOutput.rtvCPUHandle);
-		//
-		//CopyResource(commandList, rtIndirectSpecularOutPut, tempRTIndSpec);
-
 		//RT combine
 		{
 			//transition render target to readable texture and then transition it back to render target
@@ -3716,7 +3722,7 @@ void Game::PopulateCommandList()
 	}
 	//RenderEditorWindow();
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	RenderGUI(deltaTime, totalTime);
+	//RenderGUI(deltaTime, totalTime);
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),

@@ -45,7 +45,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float4 previousColor = previousFrame.SampleLevel(pointSampler, input.uv, 0);
     float2 pixelSize = float2(1.0 / float(WIDTH), 1.0 / float(HEIGHT)); //Need to pass this later
 
-	if (frameNum == 0)
+	if (frameNum == frameNum)
 	{
 		return float4(currentColor, 1.0f);
 	}

@@ -1,7 +1,7 @@
 #include "RayGenIncludes.hlsli"
 
 
-RWStructuredBuffer<float> newSequences : register(u0, space1);
+RWStructuredBuffer<uint> newSequences : register(u0, space1);
 
 
 struct RayTraceCameraData
@@ -48,7 +48,7 @@ void IndirectDiffuseRayGen()
     }
     else
     {
-        uint rndseed = newSequences[launchIndex.y * 1920 + launchIndex.x];
+        uint rndseed = newSequences[launchIndex.x * 1080 + launchIndex.y].r;
 
         float3 V = normalize(cameraPosition - pos);
 
@@ -57,8 +57,6 @@ void IndirectDiffuseRayGen()
         for (int i = 0; i < 1; i++)
         {
             // Do indirect lighting for global illumination
-            float2 offset = (i / 100, i / 100);
-            rndseed+=offset;
             indirectLight += IndirectDiffuseLighting(rndseed, pos, norm, V, metalColor.r,
 	        albedo, f0, roughness, 0);
         }
