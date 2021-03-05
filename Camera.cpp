@@ -67,6 +67,17 @@ Matrix& Camera::GetInverseProjection()
 	return invP;
 }
 
+Matrix& Camera::GetInverseView()
+{
+	XMMATRIX inverseViewTemp = XMLoadFloat4x4(&viewMatrix);
+	inverseViewTemp = XMMatrixInverse(nullptr, inverseViewTemp);
+
+	Matrix invV;
+	XMStoreFloat4x4(&invV, inverseViewTemp);
+
+	return invV;
+}
+
 void Camera::CreateProjectionMatrix(float aspectRatio)
 {
 	//creating the projection matrix
@@ -184,6 +195,12 @@ void Camera::SetPosition(Vector3 pos)
 void Camera::InvertPitch()
 {
 	yRotation *= -1;
+}
+
+void Camera::JitterProjMatrix(float x, float y)
+{
+	projectionMatrix._13 = x;
+	projectionMatrix._23 = y;
 }
 
 void Camera::GetRayOriginAndDirection(int xPos, int yPos, float width, float height, Vector4& origin, Vector4& direction)

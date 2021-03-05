@@ -1,8 +1,7 @@
 #include "Common.hlsl"
 #include "RayGenIncludes.hlsli"
 
-
-
+RWStructuredBuffer<float> newSequences : register(u0, space1);
 
 struct RayTraceCameraData
 {

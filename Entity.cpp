@@ -249,15 +249,14 @@ void Entity::AddModel(std::string pathToFile)
 	CreateBounds();
 }
 
-std::shared_ptr<MyModel>& Entity::GetModel()
+std::shared_ptr<MyModel> Entity::GetModel()
 {
 	if (model != nullptr)
 	{
 		return model;
 	}
 
-	std::shared_ptr<MyModel> temp = nullptr;
-	return temp;
+	return nullptr;
 }
 
 void Entity::AddMaterial(unsigned int matId)
@@ -294,25 +293,22 @@ DirectX::BoundingBox Entity::GetBounds()
 }
 
 
-void Entity::ManipulateTransforms(Matrix& view, Matrix& proj, ImGuizmo::OPERATION op)
+bool Entity::ManipulateTransforms(Matrix& view, Matrix& proj, ImGuizmo::OPERATION op)
 {
 
 	float tr[3];
 	float rot[3];
 	float scl[3];
 
-	auto objmat = GetModelMatrix();
-	auto tempObjMat = XMLoadFloat4x4(&objmat);
-	tempObjMat = XMMatrixTranspose(objmat);
-	XMStoreFloat4x4(&objmat, tempObjMat);
+	auto objmat = modelMatrix;
+	objmat.Transpose(objmat);
 
-	auto tempViewMat = XMLoadFloat4x4(&view);
-	tempViewMat = XMMatrixTranspose(tempViewMat);
-	XMStoreFloat4x4(&view, tempViewMat);
+	auto tempViewMat = view;
+	tempViewMat.Transpose(tempViewMat);
 
-	auto tempProjMat = XMLoadFloat4x4(&proj);
-	tempProjMat = XMMatrixTranspose(tempProjMat);
-	XMStoreFloat4x4(&proj, tempProjMat);
+	auto tempProjMat = proj;
+	tempProjMat.Transpose(tempProjMat);
+
 
 	Vector3 tempScale;
 	Vector3 tempTrans;
@@ -325,14 +321,15 @@ void Entity::ManipulateTransforms(Matrix& view, Matrix& proj, ImGuizmo::OPERATIO
 	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
 
 	Matrix deltaMatrix;
-	ImGuizmo::Manipulate(*view.m, *proj.m, op, ImGuizmo::WORLD, *objmat.m, *deltaMatrix.m);
+	auto manipulated = ImGuizmo::Manipulate(*tempViewMat.m, *tempProjMat.m, op, ImGuizmo::WORLD, *objmat.m, *deltaMatrix.m);
 
 	objmat.Decompose(tempScale, tempRot, tempTrans);
-
 
 	SetPosition(tempTrans);
 	SetScale(tempScale);
 	SetRotation(tempRot);
+
+	return manipulated;
 }
 
 void Entity::PrepareConstantBuffers(D3DX12Residency::ResidencyManager resManager,
@@ -346,8 +343,8 @@ void Entity::PrepareConstantBuffers(D3DX12Residency::ResidencyManager resManager
 
 	managedCBV.Initialize(sceneConstantBufferResource.resource.Get(), sizeof(SceneConstantBuffer));
 
-	resManager.BeginTrackingObject(&managedCBV);
-	residencySet->Insert(&managedCBV);
+	//resManager.BeginTrackingObject(&managedCBV);
+	//residencySet->Insert(&managedCBV);
 
 	CD3DX12_RANGE range(0, 0);
 
@@ -396,6 +393,12 @@ void Entity::CreateBounds()
 
 bool Entity::RayBoundIntersection(Vector4& origin, Vector4& direction, float& dist, Matrix& viewMat)
 {
+
+	if (model == nullptr)
+	{
+		return false;
+	}
+
 	auto rayOrigin = XMLoadFloat4(&origin);
 	auto rayDir = XMLoadFloat4(&direction);
 

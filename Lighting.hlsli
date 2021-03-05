@@ -90,7 +90,7 @@ float GeometricShadowing(
 	float NdotV = saturate(dot(n, v));
 
 	// Final value
-	return NdotV / (NdotV * (1 - k) + k);
+    return NdotV / max((NdotV * (1 - k) + k), 0.0001f);
 }
 
 
@@ -108,7 +108,7 @@ float SpecularDistribution(float roughness, float3 h, float3 n)
 	denom *= denom;
 	denom *= PI;
 
-	return a2 / denom;
+    return a2 / max(denom, 0.00001f);
 
 }
 

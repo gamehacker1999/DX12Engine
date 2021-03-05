@@ -42,5 +42,7 @@ void GetPrimitiveProperties(inout float3 texColor, inout float3 position, inout 
 
     //getting the roughness of pixel
     roughness = material[index + 2].SampleLevel(basicSampler, uv, 0).x;
+    
+    roughness = max(roughness, 0.0001);
 }
 

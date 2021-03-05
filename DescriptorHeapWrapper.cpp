@@ -240,9 +240,10 @@ void DescriptorHeapWrapper::CreateDescriptor(std::wstring resName, ManagedResour
 		resource.resourceType = resourceType;
 		resource.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		resource.heapOffset = lastResourceIndex;
-		lastResourceIndex++;
 		resource.srvGPUHandle = GetGPUHandle(lastResourceIndex);
 		resource.srvCPUHandle = GetCPUHandle(lastResourceIndex);
+		lastResourceIndex++;
+
 	}
 }
 

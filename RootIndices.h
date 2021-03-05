@@ -48,6 +48,7 @@ enum RaytracingHeapRangesIndices
 	RTCameraData,
 	RTMissTexture,
 	RTMaterials,
+	SampleSequences,
 	RTNumParameters
 
 };
@@ -121,4 +122,13 @@ enum BMFRPostProcessRootIndices
 	AccumFrameUAV,
 	FrameDataConstants,
 	BMFRPostProcessNumParams
+};
+
+enum BlueNoiseDithering
+{
+	BlueNoiseTex,
+	PrevFrameNoisy,
+	NewSequences,
+	FrameNum, 
+	BNDSNumParams
 };

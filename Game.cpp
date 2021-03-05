@@ -40,7 +40,7 @@ Game::Game(HINSTANCE hInstance)
 	lightCullingExternBegin = 0;
 	previousBuffer = nullptr;
 	lightCount = 0;
-	raster = true;
+	raster = false;
 	inlineRaytracing = true;
 
 	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
@@ -52,7 +52,7 @@ Game::Game(HINSTANCE hInstance)
 	enableSSS = false;
 	visibleLightIndices = nullptr;
 	visibleLightIndicesResource = 0;
-
+	entityManipulated = false;
 	keys.Reset();
 	mouseButtons.Reset();
 	entityNames.resize(10000000);
@@ -116,6 +116,12 @@ HRESULT Game::Init()
 	numFrames = -1;
 
 	jitters = GenerateHaltonJitters();
+
+	prevJitters.x = 0;
+	prevJitters.y = 0;
+
+	currentJitters.x = 0;
+	currentJitters.y = 0;
 
 	InitComputeEngine();
 
@@ -237,6 +243,7 @@ HRESULT Game::Init()
 	));
 
 	rtCombineOutput.resource->SetName(L"rt combine output");
+	rtCombineOutput.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
@@ -408,7 +415,8 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoise512.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	blueNoiseTex.resource->SetName(L"bluenoise");
 
 
 	//optimized clear value for depth stencil buffer
@@ -469,8 +477,8 @@ HRESULT Game::Init()
 	depthTex.currentState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 	dsDescriptorHeap.CreateDescriptor(depthTex, RESOURCE_TYPE_DSV, 0, width, height);
 
-	depthDesc.Create(2, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	depthDesc.CreateDescriptor(depthTex, RESOURCE_TYPE_SRV, 0, 0, 0, 0, 1);
+	//depthDesc.Create(2, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	//depthDesc.CreateDescriptor(depthTex, RESOURCE_TYPE_SRV, 0, 0, 0, 0, 1);
 
 
 	//creating the skybox bundle
@@ -482,7 +490,7 @@ HRESULT Game::Init()
 	// Helper methods for loading shaders, creating some basic
 	// geometry to draw and some simple camera matrices.
 
-	mainCamera = std::make_shared<Camera>(XMFLOAT3(3.0f, 0.f, -3.0f), XMFLOAT3(-1.0f, 0.0f, 1.0f));
+	mainCamera = std::make_shared<Camera>(XMFLOAT3(5.0f, 0.f, -3.0f), XMFLOAT3(-1.0f, 0.0f, 1.0f));
 
 	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
 
@@ -494,6 +502,10 @@ HRESULT Game::Init()
 	velocityBufferData.prevProjection = mainCamera->GetProjectionMatrix();
 	velocityBufferData.prevView = mainCamera->GetViewMatrix();
 
+	taaData.inverseProjection = mainCamera->GetInverseProjection();
+	taaData.inverseView = mainCamera->GetInverseView();
+	taaData.prevView = mainCamera->GetViewMatrix();
+	taaData.prevProjection = mainCamera->GetProjectionMatrix();
 
 	LoadShaders();
 	CreateMatrices();
@@ -551,8 +563,8 @@ HRESULT Game::Init()
 		emitters[i]->particleTextureIndex = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 	}
 
-	gpuHeapRingBuffer->AllocateStaticDescriptors(1, depthDesc);
-	depthTex.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+	//gpuHeapRingBuffer->AllocateStaticDescriptors(1, depthDesc);
+	//depthTex.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 1;
 
 	ThrowIfFailed(commandList->Close());
 
@@ -591,8 +603,10 @@ HRESULT Game::Init()
 		CreateRaytracingDescriptorHeap();
 		CreateShaderBindingTable();
 	}
-	//InitializeGUI();
+	InitializeGUI();
 
+	SubmitComputeCommandList(computeCommandList, commandList);
+	SubmitGraphicsCommandList(commandList);
 	return S_OK;
 
 }
@@ -1052,8 +1066,9 @@ void Game::LoadShaders()
 
 	//velocity setup
 	{
-		CD3DX12_ROOT_PARAMETER1 velocityRootParams[1];
-		velocityRootParams[0].InitAsConstantBufferView(0, 0);
+		CD3DX12_ROOT_PARAMETER1 velocityRootParams[2];
+		velocityRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_VERTEX);
+		velocityRootParams[1].InitAsConstants(4, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 
 
 		ComPtr<ID3DBlob> velocitySignature;
@@ -1148,19 +1163,22 @@ void Game::LoadShaders()
 
 		//TAA
 		{
-			CD3DX12_DESCRIPTOR_RANGE1 taaDescriptorRange[3];
-			CD3DX12_ROOT_PARAMETER1 taaRootParams[4];
+			CD3DX12_DESCRIPTOR_RANGE1 taaDescriptorRange[4];
+			CD3DX12_ROOT_PARAMETER1 taaRootParams[6];
 
 			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 			taaDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
 			taaDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0);
 			taaDescriptorRange[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0);
+			taaDescriptorRange[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 0);
 
 			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
 			taaRootParams[0].InitAsDescriptorTable(1, &taaDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
 			taaRootParams[1].InitAsDescriptorTable(1, &taaDescriptorRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
 			taaRootParams[2].InitAsConstants(1, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 			taaRootParams[3].InitAsDescriptorTable(1, &taaDescriptorRange[2], D3D12_SHADER_VISIBILITY_PIXEL);
+			taaRootParams[4].InitAsDescriptorTable(1, &taaDescriptorRange[3], D3D12_SHADER_VISIBILITY_PIXEL);
+			taaRootParams[5].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_PIXEL);
 
 			ComPtr<ID3DBlob> taaSignature;
 			ComPtr<ID3DBlob> taaError;
@@ -1414,6 +1432,44 @@ void Game::LoadShaders()
 			rtCombinePSODesc.SampleDesc.Count = 1;
 			ThrowIfFailed(device->CreateGraphicsPipelineState(&rtCombinePSODesc, IID_PPV_ARGS(rtCombinePSO.GetAddressOf())));
 		}
+
+		//blue noise permutation pass
+		{
+
+			CD3DX12_DESCRIPTOR_RANGE1 rootRanges[2];
+			CD3DX12_ROOT_PARAMETER1 rootParams[BlueNoiseDithering::BNDSNumParams];
+
+			rootRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+			rootRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+
+			rootParams[BlueNoiseDithering::BlueNoiseTex].InitAsDescriptorTable(1, &rootRanges[0]);
+			rootParams[BlueNoiseDithering::PrevFrameNoisy].InitAsDescriptorTable(1, &rootRanges[1]);
+			rootParams[BlueNoiseDithering::NewSequences].InitAsUnorderedAccessView(0, 0);
+			rootParams[BlueNoiseDithering::FrameNum].InitAsConstants(3, 0, 0);
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT);
+
+
+			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+			computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, _countof(staticSamplers), staticSamplers);
+
+			ComPtr<ID3DBlob> computeSignature;
+			ComPtr<ID3DBlob> computeError;
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
+			ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&bndsComputeRootSignature)));
+
+			ComPtr<ID3DBlob> computeShader;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"ComputeBlueNoisePermutedSequencesCS.cso", computeShader.GetAddressOf()));
+
+			D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
+			computePSODesc.pRootSignature = bndsComputeRootSignature.Get();
+			computePSODesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
+
+			ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(bndsPipelineState.GetAddressOf())));
+		}
 	}
 
 }
@@ -1501,6 +1557,16 @@ void Game::CreateBasicGeometry()
 		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
+		IID_PPV_ARGS(taaCBResource.GetAddressOf())
+	));
+
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().uploadHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
 		IID_PPV_ARGS(bmfrPreProcessCBV.GetAddressOf())
 	));
 
@@ -1547,6 +1613,19 @@ void Game::CreateBasicGeometry()
 	));
 
 	visibleLightIndicesBuffer.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width*height, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr,
+		IID_PPV_ARGS(sampleSequences.resource.GetAddressOf())
+	));
+
+	sampleSequences.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	lights = new Light[MAX_LIGHTS];
 
@@ -1611,6 +1690,9 @@ void Game::CreateBasicGeometry()
 
 	lightListResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&lightBufferBegin));
 	memcpy(lightBufferBegin, lights, MAX_LIGHTS * sizeof(Light));
+
+	taaCBResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&taaDataBegin));
+	memcpy(taaDataBegin, &taaData, sizeof(TAAExternData));
 
 	for (size_t i = 0; i < 1000; i++)
 	{
@@ -1982,7 +2064,7 @@ void Game::CreateShaderBindingTable()
 
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
-		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress() });
+		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)sampleSequences.resource->GetGPUVirtualAddress() });
 		sbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2028,7 +2110,8 @@ void Game::CreateShaderBindingTable()
 
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
-		indirectDiffuseSbtGenerator.AddRayGenerationProgram(L"IndirectDiffuseRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress() });
+		indirectDiffuseSbtGenerator.AddRayGenerationProgram(L"IndirectDiffuseRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
+			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
 		indirectDiffuseSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2074,7 +2157,8 @@ void Game::CreateShaderBindingTable()
 
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
-		indirectSpecularSbtGenerator.AddRayGenerationProgram(L"IndirectSpecularRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress() });
+		indirectSpecularSbtGenerator.AddRayGenerationProgram(L"IndirectSpecularRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
+			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
 		indirectSpecularSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2357,10 +2441,11 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 		{5,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTNormalTexture},
 		{6,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTAlbedoTexture},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,RaytracingHeapRangesIndices::RTAccelerationStruct},
-		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,RaytracingHeapRangesIndices::RTCameraData}
+		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,RaytracingHeapRangesIndices::RTCameraData},
 		});
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 1);
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 2, MAX_LIGHTS);
+	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_UAV, 0, 1);
 
 	return rsc.Generate(device.Get(), true);
 }
@@ -2503,6 +2588,7 @@ void Game::CreateRaytracingDescriptorHeap()
 	renderTargetSRVHeap.CreateDescriptor(rtNormals, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(tempRTIndDiffuse, RESOURCE_TYPE_UAV);
 	renderTargetSRVHeap.CreateDescriptor(tempRTIndSpec, RESOURCE_TYPE_UAV);
+	renderTargetSRVHeap.CreateDescriptor(depthTex, RESOURCE_TYPE_SRV, 0, 0, 0, 0, 1);
 
 
 
@@ -2758,6 +2844,12 @@ void Game::Update(float deltaTime, float totalTime)
 
 	auto kb = keyboard->GetState();
 	auto mouseState = mouse->GetState();
+	float xRand = (jitters[numFrames % 16].x * 2.0f -1.0f) / width;
+	float yRand = (jitters[numFrames % 16].y * 2.0f - 1.0f) / height;
+
+	mainCamera->JitterProjMatrix(xRand, yRand);
+
+	currentJitters = Vector2(xRand, yRand);
 
 	// Quit if the escape key is pressed
 	if (kb.Escape)
@@ -2765,6 +2857,15 @@ void Game::Update(float deltaTime, float totalTime)
 
 	keys.Update(kb);
 	mouseButtons.Update(mouseState);
+
+	if (addNewEntity)
+	{
+		auto newEnt = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, ("entity "+std::to_string(entities.size())));
+		newEnt->PrepareConstantBuffers(residencyManager, residencySet);
+		entities.emplace_back(newEnt);
+		entityNames[entities.size()-1] = entities[entities.size() - 1]->GetTag();
+		addNewEntity = false;
+	}
 	
 	numFrames++;
 	mainCamera->Update(deltaTime, mouse, keyboard);
@@ -2775,7 +2876,7 @@ void Game::Update(float deltaTime, float totalTime)
 
 	memcpy(bmfrPreprocessBegin, &bmfrPreProcData, sizeof(bmfrPreProcData));
 
-	if (mouseButtons.leftButton == DirectX::Mouse::ButtonStateTracker::RELEASED)
+	if (mouseButtons.leftButton == DirectX::Mouse::ButtonStateTracker::RELEASED && !entityManipulated)
 	{
 		pickingIndex = -1;
 		bool intersects = false;
@@ -2834,6 +2935,11 @@ void Game::Update(float deltaTime, float totalTime)
 	lightCullingExternData.lightCount = lightCount;
 	lightCullingExternData.cameraPosition = mainCamera->GetPosition();
 
+	taaData.inverseProjection = mainCamera->GetInverseProjection();
+	taaData.inverseView = mainCamera->GetInverseView();
+
+	memcpy(taaDataBegin, &taaData, sizeof(TAAExternData));
+
 	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
 	memcpy(lightBufferBegin, lights, sizeof(Light) * MAX_LIGHTS);
 	memcpy(lightCullingExternBegin, &lightCullingExternData, sizeof(lightCullingExternData));
@@ -2857,7 +2963,7 @@ void Game::Update(float deltaTime, float totalTime)
 		XMStoreFloat4x4(&rtCamera.iProj, XMMatrixTranspose(XMMatrixInverse(nullptr, projTranspose)));
 		//
 		memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
-		//CreateTopLevelAS(bottomLevelBufferInstances, true);
+		CreateTopLevelAS(bottomLevelBufferInstances, true);
 	}
 
 	for (int i = 0; i < emitters.size(); i++)
@@ -2873,7 +2979,7 @@ void Game::Update(float deltaTime, float totalTime)
 		//rtDescriptorHeap.UpdateRaytracingAccelerationStruct(device, topLevelAsBuffers);
 	//}
 
-	FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
+	//FlockingSystem::FlockerSystem(registry, flockers, deltaTime);
 
 
 	velocityBufferData.projection = mainCamera->GetProjectionMatrix();
@@ -2906,8 +3012,24 @@ void Game::Draw(float deltaTime, float totalTime)
 	const float color[4] = { 0.4f, 0.6f, 0.75f, 0.0f };
 
 	PopulateCommandList();
-	SubmitComputeCommandList(computeCommandList, commandList);
-	SubmitGraphicsCommandList(commandList);
+
+	if (true)
+	{
+		ID3D12CommandList* pcommandLists[] = { computeCommandList.Get() };
+		computeCommandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+		auto lol = device->GetDeviceRemovedReason();
+
+		ThrowIfFailed(computeCommandQueue->Signal(computeFence.Get(), fenceValues[frameIndex]));
+
+		ThrowIfFailed(commandQueue->Wait(computeFence.Get(), fenceValues[frameIndex]));
+	}
+
+	//execute the commanf list
+	ID3D12CommandList* pcommandLists[] = { commandList.Get() };
+	D3DX12Residency::ResidencySet* ppSets[] = { residencySet.get() };
+	commandQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
+	//residencyManager.ExecuteCommandLists(commandQueue.Get(), pcommandLists, ppSets, 1);
+	//present the frame
 	ThrowIfFailed(swapChain->Present(1, 0));
 
 	MoveToNextFrame();
@@ -2916,8 +3038,13 @@ void Game::Draw(float deltaTime, float totalTime)
 	velocityBufferData.prevView = mainCamera->GetViewMatrix();
 	velocityBufferData.prevProjection = mainCamera->GetProjectionMatrix();
 
+	taaData.prevView = mainCamera->GetViewMatrix();
+	taaData.prevProjection = mainCamera->GetProjectionMatrix();
+
 	bmfrPreProcData.prevProj = mainCamera->GetProjectionMatrix();
 	bmfrPreProcData.view = mainCamera->GetViewMatrix();
+
+	prevJitters = currentJitters;
 
 }
 
@@ -2952,20 +3079,15 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 
 
 	if(pickingIndex!=-1)
-		entities[pickingIndex]->ManipulateTransforms(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), gizmoMode);
-
-	static std::string entityName;
-	if(pickingIndex != -1)
-	{
-		ImGui::Begin("Entity Name");
-		entityName = entities[pickingIndex]->GetTag();
-		if(ImGui::InputText("##Input", &entityName))
-			entities[pickingIndex]->SetTag(entityName);
-		ImGui::End();
-	}
+		entityManipulated = entities[pickingIndex]->ManipulateTransforms(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix(), gizmoMode);
 
 	ImGui::Begin("Scene Objects");
 	{
+		if (ImGui::BeginPopupContextItem("item context menu"))
+		{
+			addNewEntity = ImGui::Selectable("Add New Entity");
+			ImGui::EndPopup();
+		}
 		for (size_t i = 0; i < entities.size(); i++)
 		{
 			
@@ -2977,16 +3099,27 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 
 			if (ImGui::SelectableInput((char*)std::to_string(id).c_str(), selected, 0, temp))
 			{
+
+				if (ImGui::IsItemActive() && !ImGui::IsItemHovered())
+				{
+					int n_next = i + (ImGui::GetMouseDragDelta(0).y < 0.f ? -1 : 1);
+					if (n_next >= 0 && n_next < entities.size())
+					{
+						auto newName = entityNames[i];
+						entityNames[i] = entityNames[n_next];
+						entityNames[n_next] = temp;
+						ImGui::ResetMouseDragDelta();
+					}
+				}
 				pickingIndex = i;
 				entities[i]->SetTag(temp);
-				//entityNames[i] = temp;
 			}
 
 		}
 	}
 	ImGui::End();
 
-	ImGuiWindowFlags flags = 0;
+	ImGuiWindowFlags flags = ImGuiWindowFlags_NoMove;
 	ImGui::SetNextWindowBgAlpha(0);
 
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
@@ -3003,83 +3136,96 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 	}
 	ImGui::End();
 	ImGui::PopStyleColor();
-
-	ImGui::SetNextWindowBgAlpha(1.0f);
+	flags = 0;
+	//ImGui::SetNextWindowBgAlpha(1.0f);
 	//io.WantCaptureMouse = true;
 	//flags = ImGuiWindowFlags_NoBackground;
-	if (pickingIndex != -1)
+
+	ImGui::Begin("Component Viewer");
 	{
+		if (pickingIndex != -1)
+		{
+			static bool visible = true;
+			if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+			{
 
-		ImGui::Begin("Transform", NULL, flags);
+				if (ImGui::RadioButton("Translate", gizmoMode == ImGuizmo::TRANSLATE))
+					gizmoMode = ImGuizmo::TRANSLATE;
+				ImGui::SameLine();
+				if (ImGui::RadioButton("Rotate", gizmoMode == ImGuizmo::ROTATE))
+					gizmoMode = ImGuizmo::ROTATE;
+				ImGui::SameLine();
+				if (ImGui::RadioButton("Scale", gizmoMode == ImGuizmo::SCALE))
+					gizmoMode = ImGuizmo::SCALE;
 
-		if (ImGui::RadioButton("Translate", gizmoMode == ImGuizmo::TRANSLATE))
-			gizmoMode = ImGuizmo::TRANSLATE;
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Rotate", gizmoMode == ImGuizmo::ROTATE))
-			gizmoMode = ImGuizmo::ROTATE;
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Scale", gizmoMode == ImGuizmo::SCALE))
-			gizmoMode = ImGuizmo::SCALE;
-		
-		Vector4 trs = Vector4(entities[pickingIndex]->GetPosition());
-		Vector3 scal = entities[pickingIndex]->GetScale();
-		Quaternion rot = entities[pickingIndex]->GetRotation();
+				Vector4 trs = Vector4(entities[pickingIndex]->GetPosition());
+				Vector3 scal = entities[pickingIndex]->GetScale();
+				Quaternion rot = entities[pickingIndex]->GetRotation();
 
-		auto objMat = entities[pickingIndex]->GetModelMatrix();
+				auto objMat = entities[pickingIndex]->GetModelMatrix();
 
-		auto angles = ToEulerAngles(rot);
+				auto angles = ToEulerAngles(rot);
 
-		float matrixTranslation[] = { trs.x, trs.y, trs.z };
-		float matrixRotation[] = { angles.pitch, angles.yaw, angles.roll };
-		float matrixScale[] = { scal.x, scal.y, scal.z };
+				float matrixTranslation[] = { trs.x, trs.y, trs.z };
+				float matrixRotation[] = { angles.pitch, angles.yaw, angles.roll };
+				float matrixScale[] = { scal.x, scal.y, scal.z };
 
-		gizmoMode = ImGui::InputFloat3("Position", matrixTranslation)? gizmoMode = ImGuizmo::TRANSLATE:gizmoMode;
-		gizmoMode = ImGui::InputFloat3("Rotation", matrixRotation) ? gizmoMode = ImGuizmo::ROTATE : gizmoMode;
-		gizmoMode = ImGui::InputFloat3("Scale", matrixScale) ? gizmoMode = ImGuizmo::SCALE : gizmoMode;
-
-		ImGui::End();
-
-		entities[pickingIndex]->SetPosition(Vector3(matrixTranslation[0], matrixTranslation[1], matrixTranslation[2]));
-		entities[pickingIndex]->SetScale(Vector3(matrixScale[0], matrixScale[1], matrixScale[2]));
-		entities[pickingIndex]->SetRotation(matrixRotation[0], matrixRotation[1], matrixRotation[2]);
+				gizmoMode = ImGui::DragFloat3("Position", matrixTranslation) ? gizmoMode = ImGuizmo::TRANSLATE : gizmoMode;
+				gizmoMode = ImGui::DragFloat3("Rotation", matrixRotation) ? gizmoMode = ImGuizmo::ROTATE : gizmoMode;
+				gizmoMode = ImGui::DragFloat3("Scale", matrixScale) ? gizmoMode = ImGuizmo::SCALE : gizmoMode;
 
 
+				entities[pickingIndex]->SetPosition(Vector3(matrixTranslation[0], matrixTranslation[1], matrixTranslation[2]));
+				entities[pickingIndex]->SetScale(Vector3(matrixScale[0], matrixScale[1], matrixScale[2]));
+				entities[pickingIndex]->SetRotation(matrixRotation[0], matrixRotation[1], matrixRotation[2]);
+			}
+
+
+
+
+			//ImGui::SetNextWindowBgAlpha(1.0f);
+
+			if (ImGui::CollapsingHeader("Material Viewer"))
+			{
+				if (pickingIndex != -1)
+				{
+					//create our ImGui window
+					bool close = true;
+					//get the mouse position
+					ImVec2 pos = ImGui::GetCursorScreenPos();
+
+					auto io = ImGui::GetIO();
+					auto meshes = entities[pickingIndex]->GetModel()->GetMeshes();
+
+					auto id = meshes[0]->GetMaterialID();
+					int h = 128;
+					int w = 128;
+
+					auto handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id);
+					ImGui::Text("Albedo");
+					ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
+					handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id + 1);
+					ImGui::Text("Normal");
+					ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
+
+					handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id + 2);
+					ImGui::Text("Roughness");
+					ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
+					handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id + 3);
+					ImGui::Text("Metalness");
+					ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
+
+				}
+			}
+
+			if (ImGui::Button("Add Model"))
+			{
+				entities[pickingIndex]->AddModel("../../Assets/Models/sphere.obj");
+			}
+		}
 	}
+	ImGui::End();
 
-	ImGui::SetNextWindowBgAlpha(1.0f);
-	if (pickingIndex != -1)
-	{
-		//create our ImGui window
-		bool close=true;
-		ImGui::Begin("Material Window", &close,flags);
-		//get the mouse position
-		ImVec2 pos = ImGui::GetCursorScreenPos();
-
-		auto io = ImGui::GetIO();
-		auto meshes = entities[pickingIndex]->GetModel()->GetMeshes();
-
-		auto id = meshes[0]->GetMaterialID();
-		int h = 128;
-		int w = 128;
-
-		auto handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id);
-		ImGui::Text("Albedo");
-		ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
-
-		handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id+1);
-		ImGui::Text("Normal");
-		ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
-
-		handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id + 2);
-		ImGui::Text("Roughness");
-		ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
-
-		handle = gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(id + 3);
-		ImGui::Text("Metalness");
-		ImGui::Image((ImTextureID)handle.ptr, ImVec2((float)w, (float)h));
-
-		ImGui::End();
-	}
 
 	
 	// Rendering
@@ -3167,9 +3313,7 @@ void Game::DepthPrePass()
 
 	//skybox->CreateEnvironment(commandList, device, skyboxRootSignature, skyboxRootSignature, irradiencePSO, prefilteredMapPSO, brdfLUTPSO, dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset));
 
-	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-	commandList->ResourceBarrier(1, &transition);
-	depthTex.currentState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+	TransitionManagedResource(commandList, depthTex, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
 	//set necessary state
 	commandList->SetGraphicsRootSignature(rootSignature.Get());
@@ -3195,15 +3339,9 @@ void Game::DepthPrePass()
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetBeginningStaticResourceOffset();//(mainBufferHeap->GetGPUDescriptorHandleForHeapStart(),0,cbvDescriptorSize);
 	commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityMaterials, gpuCBVSRVUAVHandle);
 	gpuCBVSRVUAVHandle = gpuHeapRingBuffer->GetStaticDescriptorOffset();
-	float xRand = jitters[numFrames % 16].x / width;
-	float yRand = jitters[numFrames % 16].y / height;
-	auto projectionMat = mainCamera->GetProjectionMatrix();
-
-	projectionMat._13 = xRand;
-	projectionMat._23 = yRand;
 	for (UINT i = 0; i < entities.size(); i++)
 	{
-		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), projectionMat);
+		entities[i]->PrepareMaterial(mainCamera->GetViewMatrix(), mainCamera->GetProjectionMatrix());
 		commandList->SetPipelineState(depthPrePassPipelineState.Get());
 		entities[i]->Draw(commandList, gpuHeapRingBuffer);
 	}
@@ -3215,11 +3353,10 @@ void Game::DepthPrePass()
 	//	flockers[i]->Draw(device, commandList, gpuHeapRingBuffer);
 	//}
 
-	transition = CD3DX12_RESOURCE_BARRIER::Transition(depthTex.resource.Get(), depthTex.currentState, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	commandList->ResourceBarrier(1, &transition);
-	depthTex.currentState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+	TransitionManagedResource(commandList, depthTex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-	transition = CD3DX12_RESOURCE_BARRIER::Transition(visibleLightIndicesBuffer.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(visibleLightIndicesBuffer.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	commandList->ResourceBarrier(1, &transition);
 	visibleLightIndicesBuffer.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
@@ -3231,6 +3368,36 @@ void Game::DepthPrePass()
 
 	ThrowIfFailed(
 		commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
+}
+
+void Game::BNDSPrePass()
+{
+	computeCommandList->SetComputeRootSignature(bndsComputeRootSignature.Get());
+	computeCommandList->SetPipelineState(bndsPipelineState.Get());
+
+	ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+	computeCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	TransitionManagedResource(commandList, blueNoiseTex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::BlueNoiseTex, blueNoiseTex.srvGPUHandle);
+	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::PrevFrameNoisy, rtCombineOutput.srvGPUHandle);
+	computeCommandList->SetComputeRootUnorderedAccessView(BlueNoiseDithering::NewSequences, sampleSequences.resource->GetGPUVirtualAddress());
+
+	float frameCount = numFrames;
+
+	if (!raster)
+	{
+		frameCount = 0;
+	}
+
+	computeCommandList->SetComputeRoot32BitConstant(BlueNoiseDithering::FrameNum, frameCount, 0);
+	computeCommandList->SetComputeRoot32BitConstant(BlueNoiseDithering::FrameNum, width, 1);
+	computeCommandList->SetComputeRoot32BitConstant(BlueNoiseDithering::FrameNum, height, 2);
+
+
+	computeCommandList->Dispatch(width / 4, height / 4, 1);
 }
 
 void Game::RenderVelocityBuffer()
@@ -3260,6 +3427,9 @@ void Game::RenderVelocityBuffer()
 
 	commandList->RSSetViewports(1, &viewport);
 	commandList->RSSetScissorRects(1, &scissorRect);
+
+	commandList->SetGraphicsRoot32BitConstants(1, 2, &currentJitters, 0);
+	commandList->SetGraphicsRoot32BitConstants(1, 2, &prevJitters, 2);
 
 	for (UINT i = 0; i < entities.size(); i++)
 	{
@@ -3293,10 +3463,12 @@ void Game::LightCullingPass()
 	computeCommandList->SetComputeRootSignature(computeRootSignature.Get());
 	computeCommandList->SetPipelineState(computePipelineState.Get());
 
-	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeap().Get() };
+	ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 	computeCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	computeCommandList->SetComputeRootDescriptorTable(LightCullingRootIndices::DepthMapSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(depthTex.heapOffset));
+	TransitionManagedResource(commandList, depthTex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+	computeCommandList->SetComputeRootDescriptorTable(LightCullingRootIndices::DepthMapSRV, depthTex.srvGPUHandle);
 	computeCommandList->SetComputeRootShaderResourceView(LightCullingRootIndices::LightListSRV, lightListResource->GetGPUVirtualAddress());
 	computeCommandList->SetComputeRootUnorderedAccessView(LightCullingRootIndices::VisibleLightIndicesUAV, visibleLightIndicesBuffer.resource->GetGPUVirtualAddress());
 	computeCommandList->SetComputeRootConstantBufferView(LightCullingRootIndices::LightCullingExternalDataCBV, lightCullingCBVResource->GetGPUVirtualAddress());
@@ -3314,6 +3486,8 @@ void Game::PopulateCommandList()
 {
 
 	residencySet->Open();
+
+	BNDSPrePass();
 
 	RenderVelocityBuffer();
 	
@@ -3345,12 +3519,6 @@ void Game::PopulateCommandList()
 	commandList->ClearDepthStencilView(dsDescriptorHeap.GetCPUHandle(depthStencilBuffer.heapOffset), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	auto projectionMat = mainCamera->GetProjectionMatrix();
-
-	float xRand = jitters[numFrames % 16].x / width;
-	float yRand = jitters[numFrames % 16].y / height;
-
-	projectionMat._13 = xRand;
-	projectionMat._23 = yRand;
 
 	if (true)
 	{
@@ -3436,6 +3604,8 @@ void Game::PopulateCommandList()
 		ID3D12DescriptorHeap* ppHeaps[] = { rtDescriptorHeap.GetHeap().Get() };
 
 		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+		TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 		rtvHandle = rtCombineOutput.rtvCPUHandle;
 		const float clearColor[] = { 0.6f, 0.8f, 0.4f, 1.0f };
@@ -3527,34 +3697,12 @@ void Game::PopulateCommandList()
 
 			commandList->ResourceBarrier(1, &transition);
 
-			transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
-				D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
-			// Indicate that the back buffer will now be used to present.
-			commandList->ResourceBarrier(1, &transition);
-
-			transition = CD3DX12_RESOURCE_BARRIER::Transition(rtCombineOutput.resource.Get(),
-				D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
-			// Indicate that the back buffer will now be used to present.
-			commandList->ResourceBarrier(1, &transition);
-
-			//commandList->CopyResource(renderTargets[frameIndex].resource.Get(), rtCombineOutput.resource.Get());
-
-			transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
-				D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-			// Indicate that the back buffer will now be used to present.
-			commandList->ResourceBarrier(1, &transition);
-
-			transition = CD3DX12_RESOURCE_BARRIER::Transition(rtCombineOutput.resource.Get(),
-				D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-			// Indicate that the back buffer will now be used to present.
-			commandList->ResourceBarrier(1, &transition);
+			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 			RenderPostProcessing(rtCombineOutput);
 
-			transition = CD3DX12_RESOURCE_BARRIER::Transition(rtCombineOutput.resource.Get(),
-				D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-			// Indicate that the back buffer will now be used to present.
-			commandList->ResourceBarrier(1, &transition);
+			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
 
 			transition = CD3DX12_RESOURCE_BARRIER::Transition(taaInput.resource.Get(),
 				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
@@ -3568,7 +3716,7 @@ void Game::PopulateCommandList()
 	}
 	//RenderEditorWindow();
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	//RenderGUI(deltaTime, totalTime);
+	RenderGUI(deltaTime, totalTime);
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
@@ -3578,12 +3726,13 @@ void Game::PopulateCommandList()
 
 
 
-	//commandList->Close();
+	commandList->Close();
+	computeCommandList->Close();
 	residencySet->Close();
 
 }
 
-void Game:: RenderPostProcessing(ManagedResource inputTexture)
+void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 {
 
 	commandList->RSSetViewports(1, &viewport);
@@ -3597,6 +3746,7 @@ void Game:: RenderPostProcessing(ManagedResource inputTexture)
 			inputTexture.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		commandList->ResourceBarrier(1, &transition);
+		inputTexture.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(
 			taaOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
@@ -3609,6 +3759,8 @@ void Game:: RenderPostProcessing(ManagedResource inputTexture)
 		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 		auto rtvHandle = taaOutput.rtvCPUHandle;
+		TransitionManagedResource(commandList, depthTex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
 
 		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
@@ -3621,6 +3773,8 @@ void Game:: RenderPostProcessing(ManagedResource inputTexture)
 		commandList->SetGraphicsRootDescriptorTable(1, taaHistoryBuffer.srvGPUHandle);
 		commandList->SetGraphicsRoot32BitConstant(2, numFrames, 0);
 		commandList->SetGraphicsRootDescriptorTable(3, velocityBuffer.srvGPUHandle);
+		commandList->SetGraphicsRootDescriptorTable(4, depthTex.srvGPUHandle);
+		commandList->SetGraphicsRootConstantBufferView(5, taaCBResource->GetGPUVirtualAddress());
 
 		commandList->DrawInstanced(3, 1, 0, 0);
 
@@ -3629,6 +3783,7 @@ void Game:: RenderPostProcessing(ManagedResource inputTexture)
 			inputTexture.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 			D3D12_RESOURCE_STATE_COPY_SOURCE);
 		commandList->ResourceBarrier(1, &transition);
+		inputTexture.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(
 			taaOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
@@ -3956,6 +4111,7 @@ void Game::CreateIndirectSpecularRays()
 void Game::CreateLTCTexture()
 {
 	ltcDescriptorHeap.Create( 3 + 1 + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
 	ltcTempDescriptorHeap.Create( 3 + 1 + 100, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_1.png", ltcLUT, RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
 	ltcDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/ltc_2.png", ltcLUT2, RESOURCE_TYPE_SRV,   TEXTURE_TYPE_DEAULT, false);
@@ -4090,6 +4246,27 @@ void Game::MoveToNextFrame()
 
 	//set the fence value of the next frame
 	fenceValues[frameIndex] = currentFenceValues + 1;
+
+
+	ThrowIfFailed(commandAllocators[frameIndex]->Reset());
+	ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), pipelineState.Get()));
+
+	ThrowIfFailed(computeCommandAllocator[frameIndex]->Reset());
+	ThrowIfFailed(computeCommandList->Reset(computeCommandAllocator[frameIndex].Get(), computePipelineState.Get()));
+}
+
+void Game::UploadTextureToRingBuffer(std::wstring filename, ManagedResource& resource)
+{
+	DescriptorHeapWrapper dummyWrapper;
+	dummyWrapper.Create(1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	dummyWrapper.CreateDescriptor(filename, resource, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+
+	if (gpuHeapRingBuffer != nullptr)
+	{
+		gpuHeapRingBuffer->AllocateStaticDescriptors(1, dummyWrapper);
+		resource.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+	}
+	
 }
 
 

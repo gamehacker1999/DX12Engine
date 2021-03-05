@@ -35,21 +35,21 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 	QueryPerformanceFrequency((LARGE_INTEGER*)&perfFreq);
 	perfCounterSeconds = 1 / (double)perfFreq;
 
-	//// Setup Dear ImGui context
-	//IMGUI_CHECKVERSION();
-	//ImGui::CreateContext();
+	// Setup Dear ImGui context
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
 }
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT DXCore::WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	//ImGuiIO& io = ImGui::GetIO();
-	//(ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam));
-	//if (io.WantCaptureMouse && (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP || uMsg == WM_MOUSEWHEEL || uMsg == WM_MOUSEMOVE))
-	//{
-	//return TRUE;
-	//}
+	ImGuiIO& io = ImGui::GetIO();
+	(ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam));
+	if (io.WantCaptureMouse && (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP || uMsg == WM_MOUSEWHEEL || uMsg == WM_MOUSEMOVE))
+	{
+	return TRUE;
+	}
 
 
 	return DXCoreInstance->ProcessMessage(hWnd, uMsg, wParam, lParam);
@@ -205,12 +205,12 @@ HRESULT DXCore::InitWindow()
 	mouse->SetWindow(hWnd);
 
 
-	//ImGuiIO& io = ImGui::GetIO(); (void)io;
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
 	// Setup Dear ImGui style
-	//ImGui::StyleColorsDark();
+	ImGui::StyleColorsDark();
 	//ImGui::StyleColorsClassic();
 
 	// Setup Platform/Renderer backends
@@ -220,9 +220,9 @@ HRESULT DXCore::InitWindow()
 	ShowWindow(hWnd, SW_SHOW);
 	UpdateWindow(hWnd);
 
-	//ImGui_ImplWin32_Init(hWnd);
+	ImGui_ImplWin32_Init(hWnd);
 
-	//io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
 
 	// Return an "everything is ok" HRESULT value
@@ -397,10 +397,10 @@ HRESULT DXCore::Run()
 
 
 
-	// Cleanup
-	//ImGui_ImplDX12_Shutdown();
-	//ImGui_ImplWin32_Shutdown();
-	//ImGui::DestroyContext();
+	 //Cleanup
+	ImGui_ImplDX12_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
 #ifdef _DEBUG
 	{
 		ComPtr<IDXGIDebug1> dxgiDebug;

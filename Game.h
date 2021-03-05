@@ -52,6 +52,17 @@ struct LightCullingExternalData
 	int lightCount;
 };
 
+
+
+struct TAAExternData
+{
+	Matrix prevView;
+	Matrix prevProjection;
+	Matrix inverseProjection;
+	Matrix inverseView;
+};
+
+
 struct VelocityConstantBuffer
 {
 	Matrix view;
@@ -174,6 +185,7 @@ public:
 
 	void RaytracingPrePass();
 	void DepthPrePass();
+	void BNDSPrePass();
 	void RenderVelocityBuffer();
 	void LightCullingPass();
 	void Update(float deltaTime, float totalTime);
@@ -182,9 +194,10 @@ public:
 	void RenderGUI(float deltaTime, float totalTime);
 	void RenderEditorWindow();
 	void PopulateCommandList();
-	void RenderPostProcessing(ManagedResource inputTexture);
+	void RenderPostProcessing(ManagedResource& inputTexture);
 	void WaitForPreviousFrame();
 	void MoveToNextFrame();
+	void UploadTextureToRingBuffer(std::wstring filename, ManagedResource& resource);
 
 	// Overridden mouse input helper methods
 	void OnMouseDown(WPARAM buttonState, int x, int y);
@@ -209,8 +222,10 @@ private:
 	ComPtr<ID3D12CommandAllocator> computeCommandAllocator[frameCount];
 	ComPtr<ID3D12CommandQueue> computeCommandQueue;
 	ComPtr<ID3D12RootSignature> computeRootSignature;
+	ComPtr<ID3D12RootSignature> bndsComputeRootSignature;
 	ComPtr<ID3D12GraphicsCommandList> computeCommandList;
 	ComPtr<ID3D12PipelineState> computePipelineState;
+	ComPtr<ID3D12PipelineState> bndsPipelineState;
 	ComPtr<ID3D12Fence> computeFence;
 	//
 
@@ -272,6 +287,14 @@ private:
 	ComPtr<ID3D12Resource> velocityCBVData;
 	ManagedResource velocityBuffer;
 
+	TAAExternData taaData;
+	UINT8* taaDataBegin;
+	ComPtr<ID3D12Resource> taaCBResource;
+
+	//blue noise permulation variables
+	ManagedResource blueNoiseTex;
+	ManagedResource sampleSequences;
+
 
 	//Light culling variables
 	ComPtr<ID3D12Resource> visibleLightList;
@@ -307,6 +330,8 @@ private:
 	ManagedResource rtCombineOutput;
 	UINT numFrames;
 	XMFLOAT2* jitters;
+	Vector2 prevJitters;
+	Vector2 currentJitters;
 
 	std::shared_ptr<Camera> mainCamera;
 
@@ -557,6 +582,8 @@ private:
 	POINT prevMousePos;
 
 	ImGuizmo::OPERATION gizmoMode;
+	bool entityManipulated;
+	bool addNewEntity;
 	int pickingIndex;
 };
 

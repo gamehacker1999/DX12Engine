@@ -31,6 +31,7 @@ public:
 	Matrix& GetViewMatrix();
 	Matrix& GetProjectionMatrix();
 	Matrix& GetInverseProjection();
+	Matrix& GetInverseView();
 
 	//method to create projection matrix
 	void CreateProjectionMatrix(float aspectRatio);
@@ -49,6 +50,8 @@ public:
 	Vector3& GetDirection();
 	void SetPosition(Vector3 pos);
 	void InvertPitch();
+
+	void JitterProjMatrix(float x, float y);
 
 	void GetRayOriginAndDirection(int xPos, int yPos, float width, float height, Vector4& origin, Vector4& direction);
 

@@ -1071,11 +1071,11 @@ void SubmitGraphicsCommandList(const ComPtr<ID3D12GraphicsCommandList>& commandL
     appResources.graphicsQueue->ExecuteCommandLists(_countof(pcommandLists), pcommandLists);
     auto lol = appResources.device->GetDeviceRemovedReason();
 
-    ThrowIfFailed(appResources.commandList->Reset(appResources.commandAllocators[appResources.frameIndex].Get(), generateMipMapsPSO.Get()));
+    appResources.commandList->Reset(appResources.commandAllocators[appResources.frameIndex].Get(), generateMipMapsPSO.Get());
 
-    ThrowIfFailed(appResources.graphicsQueue->Signal(appResources.graphicsFence.Get(), appResources.fenceValues[appResources.frameIndex]));
+    appResources.graphicsQueue->Signal(appResources.graphicsFence.Get(), appResources.fenceValues[appResources.frameIndex]);
 
-    ThrowIfFailed(appResources.graphicsFence.Get()->SetEventOnCompletion(appResources.fenceValues[appResources.frameIndex], appResources.fenceEvent));
+    appResources.graphicsFence.Get()->SetEventOnCompletion(appResources.fenceValues[appResources.frameIndex], appResources.fenceEvent);
     WaitForSingleObjectEx(appResources.fenceEvent, INFINITE, false);
 
     appResources.fenceValues[appResources.frameIndex]++;

@@ -120,14 +120,14 @@ public:
 	DescriptorHeapWrapper& GetDescriptorHeap();
 
 	void AddModel(std::string pathToFile);
-	std::shared_ptr<MyModel>& GetModel();
+	std::shared_ptr<MyModel> GetModel();
 	void AddMaterial(unsigned int matId);
 
 	DirectX::BoundingBox GetBounds();
 
 	//std::shared_ptr<Material> GetMaterial();
 
-	void ManipulateTransforms(Matrix& view, Matrix& proj, ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE);
+	bool ManipulateTransforms(Matrix& view, Matrix& proj, ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE);
 
 	//method that prepares the material and sends it to the gpu
 	void PrepareConstantBuffers(D3DX12Residency::ResidencyManager resManager,

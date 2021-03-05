@@ -22,11 +22,11 @@ void ClosestHit(inout HitInfo payload, Attributes attrib)
     
     color += DirectLighting(payload.rndseed, position, normal, V, metalColor.r, surfaceColor, f0, roughness);
     
-    if(payload.rayDepth < 2)
-    {
-        color += IndirectLighting(payload.rndseed, position, normal, V, metalColor.r,
-				         surfaceColor, f0, roughness, payload.rayDepth);
-    }
+    //if(payload.rayDepth < 2)
+    //{
+    //    color += IndirectLighting(payload.rndseed, position, normal, V, metalColor.r,
+	//			         surfaceColor, f0, roughness, payload.rayDepth);
+    //}
 
     payload.color = color;
 

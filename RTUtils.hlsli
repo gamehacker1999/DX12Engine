@@ -217,7 +217,7 @@ float3 DirectLightPBRRaytrace(Light light, float3 normal, float3 worldPos, float
 
     float lambert = CalculateDiffuse(normal, L);
     float3 numSpec = D * F * G;
-    float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
+    float denomSpec = 4.0f * max(dot(N, V), 0.001f) * max(dot(N, L), 0.001f);
     float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
 
     return ((kd * surfaceColor.xyz / PI) + specular) * lambert * light.intensity * light.color;
@@ -246,7 +246,7 @@ float3 PointLightPBRRaytrace(Light light, float3 normal, float3 worldPos, float3
     kd *= (float3(1.0f, 1.0f, 1.0f) - metalness);
 
     float3 numSpec = D * F * G;
-    float denomSpec = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f);
+    float denomSpec = 4.0f * max(dot(N, V), 0.001f) * max(dot(N, L), 0.001f);
     float3 specular = numSpec / max(denomSpec, 0.0001f); //just in case denominator is zero
 
     return ((kd * surfaceColor.xyz / PI) + specular) * lambert * atten * light.intensity * light.color;
@@ -311,7 +311,7 @@ float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, flo
         
             TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
             
-            response += giPayload.color * surfaceColor / (probDiffuse);
+            response += giPayload.color * surfaceColor / max((probDiffuse), 0.0001f);
 
         }
         
@@ -324,11 +324,12 @@ float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, fl
 {
     
      float probDiffuse = probabilityToSampleDiffuse(surfaceColor, f0);
-     float chooseDiffuse = (nextRand(rndseed) < probDiffuse);
+     float randNum = nextRand(rndseed);
+     float chooseDiffuse = (randNum < probDiffuse);
      float3 response = float3(0, 0, 0);
      for (int i = 0; i < NUM_SAMPLES; i++)
      {
-         float2 randVals = Hammersley(rndseed, 4096);
+         float2 randVals = Hammersley(randNum* 4096, 4096);
          float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
          float3 L = normalize(2 * dot(V, H) * H - V);
      
@@ -352,11 +353,11 @@ float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, fl
          float D = SpecularDistribution(roughness, H, norm);
          float G = GeometricShadowing(norm, V, H, roughness) * GeometricShadowing(norm, L, H, roughness);
          float3 F = FresnelRoughness(NdotV, f0, roughness);
-         float3 ggxTerm = D * G * F / (4 * NdotL * NdotV);
+         float3 ggxTerm = D * G * F / max((4 * NdotL * NdotV), 0.001f);
      
-         float ggxProb = D * NdotH / (4 * LdotH);
+        float ggxProb = D * NdotH / max((4 * LdotH), 0.00001);
          
-         response += NdotL * giPayload.color * ggxTerm / (ggxProb * (1.0f - probDiffuse));
+        response += NdotL * giPayload.color * ggxTerm / max((ggxProb), 0.0001f);
 
      }
      
@@ -391,7 +392,7 @@ float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, 
         
             TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
             
-            response+= giPayload.color * surfaceColor / (probDiffuse);
+            response += giPayload.color * surfaceColor / max((probDiffuse), 0.0001f);
 
         }
         
@@ -431,7 +432,7 @@ float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, 
         
             float ggxProb = D * NdotH / (4 * LdotH);
             
-            response+= NdotL * giPayload.color * ggxTerm / (ggxProb * (1.0f - probDiffuse));
+            response += NdotL * giPayload.color * ggxTerm / max((ggxProb * (1.0f - probDiffuse)), 0.0001f);
 
         }
         

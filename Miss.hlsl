@@ -41,10 +41,6 @@ void Miss(inout HitInfo payload : SV_RayPayload)
 {
     payload.rayDepth++;
 	float2 uv = DirectionToLatLongUV(WorldRayDirection());
-
-	//sample the skybox color
-	float3 skyboxColor = skyboxTexture.Sample(basicSampler, uv).rgb;
-    skyboxColor = pow(skyboxColor, 2.2);
     float3 color = skyboxTexture.SampleLevel(basicSampler, uv, 0).rgb;
     color = pow(color, 2.2);
     payload.color = color;

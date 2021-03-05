@@ -9,6 +9,8 @@ struct RayTraceCameraData
 };
 
 ConstantBuffer<RayTraceCameraData> cameraData : register(b0);
+RWStructuredBuffer<float> newSequences : register(u0, space1);
+
 
 [shader("raygeneration")]
 void IndirectSpecularRayGen()
@@ -44,7 +46,7 @@ void IndirectSpecularRayGen()
     }
     else
     {
-        uint rndseed = initRand(launchIndex.x, launchIndex.y);
+        uint rndseed = newSequences[launchIndex.y*1920+launchIndex.x];
 
         float3 V = normalize(cameraPosition - pos);
 
@@ -52,7 +54,6 @@ void IndirectSpecularRayGen()
         
         for (int i = 0; i < 1; i++)
         {
-            // Do indirect lighting for global illumination
             indirectLight += IndirectSpecularLighting(rndseed, pos, norm, V, metalColor.r,
 	        albedo, f0, roughness, 0);
         }

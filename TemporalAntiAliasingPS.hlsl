@@ -3,13 +3,34 @@
 Texture2D currentFrame: register(t0);
 Texture2D previousFrame: register(t1);
 Texture2D velocityBuffer : register(t2);
+Texture2D depthBuffer : register(t3);
 SamplerState basicSampler: register(s0);
 SamplerState pointSampler : register(s1);
 
-cbuffer ExternalData: register(b0)
+cbuffer ExternalData : register(b0)
 {
-	int frameNum;
+    int frameNum;
 };
+
+cbuffer TAAExternData : register(b1)
+{
+   matrix prevView;
+   matrix prevProjection;
+   matrix inverseProjection;
+   matrix inverseView;
+};
+
+
+
+float3 CalcPosition(float2 tex, float depth)
+{
+    float4 position = float4(tex.x * (2) - 1, tex.y * (-2) + 1, depth, 1.0f);
+
+    position = mul(position, inverseProjection);
+    position = mul(position, inverseView);
+
+    return position.xyz / position.w;
+}
 
 struct VertexToPixel
 {
@@ -24,7 +45,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float4 previousColor = previousFrame.SampleLevel(pointSampler, input.uv, 0);
     float2 pixelSize = float2(1.0 / float(WIDTH), 1.0 / float(HEIGHT)); //Need to pass this later
 
-	if (frameNum == frameNum)
+	if (frameNum == 0)
 	{
 		return float4(currentColor, 1.0f);
 	}
@@ -53,10 +74,28 @@ float4 main(VertexToPixel input) : SV_TARGET
 	
 	//sample velocity uv  
     float2 vel = velocityBuffer.SampleLevel(pointSampler, input.uv, 0).xy;
-    float2 historyUV = input.uv + vel;
+    
+    float2 previousCoordinate = input.uv;
+    
+    if (vel.x >= 1)
+    {
+        float3 currentPosition = CalcPosition(input.uv, depthBuffer.Sample(basicSampler, input.uv).r);
+        float4 previousPosition = mul(float4(currentPosition, 1.0f), prevView);
+        previousPosition = mul(previousPosition, prevProjection);
+
+        previousCoordinate = (previousPosition.xy / previousPosition.w) * float2(0.5f, -0.5f) + 0.5f;
+    }
+    
+    else
+        previousCoordinate += vel;
 	
     float2 historySize = float2(WIDTH, HEIGHT);
-    float4 history = ConvertToYCoCg(SampleTextureCatmullRom(previousFrame, basicSampler, historyUV, historySize));
+    float4 history = ConvertToYCoCg(previousFrame.Sample(basicSampler, input.uv));
+    
+    if(history.x != history.x)
+    {
+        history = float4(0, 0, 0, 1);
+    }
 	
     const float3 origin = history.rgb - 0.5f * (minimum.rgb + maximum.rgb);
     const float3 direction = average.rgb - history.rgb;
@@ -64,10 +103,10 @@ float4 main(VertexToPixel input) : SV_TARGET
 
     history = lerp(history, average, saturate(IntersectAABB(origin, direction, extents)));
 
-    float blendFactor = 0.1f;
+    float blendFactor = 1.0f;
 
     float impulse = abs(color.x - history.x) / max(color.x, max(history.x, minimum.x));
-    float factor = lerp(blendFactor * 0.8f, blendFactor, impulse * impulse);
+    float factor = lerp(blendFactor * 0.5f, blendFactor * 2.0f, impulse * impulse);
 	
     return ConvertToRGBA(lerp(history, color, factor));
 
