@@ -296,7 +296,7 @@ float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, flo
     {
 	// Shoot a randomly selected cosine-sampled diffuse ray.
         
-        for (int i = 0; i < NUM_SAMPLES; i++)
+        for (int i = 0; i < 1; i++)
         {
             float3 L = GetCosHemisphereSample(rndseed, norm);
         
@@ -310,11 +310,13 @@ float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, flo
         
             TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
             
-            response += giPayload.color * surfaceColor / max((probDiffuse), 0.0001f);
+            
+            float3 color = giPayload.color * surfaceColor;
+            response += color;
 
         }
         
-        return response /= NUM_SAMPLES;
+        return response /= 1;
         
     }
 }
@@ -326,7 +328,7 @@ float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, fl
      float randNum = nextRand(rndseed);
      float chooseDiffuse = (randNum < probDiffuse);
      float3 response = float3(0, 0, 0);
-     for (int i = 0; i < NUM_SAMPLES; i++)
+     for (int i = 0; i < 1; i++)
      {
          float2 randVals = Hammersley(randNum* 4096, 4096);
          float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
@@ -360,7 +362,7 @@ float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, fl
 
      }
      
-     response /= NUM_SAMPLES;
+     response /= 1;
      
      return response;
 

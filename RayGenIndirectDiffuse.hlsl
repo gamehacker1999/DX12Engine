@@ -36,7 +36,7 @@ void IndirectDiffuseRayGen()
     float3 albedo = gAlbedo[launchIndex].xyz;
     float3 metalColor = gRoughnessMetallic[launchIndex].rgb;
     float roughness = gRoughnessMetallic[launchIndex].a;
-    
+        
     float3 f0 = float3(0.04f, 0.04f, 0.04f);
     f0 = lerp(f0, albedo, metalColor);
    
@@ -48,7 +48,7 @@ void IndirectDiffuseRayGen()
     }
     else
     {
-        uint rndseed = newSequences[launchIndex.x * 1080 + launchIndex.y].r;
+        uint rndseed = newSequences.Load((launchIndex.y) * 1920 + (launchIndex.x));
 
         float3 V = normalize(cameraPosition - pos);
 

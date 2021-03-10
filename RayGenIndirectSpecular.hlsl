@@ -46,7 +46,7 @@ void IndirectSpecularRayGen()
     }
     else
     {
-        uint rndseed = newSequences[launchIndex.x * 1080 + launchIndex.y];
+        uint rndseed = newSequences.Load(launchIndex.y * 1920 + launchIndex.x);
 
         float3 V = normalize(cameraPosition - pos);
 

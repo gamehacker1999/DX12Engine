@@ -341,6 +341,7 @@ HRESULT Game::Init()
 	));
 
 	sharpenOutput.resource->SetName(L"sharpen output");
+	sharpenOutput.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
@@ -415,7 +416,7 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoiseRes.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoise470.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	blueNoiseTex.resource->SetName(L"bluenoise");
 
 
@@ -1623,7 +1624,7 @@ void Game::CreateBasicGeometry()
 
 	visibleLightIndicesBuffer.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
-	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width*height, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width*height*4, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
@@ -1677,7 +1678,7 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].intensity = 0;
 	lightCount++;
 
-	for (int i = 0; i < 100; i++)
+	for (int i = 0; i < 1; i++)
 	{
 		lights[lightCount].type = LIGHT_TYPE_POINT;
 		lights[lightCount].color = GetRandomFloat3(0, 1);
@@ -3392,9 +3393,11 @@ void Game::BNDSPrePass()
 
 	TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	TransitionManagedResource(commandList, blueNoiseTex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	TransitionManagedResource(commandList, sharpenOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 
-
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
+	computeCommandList->ResourceBarrier(1, &barrier);
 	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::BlueNoiseTex, blueNoiseTex.srvGPUHandle);
 	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::PrevFrameNoisy, rtCombineOutput.srvGPUHandle);
 	computeCommandList->SetComputeRootUnorderedAccessView(BlueNoiseDithering::NewSequences, sampleSequences.resource->GetGPUVirtualAddress());
@@ -3412,12 +3415,9 @@ void Game::BNDSPrePass()
 	memcpy(bndsDataBegin, &bndsData, sizeof(BNDSExternalData));
 
 	computeCommandList->SetComputeRootConstantBufferView(BlueNoiseDithering::FrameNum, bndsCBResource->GetGPUVirtualAddress());
-
-
-
 	computeCommandList->Dispatch(width / 4, height / 4, 1);
 
-	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
+	barrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
 	commandList->ResourceBarrier(1, &barrier);
 }
 
@@ -3919,11 +3919,8 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 
 		commandList->ResourceBarrier(1, &transition);
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
 		
-		commandList->ResourceBarrier(1, &transition);
+		TransitionManagedResource(commandList, sharpenOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
@@ -3950,11 +3947,8 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 
 		commandList->ResourceBarrier(1, &transition);
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
-		
-		commandList->ResourceBarrier(1, &transition);
+		TransitionManagedResource(commandList, sharpenOutput, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
 
 
 	}
@@ -3962,11 +3956,7 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 	//fullscreen pass through
 	{
 	
-		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	
-		commandList->ResourceBarrier(1, &transition);
+		TransitionManagedResource(commandList, sharpenOutput, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	
 		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 	
@@ -3985,11 +3975,8 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 	
 		commandList->DrawInstanced(3, 1, 0, 0);
 	
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			sharpenOutput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
-	
-		commandList->ResourceBarrier(1, &transition);
+		TransitionManagedResource(commandList, sharpenOutput, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
 	}
 
 }
