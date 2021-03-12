@@ -416,8 +416,10 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoise470.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoise512.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/Retarget.png", retargetTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	blueNoiseTex.resource->SetName(L"bluenoise");
+	retargetTex.resource->SetName(L"Retarget");
 
 
 	//optimized clear value for depth stencil buffer
@@ -1437,14 +1439,16 @@ void Game::LoadShaders()
 		//blue noise permutation pass
 		{
 
-			CD3DX12_DESCRIPTOR_RANGE1 rootRanges[2];
+			CD3DX12_DESCRIPTOR_RANGE1 rootRanges[3];
 			CD3DX12_ROOT_PARAMETER1 rootParams[BlueNoiseDithering::BNDSNumParams];
 
 			rootRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 			rootRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+			rootRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
 
 			rootParams[BlueNoiseDithering::BlueNoiseTex].InitAsDescriptorTable(1, &rootRanges[0]);
 			rootParams[BlueNoiseDithering::PrevFrameNoisy].InitAsDescriptorTable(1, &rootRanges[1]);
+			rootParams[BlueNoiseDithering::RetargetTex].InitAsDescriptorTable(1, &rootRanges[2]);
 			rootParams[BlueNoiseDithering::NewSequences].InitAsUnorderedAccessView(0, 0);
 			rootParams[BlueNoiseDithering::FrameNum].InitAsConstantBufferView(0,1);
 
@@ -1470,6 +1474,43 @@ void Game::LoadShaders()
 			computePSODesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
 
 			ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(bndsPipelineState.GetAddressOf())));
+		}
+
+		//blue noise retargeting pass
+		{
+
+			CD3DX12_DESCRIPTOR_RANGE1 rootRanges[1];
+			CD3DX12_ROOT_PARAMETER1 rootParams[RetargetingPass::RetargetingPassNumParams];
+
+			rootRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
+			rootParams[RetargetingPass::RetargetTexture].InitAsDescriptorTable(1, &rootRanges[0]);
+			rootParams[RetargetingPass::RetargetedSequences].InitAsUnorderedAccessView(0, 0);
+			rootParams[RetargetingPass::OldSequences].InitAsUnorderedAccessView(1, 0);
+			rootParams[RetargetingPass::RetargetingPassCBV].InitAsConstantBufferView(0, 0);
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT);
+
+
+			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
+			computeRootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, _countof(staticSamplers), staticSamplers);
+
+			ComPtr<ID3DBlob> computeSignature;
+			ComPtr<ID3DBlob> computeError;
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &computeSignature, &computeError));
+			ThrowIfFailed(device->CreateRootSignature(0, computeSignature->GetBufferPointer(), computeSignature->GetBufferSize(), IID_PPV_ARGS(&retargetingRootSignature)));
+
+			ComPtr<ID3DBlob> computeShader;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"RetargetingPass.cso", computeShader.GetAddressOf()));
+
+			D3D12_COMPUTE_PIPELINE_STATE_DESC computePSODesc = {};
+			computePSODesc.pRootSignature = retargetingRootSignature.Get();
+			computePSODesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
+
+			ThrowIfFailed(device->CreateComputePipelineState(&computePSODesc, IID_PPV_ARGS(retargetingPipelineState.GetAddressOf())));
 		}
 	}
 
@@ -1636,6 +1677,17 @@ void Game::CreateBasicGeometry()
 	));
 
 	sampleSequences.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr,
+		IID_PPV_ARGS(retargetedSequences.resource.GetAddressOf())
+	));
+
+	retargetedSequences.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	bndsCBResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&bndsDataBegin));
 
@@ -2076,7 +2128,7 @@ void Game::CreateShaderBindingTable()
 
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
-		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)sampleSequences.resource->GetGPUVirtualAddress() });
+		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
 		sbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2123,7 +2175,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		indirectDiffuseSbtGenerator.AddRayGenerationProgram(L"IndirectDiffuseRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
+			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
 		indirectDiffuseSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2170,7 +2222,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		indirectSpecularSbtGenerator.AddRayGenerationProgram(L"IndirectSpecularRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
+			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
 		indirectSpecularSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2218,7 +2270,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		GBsbtGenerator.AddRayGenerationProgram(L"GBufferRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
+			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
 		GBsbtGenerator.AddMissProgram(L"GBufferMiss", { heapPointer });
 		for (size_t i = 0; i < entities.size(); i++)
 		{
@@ -2860,7 +2912,7 @@ void Game::Update(float deltaTime, float totalTime)
 	float xRand = (jitters[numFrames % 16].x * 2.0f -1.0f) / width;
 	float yRand = (jitters[numFrames % 16].y * 2.0f - 1.0f) / height;
 
-	mainCamera->JitterProjMatrix(0, 0);
+	mainCamera->JitterProjMatrix(xRand, yRand);
 
 	currentJitters = Vector2(xRand, yRand);
 
@@ -3393,6 +3445,7 @@ void Game::BNDSPrePass()
 
 	TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	TransitionManagedResource(commandList, blueNoiseTex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	TransitionManagedResource(commandList, retargetTex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	TransitionManagedResource(commandList, sharpenOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 
@@ -3400,6 +3453,7 @@ void Game::BNDSPrePass()
 	computeCommandList->ResourceBarrier(1, &barrier);
 	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::BlueNoiseTex, blueNoiseTex.srvGPUHandle);
 	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::PrevFrameNoisy, rtCombineOutput.srvGPUHandle);
+	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::RetargetTex, retargetTex.srvGPUHandle);
 	computeCommandList->SetComputeRootUnorderedAccessView(BlueNoiseDithering::NewSequences, sampleSequences.resource->GetGPUVirtualAddress());
 
 	UINT frameCount = numFrames;
@@ -3419,6 +3473,37 @@ void Game::BNDSPrePass()
 
 	barrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
 	commandList->ResourceBarrier(1, &barrier);
+}
+
+void Game::BNDSRetargetingPass()
+{
+	computeCommandList->SetComputeRootSignature(retargetingRootSignature.Get());
+	computeCommandList->SetPipelineState(retargetingPipelineState.Get());
+
+	ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+	computeCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	TransitionManagedResource(commandList, retargetTex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+	computeCommandList->SetComputeRootDescriptorTable(RetargetingPass::RetargetTexture, retargetTex.srvGPUHandle);
+	computeCommandList->SetComputeRootUnorderedAccessView(RetargetingPass::OldSequences, sampleSequences.resource->GetGPUVirtualAddress());
+	computeCommandList->SetComputeRootUnorderedAccessView(RetargetingPass::RetargetedSequences, retargetedSequences.resource->GetGPUVirtualAddress());
+
+	UINT frameCount = numFrames;
+
+	if (raster)
+	{
+		frameCount = 0;
+	}
+
+	bndsData = {};
+	bndsData.frame = frameCount;
+
+	memcpy(bndsDataBegin, &bndsData, sizeof(BNDSExternalData));
+
+	computeCommandList->SetComputeRootConstantBufferView(RetargetingPass::RetargetingPassCBV, bndsCBResource->GetGPUVirtualAddress());
+	computeCommandList->Dispatch(width / 32, height / 32, 1);
+
 }
 
 void Game::RenderVelocityBuffer()
@@ -3509,6 +3594,8 @@ void Game::PopulateCommandList()
 	residencySet->Open();
 
 	BNDSPrePass();
+
+	BNDSRetargetingPass();
 
 	RenderVelocityBuffer();
 	

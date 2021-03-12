@@ -1,6 +1,7 @@
 
 Texture2D blueNoise : register(t0);
 Texture2D prevFrame : register(t1);
+Texture2D retargetTex : register(t2);
 RWStructuredBuffer<uint> newSequences : register(u0);
 SamplerState pointSampler : register(s0);
 
@@ -107,7 +108,7 @@ void BitonicSort(inout float3 arr1[BLOCK * BLOCK], uint groupIndex)
   
 float CalcIntensity(float3 color)
 {
-    return (color.r + color.g + color.b)/3.0f;
+    return (color.r*0.3f + color.g*0.59f + color.b*0.11f);
 }
 
 // this noise, scrolling constant are from Jorge Jimenez
@@ -130,7 +131,9 @@ uint3 dispatchThreadID : SV_DispatchThreadID, // 3D index of global thread ID in
 uint groupIndex : SV_GroupIndex)
 {
     
-    uint initialSeed = InitSeed(groupThreadID.x, groupThreadID.y);
+    float2 offset = GenerateR2Sequence(frameNum);
+    
+    uint initialSeed = InitSeed(dispatchThreadID.x, dispatchThreadID.y);
     randSeeds[groupIndex] = initialSeed;
     
     if(frameNum == 0)
@@ -144,12 +147,11 @@ uint groupIndex : SV_GroupIndex)
     
     colors[groupIndex] = float3(CalcIntensity(prevFrame.SampleLevel(pointSampler, samplePoint, 0).rgb), groupThreadID.x, groupThreadID.y);
     
-    float2 offset = GenerateR2Sequence(groupIndex);
-    samplePoint += float2(offset.x * frameNum, offset.y * frameNum) / float2((1920.f), (1080.f));
+    samplePoint += (float2(offset.x, offset.y) * 2.f - 1.f) / float2((512.f), (512.f));
+
 
     blueNoiseColors[groupIndex] = float3((blueNoise.SampleLevel(pointSampler, samplePoint, 0)).r, groupThreadID.x, groupThreadID.y);
     
-    //blueNoiseColors[groupIndex].r = pow(blueNoiseColors[groupIndex].r, 1.f / 2.2f);
     
     GroupMemoryBarrierWithGroupSync();
     
@@ -171,8 +173,7 @@ uint groupIndex : SV_GroupIndex)
     newRandSeeds[blueNoiseColors[groupIndex].g * F_BLOCK + blueNoiseColors[groupIndex].b] = randSeeds[colors[groupIndex].g * F_BLOCK + colors[groupIndex].b];
     GroupMemoryBarrierWithGroupSync();
 
-    uint num = newRandSeeds[groupIndex];
-    newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = num;
+    newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = newRandSeeds[groupIndex];
 
     
 

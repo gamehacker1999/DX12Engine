@@ -127,8 +127,18 @@ enum BMFRPostProcessRootIndices
 enum BlueNoiseDithering
 {
 	BlueNoiseTex,
+	RetargetTex,
 	PrevFrameNoisy,
 	NewSequences,
 	FrameNum, 
 	BNDSNumParams
+};
+
+enum RetargetingPass
+{
+	RetargetTexture,
+	OldSequences,
+	RetargetedSequences,
+	RetargetingPassCBV,
+	RetargetingPassNumParams
 };

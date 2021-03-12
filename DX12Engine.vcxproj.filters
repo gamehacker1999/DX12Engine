@@ -424,6 +424,9 @@
     <FxCompile Include="ComputeBlueNoisePermutedSequencesCS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="RetargetingPass.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

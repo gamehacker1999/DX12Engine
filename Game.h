@@ -191,6 +191,7 @@ public:
 	void RaytracingPrePass();
 	void DepthPrePass();
 	void BNDSPrePass();
+	void BNDSRetargetingPass();
 	void RenderVelocityBuffer();
 	void LightCullingPass();
 	void Update(float deltaTime, float totalTime);
@@ -226,11 +227,17 @@ private:
 	//Compute shader data
 	ComPtr<ID3D12CommandAllocator> computeCommandAllocator[frameCount];
 	ComPtr<ID3D12CommandQueue> computeCommandQueue;
+
 	ComPtr<ID3D12RootSignature> computeRootSignature;
 	ComPtr<ID3D12RootSignature> bndsComputeRootSignature;
+	ComPtr<ID3D12RootSignature> retargetingRootSignature;
+
 	ComPtr<ID3D12GraphicsCommandList> computeCommandList;
+
 	ComPtr<ID3D12PipelineState> computePipelineState;
 	ComPtr<ID3D12PipelineState> bndsPipelineState;
+	ComPtr<ID3D12PipelineState> retargetingPipelineState;
+
 	ComPtr<ID3D12Fence> computeFence;
 	//
 
@@ -302,7 +309,9 @@ private:
 
 	//blue noise permulation variables
 	ManagedResource blueNoiseTex;
+	ManagedResource retargetTex;
 	ManagedResource sampleSequences;
+	ManagedResource retargetedSequences;
 
 
 	//Light culling variables
