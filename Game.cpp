@@ -416,7 +416,7 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoise512.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoiseRes.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/Retarget.png", retargetTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	blueNoiseTex.resource->SetName(L"bluenoise");
 	retargetTex.resource->SetName(L"Retarget");

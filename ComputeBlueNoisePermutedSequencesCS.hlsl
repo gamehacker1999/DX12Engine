@@ -133,7 +133,7 @@ uint groupIndex : SV_GroupIndex)
     
     float2 offset = GenerateR2Sequence(frameNum);
     
-    uint initialSeed = InitSeed(dispatchThreadID.x, dispatchThreadID.y);
+    uint initialSeed = InitSeed(groupThreadID.x, groupThreadID.y);
     randSeeds[groupIndex] = initialSeed;
     
     if(frameNum == 0)
@@ -143,11 +143,13 @@ uint groupIndex : SV_GroupIndex)
 
     }
 
+    //randSeeds[groupIndex] = newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)];
+
     float2 samplePoint = float2(dispatchThreadID.xy) / float2((1920.f), (1080.f));
     
     colors[groupIndex] = float3(CalcIntensity(prevFrame.SampleLevel(pointSampler, samplePoint, 0).rgb), groupThreadID.x, groupThreadID.y);
     
-    samplePoint += (float2(offset.x, offset.y) * 2.f - 1.f) / float2((1920.f), (1920.f));
+    samplePoint += (float2(offset.x, offset.y)) / float2((1920.f), (1080.f));
 
 
     blueNoiseColors[groupIndex] = float3((blueNoise.SampleLevel(pointSampler, samplePoint, 0)).r, groupThreadID.x, groupThreadID.y);
