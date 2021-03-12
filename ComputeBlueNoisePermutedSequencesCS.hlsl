@@ -147,7 +147,7 @@ uint groupIndex : SV_GroupIndex)
     
     colors[groupIndex] = float3(CalcIntensity(prevFrame.SampleLevel(pointSampler, samplePoint, 0).rgb), groupThreadID.x, groupThreadID.y);
     
-    samplePoint += (float2(offset.x, offset.y) * 2.f - 1.f) / float2((512.f), (512.f));
+    samplePoint += (float2(offset.x, offset.y) * 2.f - 1.f) / float2((1920.f), (1920.f));
 
 
     blueNoiseColors[groupIndex] = float3((blueNoise.SampleLevel(pointSampler, samplePoint, 0)).r, groupThreadID.x, groupThreadID.y);

@@ -33,12 +33,12 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
     float2 offset = GenerateR2Sequence(frameNum);
     
     float2 retargetPoint = float2(dispatchThreadID.xy) / float2((1920.f), (1080.f));
-    retargetPoint += (float2(offset.x, offset.y) * 2.f - 1.f) / float2((512.f), (512.f));
+    retargetPoint += (float2(offset.x, offset.y) * 2.f - 1.f) / float2((1920.f), (1920.f));
     
     float2 value = float2((retargetTex.SampleLevel(pointSampler, retargetPoint, 0)).rg);
     
-    value.x += (offset.x * 2.f -1.f) / 512.f;
-    value.y += (offset.y * 2.f - 1.f) / 512.f;
+    value.x += (offset.x * 2.f -1.f) / 1920.f;
+    value.y += (offset.y * 2.f - 1.f) / 1920.f;
     
     value.x *= 1920;
     value.y *= 1080;
