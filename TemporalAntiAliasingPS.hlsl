@@ -45,7 +45,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float4 previousColor = previousFrame.SampleLevel(pointSampler, input.uv, 0);
     float2 pixelSize = float2(1.0 / float(WIDTH), 1.0 / float(HEIGHT)); //Need to pass this later
 
-	if (frameNum == 0)
+	if (frameNum == frameNum)
 	{
 		return float4(currentColor, 1.0f);
 	}
@@ -75,6 +75,9 @@ float4 main(VertexToPixel input) : SV_TARGET
 	//sample velocity uv  
     float2 vel = velocityBuffer.SampleLevel(pointSampler, input.uv, 0).xy;
     
+    vel.y = 1.f - vel.y;
+    vel = vel * 2.f - 1.0f;
+    
     float2 previousCoordinate = input.uv;
     
     if (vel.x >= 1)
@@ -87,13 +90,13 @@ float4 main(VertexToPixel input) : SV_TARGET
     }
     
     else
-        previousCoordinate += vel;
+        previousCoordinate -= vel;
 	
     float2 historySize = float2(WIDTH, HEIGHT);
-    float4 history = ConvertToYCoCg(previousFrame.Sample(basicSampler, input.uv));
+    float4 history = ConvertToYCoCg(previousFrame.Sample(basicSampler, previousCoordinate));
     
     if(history.x != history.x)
-    {
+    {   
         history = float4(0, 0, 0, 1);
     }
 	

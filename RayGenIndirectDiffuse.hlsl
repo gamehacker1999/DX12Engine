@@ -40,7 +40,27 @@ void IndirectDiffuseRayGen()
     float3 f0 = float3(0.04f, 0.04f, 0.04f);
     f0 = lerp(f0, albedo, metalColor);
    
-    float3 color = float3(0, 0, 0);
+    float3 color = float3(0, 0, 0);    
+    float2 motionVector = motionBuffer[launchIndex].rg;
+    motionVector.y = 1.f - motionVector.y;
+    motionVector = motionVector * 2.f - 1.0f;
+    
+    float2 screenTexCoord = launchIndex / dims;
+    float2 reprojectedTexCoord = screenTexCoord + motionVector;
+    
+    reprojectedTexCoord *= dims;
+
+// Sample the shadow texture from last frame
+// Make sure to use a sampler with border color wrapping to avoid artifacts
+// The first channel of the output contains shadows for the first/visibility bounce
+// The second channel of the output contains shadows in reflections
+    float4 prevValue = gIndirectDiffuseOutput[reprojectedTexCoord];
+    uint rndseed = newSequences.Load((launchIndex.y) * 1920 + (launchIndex.x));
+
+    if (prevValue.x != prevValue.x)
+    {
+        prevValue = float4(0, 0, 0, 1);
+    }
 
     if (norm.x == 0 && norm.y == 0 && norm.z == 0)
     {
@@ -48,11 +68,11 @@ void IndirectDiffuseRayGen()
     }
     else
     {
-        uint rndseed = newSequences.Load((launchIndex.y) * 1920 + (launchIndex.x));
 
         float3 V = normalize(cameraPosition - pos);
 
         float3 indirectLight = float3(0, 0, 0);
+        
         
         for (int i = 0; i < 1; i++)
         {
@@ -68,6 +88,7 @@ void IndirectDiffuseRayGen()
 
     }
 
-    gIndirectDiffuseOutput[launchIndex] = float4(color, 1.f);
+    float alpha = 0.3;
+    gIndirectDiffuseOutput[launchIndex] = float4(color * alpha, 1.0f) + (float4(prevValue.xyz * (1.f - alpha), 1.0f));
     
 }

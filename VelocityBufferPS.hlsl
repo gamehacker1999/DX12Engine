@@ -16,7 +16,7 @@ float2 ClipSpaceToTextureSpace(float4 clipSpace, float2 jitter)
 {
     float2 cs = clipSpace.xy / clipSpace.w;
     cs -= jitter;
-    return float2(0.5f * cs.x, -0.5f * cs.y) + 0.5f;
+    return float2(0.5f * cs.x, 0.5f * cs.y) + 0.5f;
 }
 
 

@@ -285,6 +285,7 @@ HRESULT Game::Init()
 	rtvClearVal.Color[3] = black[3];
 	rtvClearVal.Format = DXGI_FORMAT_R32G32_FLOAT;
 	renderTexureDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+	renderTexureDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
@@ -295,6 +296,9 @@ HRESULT Game::Init()
 	));
 
 	velocityBuffer.resource->SetName(L"velocity");
+
+	velocityBuffer.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
 
 	rtvClearVal.Color[0] = color[0];
 	rtvClearVal.Color[1] = color[1];
@@ -416,7 +420,7 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoiseRes.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoise512.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/Retarget.png", retargetTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	blueNoiseTex.resource->SetName(L"bluenoise");
 	retargetTex.resource->SetName(L"Retarget");
@@ -1453,7 +1457,7 @@ void Game::LoadShaders()
 			rootParams[BlueNoiseDithering::FrameNum].InitAsConstantBufferView(0,1);
 
 			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
-			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
 
 
 			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
@@ -1700,7 +1704,7 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].color = XMFLOAT3(1, 1, 1);
 	lights[lightCount].intensity = 1;
 	lightCount++;
-
+	
 	lights[lightCount].type = LIGHT_TYPE_AREA_RECT;
 	lights[lightCount].color = XMFLOAT3(1, 1, 1);
 	lights[lightCount].rectLight.height = 3;
@@ -1711,7 +1715,7 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].position = XMFLOAT3(-6, -2, 0);
 	lights[lightCount].intensity = 1;
 	lightCount++;
-
+	
 	lights[lightCount].type = LIGHT_TYPE_AREA_DISK;
 	lights[lightCount].color = XMFLOAT3(1, 1, 1);
 	lights[lightCount].rectLight.height = 2;
@@ -1722,14 +1726,14 @@ void Game::CreateBasicGeometry()
 	lights[lightCount].position = XMFLOAT3(-2, -2, 0);
 	lights[lightCount].intensity = 10;
 	lightCount++;
-
+	
 	lights[lightCount].type = LIGHT_TYPE_POINT;
 	lights[lightCount].color = XMFLOAT3(1, 0, 0);
 	lights[lightCount].range = 20;
 	lights[lightCount].position = XMFLOAT3(3, 0, 0);
 	lights[lightCount].intensity = 0;
 	lightCount++;
-
+	
 	for (int i = 0; i < 1; i++)
 	{
 		lights[lightCount].type = LIGHT_TYPE_POINT;
@@ -2027,7 +2031,7 @@ void Game::CreateEnvironment()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(mainCPUDescriptorHandle, (INT)entities.size() + 1, cbvDescriptorSize);
 	//creating the skybox
-	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox4.hdr", mesh1,skyboxPSO, skyboxRootSignature, false);
+	skybox = std::make_shared<Skybox>(L"../../Assets/Textures/skybox5.hdr", mesh1,skyboxPSO, skyboxRootSignature, false);
 
 	ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, bundleAllocator.Get(), skyboxPSO.Get(), IID_PPV_ARGS(skyboxBundle.GetAddressOf())));
 
@@ -2128,7 +2132,7 @@ void Game::CreateShaderBindingTable()
 
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
-		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
+		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)sampleSequences.resource->GetGPUVirtualAddress() });
 		sbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2175,7 +2179,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		indirectDiffuseSbtGenerator.AddRayGenerationProgram(L"IndirectDiffuseRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
+			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
 		indirectDiffuseSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2222,7 +2226,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		indirectSpecularSbtGenerator.AddRayGenerationProgram(L"IndirectSpecularRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
+			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
 		indirectSpecularSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2270,7 +2274,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		GBsbtGenerator.AddRayGenerationProgram(L"GBufferRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
+			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
 		GBsbtGenerator.AddMissProgram(L"GBufferMiss", { heapPointer });
 		for (size_t i = 0; i < entities.size(); i++)
 		{
@@ -2505,6 +2509,7 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 		{4,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTPositionTexture},
 		{5,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTNormalTexture},
 		{6,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTAlbedoTexture},
+		{0,1,2,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTMotionBuffer},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,RaytracingHeapRangesIndices::RTAccelerationStruct},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,RaytracingHeapRangesIndices::RTCameraData},
 		});
@@ -2640,6 +2645,7 @@ void Game::CreateRaytracingDescriptorHeap()
 	rtDescriptorHeap.CreateDescriptor(rtPosition, rtPosition.resourceType);
 	rtDescriptorHeap.CreateDescriptor(rtNormals, rtNormals.resourceType);
 	rtDescriptorHeap.CreateDescriptor(rtAlbedo, rtAlbedo.resourceType);
+	rtDescriptorHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_UAV);
 	renderTargetSRVHeap.CreateDescriptor(rtOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtIndirectDiffuseOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtIndirectSpecularOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
@@ -2663,7 +2669,7 @@ void Game::CreateRaytracingDescriptorHeap()
 
 	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(topLevelAsBuffers);
 	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, sizeof(RayTraceCameraData));
-	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox4.hdr", skyboxTexResource, RESOURCE_TYPE_SRV, TEXTURE_TYPE_HDR, false);
+	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox5.hdr", skyboxTexResource, RESOURCE_TYPE_SRV, TEXTURE_TYPE_HDR, false);
 
 	static UINT numStaticResources = 0;
 	for (int i = 0; i < materials.size(); i++)
@@ -2912,9 +2918,9 @@ void Game::Update(float deltaTime, float totalTime)
 	float xRand = (jitters[numFrames % 16].x * 2.0f -1.0f) / width;
 	float yRand = (jitters[numFrames % 16].y * 2.0f - 1.0f) / height;
 
-	mainCamera->JitterProjMatrix(xRand, yRand);
+	mainCamera->JitterProjMatrix(0, 0);
 
-	currentJitters = Vector2(xRand, yRand);
+	currentJitters = Vector2(0, 0);
 
 	// Quit if the escape key is pressed
 	if (kb.Escape)
@@ -3508,12 +3514,7 @@ void Game::BNDSRetargetingPass()
 
 void Game::RenderVelocityBuffer()
 {
-	auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
-		velocityBuffer.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-	commandList->ResourceBarrier(1, &transition);
-
+	TransitionManagedResource(commandList, velocityBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
 	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
@@ -3556,11 +3557,8 @@ void Game::RenderVelocityBuffer()
 	}
 
 	//transition render target to readable texture and then transition it back to render target
-	transition = CD3DX12_RESOURCE_BARRIER::Transition(
-		velocityBuffer.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	TransitionManagedResource(commandList, velocityBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-	commandList->ResourceBarrier(1, &transition);
 
 }
 
@@ -3714,6 +3712,7 @@ void Game::PopulateCommandList()
 		commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 		TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		TransitionManagedResource(commandList, velocityBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 		rtvHandle = rtCombineOutput.rtvCPUHandle;
 		const float clearColor[] = { 0.6f, 0.8f, 0.4f, 1.0f };
@@ -3831,6 +3830,8 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 	commandList->RSSetViewports(1, &viewport);
 	commandList->RSSetScissorRects(1, &scissorRect);
 	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+
+	TransitionManagedResource(commandList, velocityBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
 	//TAA
 	{

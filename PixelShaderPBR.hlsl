@@ -212,7 +212,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	if(indLighting.enableIndirectLighting)
 		color += ambientIndirect;
 	
-    color *= shadow;
+    //color *= shadow;
 	color = pow(abs(color), 1.f / 1);
 
 	return float4(color, surfaceColor.w);

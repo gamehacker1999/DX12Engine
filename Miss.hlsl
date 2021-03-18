@@ -42,7 +42,15 @@ void Miss(inout HitInfo payload : SV_RayPayload)
     payload.rayDepth++;
 	float2 uv = DirectionToLatLongUV(WorldRayDirection());
     float3 color = skyboxTexture.SampleLevel(basicSampler, uv, 0).rgb;
+    
+    //if(color.x>=1 && color.y>=1 && color.z>=1)
+    //{
+    //    color = float3(0, 0, 0);
+    //
+    //}
+    
     color = pow(color, 2.2);
+    
     payload.color = color;
     payload.diffuseColor = color;
     payload.currentPosition = float3(0, 0, 0);

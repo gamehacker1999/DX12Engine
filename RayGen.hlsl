@@ -40,7 +40,22 @@ void RayGen()
 	f0 = lerp(f0, albedo, metalColor);
    
     float3 color = float3(0, 0, 0);
-
+    
+    float2 motionVector = motionBuffer[launchIndex].rg;
+    
+    motionVector.y = 1.f - motionVector.y;
+    motionVector = motionVector * 2.f - 1.0f;
+    
+    float2 screenTexCoord = launchIndex / dims;
+    float2 reprojectedTexCoord = screenTexCoord + motionVector;
+    
+    reprojectedTexCoord *= dims;
+    float4 prevValue = gOutput[reprojectedTexCoord];
+    
+    if (prevValue.x != prevValue.x)
+    {
+        prevValue = float4(0, 0, 0, 1);
+    }
     if (norm.x == 0 && norm.y == 0 && norm.z == 0)
     {
         color = albedo;
@@ -56,7 +71,8 @@ void RayGen()
 		albedo, f0, roughness);
 
     } 
+    float alpha = 0.3;
 
-    gOutput[launchIndex] = float4(color, 1.f);
+    gOutput[launchIndex] = float4(color * alpha, 1.0f) + (float4(prevValue.xyz * (1.f - alpha), 1.0f));
     
 }

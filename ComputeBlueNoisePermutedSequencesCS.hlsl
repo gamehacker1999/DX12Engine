@@ -26,22 +26,29 @@ uint InitSeed(uint val0, uint val1, uint backoff = 16)
     }
     return v0;
 }
+
+// Generates a seed for a random number generator from 2 inputs plus a backoff
+uint InitSeed2(uint3 thread, uint width)
+{
+    uint rngSeed = (thread.x) + (thread.y) * (width);
+    
+    return rngSeed;
+}
+
+
 #define BLOCK 4
 #define F_BLOCK 4.0f
 
 // A function to implement bubble sort  
-void BubbleSort(inout float3 arr1[BLOCK * BLOCK])
+void BubbleSort(inout float3 arr[BLOCK * BLOCK])
 {
-    
-    float3 arr[BLOCK*BLOCK] = arr1;
-    
-    int i, j;
-    for (i = 0; i < BLOCK * BLOCK - 1; i++)
-    {
-    
-        for (j = 0; j < BLOCK * BLOCK - i - 1; j++)
-        {
         
+    int i, j;
+    int n = BLOCK * BLOCK;
+    for (i = 0; i < n - 1; i++)
+    {
+        for (j = 0; j < n - i - 1; j++)
+        {
             if (arr[j].r > arr[j + 1].r)
             {
                 float3 temp = arr[j];
@@ -50,8 +57,6 @@ void BubbleSort(inout float3 arr1[BLOCK * BLOCK])
             }
         }
     }
-    
-    arr1 = arr;
 }
 
 //http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
@@ -133,7 +138,14 @@ uint groupIndex : SV_GroupIndex)
     
     float2 offset = GenerateR2Sequence(frameNum);
     
-    uint initialSeed = InitSeed(groupThreadID.x, groupThreadID.y);
+    uint3 id = dispatchThreadID;
+    id.x += BLOCK;
+    id.y += BLOCK;
+    
+    id.x %= 1920;
+    id.y %= 1080;
+    
+    uint initialSeed = InitSeed2(dispatchThreadID, 1920);
     randSeeds[groupIndex] = initialSeed;
     
     if(frameNum == 0)
@@ -143,16 +155,13 @@ uint groupIndex : SV_GroupIndex)
 
     }
 
-    //randSeeds[groupIndex] = newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)];
-
-    float2 samplePoint = float2(dispatchThreadID.xy) / float2((1920.f), (1080.f));
+    randSeeds[groupIndex] = newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)];
     
-    colors[groupIndex] = float3(CalcIntensity(prevFrame.SampleLevel(pointSampler, samplePoint, 0).rgb), groupThreadID.x, groupThreadID.y);
-    
-    samplePoint += (float2(offset.x, offset.y)) / float2((1920.f), (1080.f));
+    colors[groupIndex] = float3(CalcIntensity(prevFrame.Load(float3(dispatchThreadID.xy, 0)).rgb), groupThreadID.x, groupThreadID.y);
 
-
-    blueNoiseColors[groupIndex] = float3((blueNoise.SampleLevel(pointSampler, samplePoint, 0)).r, groupThreadID.x, groupThreadID.y);
+    uint samplePosX = (dispatchThreadID.x + offset.x*512) % 512;
+    uint samplePosY = (dispatchThreadID.y + offset.y*512) % 512;
+    blueNoiseColors[groupIndex] = float3(blueNoise.Load(float3(samplePosX, samplePosY, 0)).r, dispatchThreadID.x, dispatchThreadID.y);
     
     
     GroupMemoryBarrierWithGroupSync();
@@ -171,11 +180,14 @@ uint groupIndex : SV_GroupIndex)
     
     GroupMemoryBarrierWithGroupSync();
 
+    uint outIndex = blueNoiseColors[groupIndex].z * 1920 + blueNoiseColors[groupIndex].y;
+    uint currentIndex = colors[groupIndex].z * BLOCK + colors[groupIndex].y;
     
-    newRandSeeds[blueNoiseColors[groupIndex].g * F_BLOCK + blueNoiseColors[groupIndex].b] = randSeeds[colors[groupIndex].g * F_BLOCK + colors[groupIndex].b];
+    newSequences[outIndex] = randSeeds[currentIndex];
+    //newRandSeeds[outIndex] = randSeeds[currentIndex];
     GroupMemoryBarrierWithGroupSync();
 
-    newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = newRandSeeds[groupIndex];
+    //newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = newRandSeeds[groupIndex];
 
     
 

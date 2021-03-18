@@ -126,11 +126,26 @@ uint initRand(uint val0, uint val1, uint backoff = 16)
 	return v0;
 }
 
+uint xorshift(in uint value)
+{
+    // Xorshift*32
+    // Based on George Marsaglia's work: http://www.jstatsoft.org/v08/i14/paper
+    value ^= value << 13;
+    value ^= value >> 17;
+    value ^= value << 5;
+    return value;
+}
+
+
 // Takes our seed, updates it, and returns a pseudorandom float in [0..1]
 float nextRand(inout uint s)
 {
-	s = (1664525u * s + 1013904223u);
-	return float(s & 0x00FFFFFF) / float(0x01000000);
+    s = xorshift(s);
+    // FIXME: This should have been a seed mapped from MIN..MAX to 0..1 instead
+    return abs(frac(float(s) / 3141.592653));
+    
+	//s = (1664525u * s + 1013904223u);
+	//return float(s & 0x00FFFFFF) / float(0x01000000);
 }
 
 // Get a cosine-weighted random vector centered around a specified normal direction.
@@ -284,7 +299,7 @@ float3 DirectLighting(float rndseed, float3 pos, float3 norm, float3 V, float me
     
 
         
-    return color * ShootShadowRays(pos + norm, -lights[0].direction, 0.001, 1000000);
+    return color;
 }
 
 float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, float3 V, float metalColor, float3 surfaceColor, float3 f0, float roughness, float rayDepth)
@@ -296,7 +311,7 @@ float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, flo
     {
 	// Shoot a randomly selected cosine-sampled diffuse ray.
         
-        for (int i = 0; i < 1; i++)
+        for (int i = 0; i < NUM_SAMPLES; i++)
         {
             float3 L = GetCosHemisphereSample(rndseed, norm);
         
@@ -316,7 +331,7 @@ float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, flo
 
         }
         
-        return response /= 1;
+        return response /= NUM_SAMPLES;
         
     }
 }
@@ -328,7 +343,7 @@ float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, fl
      float randNum = nextRand(rndseed);
      float chooseDiffuse = (randNum < probDiffuse);
      float3 response = float3(0, 0, 0);
-     for (int i = 0; i < 1; i++)
+     for (int i = 0; i < NUM_SAMPLES; i++)
      {
          float2 randVals = Hammersley(randNum* 4096, 4096);
          float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
@@ -362,7 +377,7 @@ float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, fl
 
      }
      
-     response /= 1;
+    response /= NUM_SAMPLES;
      
      return response;
 
@@ -429,11 +444,11 @@ float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, 
             float D = SpecularDistribution(roughness, H, norm);
             float G = GeometricShadowing(norm, V, H, roughness) * GeometricShadowing(norm, L, H, roughness);
             float3 F = FresnelRoughness(NdotV, f0, roughness);
-            float3 ggxTerm = D * G * F / (4 * NdotL * NdotV);
-        
-            float ggxProb = D * NdotH / (4 * LdotH);
-            
-            response += NdotL * giPayload.color * ggxTerm / max((ggxProb * (1.0f - probDiffuse)), 0.0001f);
+            float3 ggxTerm = D * G * F / max((4 * NdotL * NdotV), 0.001f);
+     
+            float ggxProb = D * NdotH / max((4 * LdotH), 0.00001);
+         
+            response += NdotL * giPayload.color * ggxTerm / max((ggxProb), 0.0001f);
 
         }
         
