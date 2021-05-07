@@ -17,9 +17,9 @@ float2 GenerateR2Sequence(uint n)
 
     float a2 = 1.0 / (g * g);
 
-    float x = (0.5 + a1 * n) % 1;
+    float x = (a1 * n) % 1;
 
-    float y = (0.5 + a2 * n) % 1;
+    float y = (a2 * n) % 1;
 
     return float2(x, y);
 }
@@ -38,15 +38,12 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
     retargetTex.GetDimensions(texWidth, texHeight);
     
     float2 offset = GenerateR2Sequence(frameNum);
-    offset.x *= texWidth-1;
-    offset.y *= texHeight-1;
     
     
-    int2 samplePos = dispatchThreadID.xy+offset;
+    uint samplePosX = (dispatchThreadID.x + offset.x * (texWidth - 1)) % texWidth;
+    uint samplePosY = (dispatchThreadID.y + offset.y * (texHeight - 1)) % texHeight;
     
-    samplePos %= uint2(texWidth, texHeight);
-    
-    float2 pixelOffsets = retargetTex[samplePos].gb ;
+    float2 pixelOffsets = retargetTex[uint2(samplePosX, samplePosY)].gb;
     
     pixelOffsets.x *= texWidth;
     pixelOffsets.y *= texHeight;

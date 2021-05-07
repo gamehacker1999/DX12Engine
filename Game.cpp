@@ -3552,6 +3552,9 @@ void Game::BNDSPrePass()
 
 	memcpy(bndsDataBegin, &bndsData, sizeof(BNDSExternalData));
 
+	ID3D12ShaderReflection* refl;
+
+	
 	computeCommandList->SetComputeRootConstantBufferView(BlueNoiseDithering::FrameNum, bndsCBResource->GetGPUVirtualAddress());
 	computeCommandList->Dispatch(width / 4, height / 4, 1);
 

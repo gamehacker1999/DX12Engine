@@ -68,11 +68,11 @@ float2 GenerateR2Sequence(uint n)
 
     float a2 = 1.0 / (g * g);
 
-    float x = (0.5 + a1 * n) % 1;
+    float x = (a1 * n) % 1;
 
-    float y = (0.5 + a2 * n) % 1;
+    float y = (a2 * n) % 1;
 
-    return float2(0, 0);
+    return float2(x, y);
 }
 
 //https://gamedev.stackexchange.com/questions/135947/how-to-sort-tiled-decal-list
@@ -142,8 +142,6 @@ uint groupIndex : SV_GroupIndex)
     blueNoise.GetDimensions(texWidth, texHeight);
     
     float2 offset = GenerateR2Sequence(frameNum);
-    offset.x *= (texWidth - 1);
-    offset.y *= (texHeight- 1);
     
     uint initialSeed = InitSeed2(dispatchThreadID, 1920);
     randSeeds[groupIndex] = initialSeed;
@@ -157,11 +155,11 @@ uint groupIndex : SV_GroupIndex)
 
     randSeeds[groupIndex] = newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)];
     
-    colors[groupIndex] = float3(CalcIntensity(prevFrame.Load(float3(dispatchThreadID.xy, 0)).rgb), groupThreadID.x, groupThreadID.y);
+    colors[groupIndex] = float3(CalcIntensity(prevFrame[dispatchThreadID.xy].rgb), groupThreadID.x, groupThreadID.y);
 
-    uint samplePosX = (dispatchThreadID.x + offset.x) % texWidth;
-    uint samplePosY = (dispatchThreadID.y + offset.y) % texHeight;
-    blueNoiseColors[groupIndex] = float3(blueNoise.Load(float3(samplePosX, samplePosY, 0)).r, dispatchThreadID.x, dispatchThreadID.y);
+    uint samplePosX = (dispatchThreadID.x + offset.x * (texWidth - 1)) % texWidth;
+    uint samplePosY = (dispatchThreadID.y + offset.y * (texHeight - 1)) % texHeight;
+    blueNoiseColors[groupIndex] = float3(blueNoise[uint2(samplePosX,samplePosY)].r, dispatchThreadID.x, dispatchThreadID.y);
     
     GroupMemoryBarrierWithGroupSync();
     
