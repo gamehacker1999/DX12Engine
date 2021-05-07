@@ -72,7 +72,7 @@ float2 GenerateR2Sequence(uint n)
 
     float y = (0.5 + a2 * n) % 1;
 
-    return float2(x, y);
+    return float2(0, 0);
 }
 
 //https://gamedev.stackexchange.com/questions/135947/how-to-sort-tiled-decal-list
@@ -136,14 +136,14 @@ uint3 dispatchThreadID : SV_DispatchThreadID, // 3D index of global thread ID in
 uint groupIndex : SV_GroupIndex)
 {
     
+    int texWidth;
+    int texHeight;
+    
+    blueNoise.GetDimensions(texWidth, texHeight);
+    
     float2 offset = GenerateR2Sequence(frameNum);
-    
-    uint3 id = dispatchThreadID;
-    id.x += BLOCK;
-    id.y += BLOCK;
-    
-    id.x %= 1920;
-    id.y %= 1080;
+    offset.x *= (texWidth - 1);
+    offset.y *= (texHeight- 1);
     
     uint initialSeed = InitSeed2(dispatchThreadID, 1920);
     randSeeds[groupIndex] = initialSeed;
@@ -159,18 +159,11 @@ uint groupIndex : SV_GroupIndex)
     
     colors[groupIndex] = float3(CalcIntensity(prevFrame.Load(float3(dispatchThreadID.xy, 0)).rgb), groupThreadID.x, groupThreadID.y);
 
-    uint samplePosX = (dispatchThreadID.x + offset.x*512) % 512;
-    uint samplePosY = (dispatchThreadID.y + offset.y*512) % 512;
+    uint samplePosX = (dispatchThreadID.x + offset.x) % texWidth;
+    uint samplePosY = (dispatchThreadID.y + offset.y) % texHeight;
     blueNoiseColors[groupIndex] = float3(blueNoise.Load(float3(samplePosX, samplePosY, 0)).r, dispatchThreadID.x, dispatchThreadID.y);
     
-    
     GroupMemoryBarrierWithGroupSync();
-    
-    //if (groupIndex == 0)
-    //{
-    //   BitonicSort(colors, groupIndex);
-    //   BitonicSort(blueNoiseColors, groupIndex);
-   // }
     
     if (groupIndex == 0)
     {
@@ -184,12 +177,6 @@ uint groupIndex : SV_GroupIndex)
     uint currentIndex = colors[groupIndex].z * BLOCK + colors[groupIndex].y;
     
     newSequences[outIndex] = randSeeds[currentIndex];
-    //newRandSeeds[outIndex] = randSeeds[currentIndex];
     GroupMemoryBarrierWithGroupSync();
-
-    //newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = newRandSeeds[groupIndex];
-
-    
-
 
 }

@@ -24,27 +24,40 @@ float2 GenerateR2Sequence(uint n)
     return float2(x, y);
 }
 
-[numthreads(32, 32, 1)]
+[numthreads(8, 8, 1)]
 void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dispatch.
           uint3 groupThreadID : SV_GroupThreadID, // 3D index of local thread ID in a thread group.
-            uint3 dispatchThreadID : SV_DispatchThreadID, // 3D index of global thread ID in the dispatch.
-            uint groupIndex : SV_GroupIndex)
+          uint3 dispatchThreadID : SV_DispatchThreadID, // 3D index of global thread ID in the dispatch.
+          uint groupIndex : SV_GroupIndex)
 {
+    
+    int texWidth;
+    int texHeight;
+    
+    
+    retargetTex.GetDimensions(texWidth, texHeight);
+    
     float2 offset = GenerateR2Sequence(frameNum);
+    offset.x *= texWidth-1;
+    offset.y *= texHeight-1;
     
-    float2 retargetPoint = float2(dispatchThreadID.xy) / float2((1920.f), (1080.f));
-    retargetPoint += (float2(offset.x, offset.y));
     
-    float2 value = float2((retargetTex.SampleLevel(pointSampler, retargetPoint, 0)).rg);
+    int2 samplePos = dispatchThreadID.xy+offset;
     
-    value.x += (offset.x) / 1920.f;
-    value.y += (offset.y) / 1080.f;
+    samplePos %= uint2(texWidth, texHeight);
     
-    value.x *= 1920;
-    value.y *= 1080;
-        
-    uint num = newSequences.Load((dispatchThreadID.y) * 1920 + (dispatchThreadID.x));
-    uint outIndex = uint(value.y) * 1920 + uint(value.x);
-    outSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = num;
+    float2 pixelOffsets = retargetTex[samplePos].gb ;
+    
+    pixelOffsets.x *= texWidth;
+    pixelOffsets.y *= texHeight;
+    
+    int2 finalLoc = dispatchThreadID.xy + int2(pixelOffsets.x, pixelOffsets.y);
+    
+    finalLoc %= uint2(1920, 1080);
+    
+    uint inIndex = (dispatchThreadID.y) * 1920 + (dispatchThreadID.x);
+    uint num = newSequences.Load(inIndex);
+    uint outIndex = uint(finalLoc.y) * 1920 + uint(finalLoc.x);
+    outSequences[outIndex] = num;
 
 }

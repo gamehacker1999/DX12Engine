@@ -262,6 +262,19 @@ HRESULT Game::Init()
 		&renderTexureDesc,
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		&rtvClearVal,
+		IID_PPV_ARGS(blurOutput.resource.GetAddressOf())
+	));
+
+	blurOutput.resource->SetName(L"blur output");
+
+	blurOutput.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
 		IID_PPV_ARGS(taaInput.resource.GetAddressOf())
 	));
 
@@ -359,6 +372,8 @@ HRESULT Game::Init()
 	fxaaOutput.resource->SetName(L"fxaa output");
 
 
+
+
 	device->CreateRenderTargetView(finalRenderTarget.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
 	finalRenderTarget.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	finalRenderTarget.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
@@ -404,6 +419,12 @@ HRESULT Game::Init()
 	fxaaOutput.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	rtvDescriptorHeap.IncrementLastResourceIndex(1);
 
+
+	device->CreateRenderTargetView(blurOutput.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
+	blurOutput.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	blurOutput.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
+	rtvDescriptorHeap.IncrementLastResourceIndex(1);
+
 	device->CreateRenderTargetView(editorWindowTarget.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
 	editorWindowTarget.rtvCPUHandle = rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
 	editorWindowTarget.rtvGPUHandle = rtvDescriptorHeap.GetGPUHandle(rtvDescriptorHeap.GetLastResourceIndex());
@@ -420,8 +441,9 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/BlueNoise512.png", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/Retarget.png", retargetTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(blurOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/movemask.bmp", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/movemask.bmp", retargetTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	blueNoiseTex.resource->SetName(L"bluenoise");
 	retargetTex.resource->SetName(L"Retarget");
 
@@ -1440,6 +1462,62 @@ void Game::LoadShaders()
 			ThrowIfFailed(device->CreateGraphicsPipelineState(&rtCombinePSODesc, IID_PPV_ARGS(rtCombinePSO.GetAddressOf())));
 		}
 
+
+		//RT combine
+		{
+			CD3DX12_DESCRIPTOR_RANGE1 desciptorRanges[2];
+			CD3DX12_ROOT_PARAMETER1 rootParams[BilateralBlur::BilateralBlurNumParams];
+
+			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+			desciptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+			desciptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0);
+
+			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+			rootParams[BilateralBlur::MainColorTex].InitAsDescriptorTable(1, &desciptorRanges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+			rootParams[BilateralBlur::DepthTexBlur].InitAsDescriptorTable(1, &desciptorRanges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+			rootParams[BilateralBlur::BilateralBlurExternalData].InitAsConstants(4, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+
+
+			ComPtr<ID3DBlob> signature;
+			ComPtr<ID3DBlob> error;
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_POINT);
+
+			rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams,
+				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+				signature.GetAddressOf(), error.GetAddressOf()));
+
+			ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+				IID_PPV_ARGS(bilateralRootSig.GetAddressOf())));
+
+			ComPtr<ID3DBlob> fullcreenVS;
+			ComPtr<ID3DBlob> bilateral;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"BilateralBlur.cso", bilateral.GetAddressOf()));
+			ThrowIfFailed(D3DReadFileToBlob(L"FullScreenTriangleVS.cso", fullcreenVS.GetAddressOf()));
+
+			//creating a passthrough pipeline state
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC bilateralPSODesc = {};
+			bilateralPSODesc.InputLayout = { };
+			bilateralPSODesc.pRootSignature = bilateralRootSig.Get();
+			bilateralPSODesc.VS = CD3DX12_SHADER_BYTECODE(fullcreenVS.Get());
+			bilateralPSODesc.PS = CD3DX12_SHADER_BYTECODE(bilateral.Get());
+			bilateralPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+			bilateralPSODesc.DepthStencilState.DepthEnable = false;
+			bilateralPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT); // a default rasterizer state.
+			bilateralPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); // a default blent state.
+			bilateralPSODesc.SampleMask = UINT_MAX;
+			bilateralPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			bilateralPSODesc.NumRenderTargets = 1;
+			bilateralPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			bilateralPSODesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+			bilateralPSODesc.SampleDesc.Count = 1;
+			ThrowIfFailed(device->CreateGraphicsPipelineState(&bilateralPSODesc, IID_PPV_ARGS(bilateralPSO.GetAddressOf())));
+		}
+
 		//blue noise permutation pass
 		{
 
@@ -2132,7 +2210,7 @@ void Game::CreateShaderBindingTable()
 
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
-		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)sampleSequences.resource->GetGPUVirtualAddress() });
+		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
 		sbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2179,7 +2257,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		indirectDiffuseSbtGenerator.AddRayGenerationProgram(L"IndirectDiffuseRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
+			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
 		indirectDiffuseSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2226,7 +2304,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		indirectSpecularSbtGenerator.AddRayGenerationProgram(L"IndirectSpecularRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
+			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
 		indirectSpecularSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2274,7 +2352,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		GBsbtGenerator.AddRayGenerationProgram(L"GBufferRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)sampleSequences.resource->GetGPUVirtualAddress() });
+			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
 		GBsbtGenerator.AddMissProgram(L"GBufferMiss", { heapPointer });
 		for (size_t i = 0; i < entities.size(); i++)
 		{
@@ -3508,7 +3586,7 @@ void Game::BNDSRetargetingPass()
 	memcpy(bndsDataBegin, &bndsData, sizeof(BNDSExternalData));
 
 	computeCommandList->SetComputeRootConstantBufferView(RetargetingPass::RetargetingPassCBV, bndsCBResource->GetGPUVirtualAddress());
-	computeCommandList->Dispatch(width / 32, height / 32, 1);
+	computeCommandList->Dispatch(width / 8, height / 8, 1);
 
 }
 
@@ -3789,11 +3867,19 @@ void Game::PopulateCommandList()
 
 			commandList->ResourceBarrier(1, &transition);
 
-			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			TransitionManagedResource(commandList, blurOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			TransitionManagedResource(commandList, depthTex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-			RenderPostProcessing(rtCombineOutput);
+			DenoiseRaytracedSignal(rtCombineOutput);
 
 			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			TransitionManagedResource(commandList, blurOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+			RenderPostProcessing(blurOutput);
+
+			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			TransitionManagedResource(commandList, blurOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 
 			transition = CD3DX12_RESOURCE_BARRIER::Transition(taaInput.resource.Get(),
@@ -3808,7 +3894,7 @@ void Game::PopulateCommandList()
 	}
 	//RenderEditorWindow();
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	//RenderGUI(deltaTime, totalTime);
+	RenderGUI(deltaTime, totalTime);
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
@@ -3822,6 +3908,33 @@ void Game::PopulateCommandList()
 	computeCommandList->Close();
 	residencySet->Close();
 
+}
+
+void Game::DenoiseRaytracedSignal(ManagedResource& inputTexture)
+{
+	commandList->RSSetViewports(1, &viewport);
+	commandList->RSSetScissorRects(1, &scissorRect);
+	const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
+
+	ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
+
+	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	auto rtvHandle = blurOutput.rtvCPUHandle;
+
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
+	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	commandList->SetGraphicsRootSignature(bilateralRootSig.Get());
+	commandList->SetPipelineState(bilateralPSO.Get());
+
+	commandList->SetGraphicsRootDescriptorTable(BilateralBlur::MainColorTex, inputTexture.srvGPUHandle);
+	commandList->SetGraphicsRootDescriptorTable(BilateralBlur::DepthTexBlur, depthTex.srvGPUHandle);
+	commandList->SetGraphicsRoot32BitConstant(BilateralBlur::BilateralBlurExternalData, width, 0);
+	commandList->SetGraphicsRoot32BitConstant(BilateralBlur::BilateralBlurExternalData, height, 1);
+
+	commandList->DrawInstanced(3, 1, 0, 0);
 }
 
 void Game:: RenderPostProcessing(ManagedResource& inputTexture)

@@ -143,3 +143,11 @@ enum RetargetingPass
 	RetargetingPassCBV,
 	RetargetingPassNumParams
 };
+
+enum BilateralBlur
+{
+	MainColorTex,
+	DepthTexBlur,
+	BilateralBlurExternalData,
+	BilateralBlurNumParams
+};

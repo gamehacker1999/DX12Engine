@@ -200,6 +200,7 @@ public:
 	void RenderGUI(float deltaTime, float totalTime);
 	void RenderEditorWindow();
 	void PopulateCommandList();
+	void DenoiseRaytracedSignal(ManagedResource& inputTexture);
 	void RenderPostProcessing(ManagedResource& inputTexture);
 	void WaitForPreviousFrame();
 	void MoveToNextFrame();
@@ -343,6 +344,7 @@ private:
 	ManagedResource tonemappingOutput;
 	ManagedResource sharpenOutput;
 	ManagedResource fxaaOutput;
+	ManagedResource blurOutput;
 	ManagedResource taaInput;
 	ManagedResource taaHistoryBuffer;
 	ManagedResource rtCombineOutput;
@@ -434,6 +436,11 @@ private:
 	//rt combine vars
 	ComPtr<ID3D12RootSignature> rtCombineRootSig;
 	ComPtr<ID3D12PipelineState> rtCombinePSO;
+
+
+	//bilateral blur vars
+	ComPtr<ID3D12RootSignature> bilateralRootSig;
+	ComPtr<ID3D12PipelineState> bilateralPSO;
 
 
 	//veloity vars

@@ -427,6 +427,12 @@
     <FxCompile Include="RetargetingPass.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="BilateralBlur.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="BilateralFilter.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

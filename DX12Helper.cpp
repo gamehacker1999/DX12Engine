@@ -489,7 +489,7 @@ void LoadTexture(ComPtr<ID3D12Resource>& tex, std::wstring textureName, ID3D12Re
         float* pixels;
         pixels = ReadHDR(textureName.c_str(), &width, &height);
 
-        auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, 1, 5, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         ThrowIfFailed(appResources.device->CreateCommittedResource(
             &defaultHeapType,
             D3D12_HEAP_FLAG_NONE,
