@@ -143,7 +143,7 @@ uint groupIndex : SV_GroupIndex)
     
     float2 offset = GenerateR2Sequence(frameNum);
     
-    uint initialSeed = InitSeed2(dispatchThreadID, 1920);
+    uint initialSeed = InitSeed(dispatchThreadID.x, dispatchThreadID.y);
     randSeeds[groupIndex] = initialSeed;
     
     if (frameNum == 0)

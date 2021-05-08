@@ -140,12 +140,12 @@ uint xorshift(in uint value)
 // Takes our seed, updates it, and returns a pseudorandom float in [0..1]
 float nextRand(inout uint s)
 {
-    s = xorshift(s);
+    //s = xorshift(s);
     // FIXME: This should have been a seed mapped from MIN..MAX to 0..1 instead
-    return abs(frac(float(s) / 3141.592653));
+    //return abs(frac(float(s) / 3141.592653));
     
-	//s = (1664525u * s + 1013904223u);
-	//return float(s & 0x00FFFFFF) / float(0x01000000);
+	s = (1664525u * s + 1013904223u);
+	return float(s & 0x00FFFFFF) / float(0x01000000);
 }
 
 // Get a cosine-weighted random vector centered around a specified normal direction.

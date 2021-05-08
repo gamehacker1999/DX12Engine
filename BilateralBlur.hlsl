@@ -18,7 +18,7 @@ struct VertexToPixel
     float2 uv : TEXCOORD;
 };
 
-#define KERNEL_RADIUS 5
+#define KERNEL_RADIUS 8
 
 float Gaussian(float sigma, float x)
 {
@@ -30,7 +30,7 @@ float4 BlurFunction(float2 uv, float r, float4 centerCol, float centerDepth, ino
     float4 color = mainColor.Sample(pointSampler, uv);
     float depth = depthTex.Sample(pointSampler, uv).x;
     
-    float sigma = KERNEL_RADIUS * 0.5;
+    float sigma = KERNEL_RADIUS*0.5;
     
     float blurFalloff = 1.f / (2.f * sigma * sigma);
     

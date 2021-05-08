@@ -90,7 +90,7 @@ void IndirectDiffuseRayGen()
 
     float alpha = 0.3;
     color = nextRand(rndseed).xxx;
-    //gIndirectDiffuseOutput[launchIndex] = float4(color * alpha, 1.0f) + (float4(prevValue.xyz * (1.f - alpha), 1.0f));
+    //gIndirectDiffuseOutput[launchIndex] = float4(lerp(prevValue.xyz, color, alpha),1);
     gIndirectDiffuseOutput[launchIndex] = float4(color, 1.0);
 
 }
