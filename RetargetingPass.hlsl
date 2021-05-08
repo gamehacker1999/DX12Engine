@@ -23,6 +23,13 @@ float2 GenerateR2Sequence(uint n)
 
     return float2(x, y);
 }
+// Generates a seed for a random number generator from 2 inputs plus a backoff
+uint InitSeed2(uint3 thread, uint width)
+{
+    uint rngSeed = (thread.x) + (thread.y) * (width);
+    
+    return rngSeed;
+}
 
 [numthreads(8, 8, 1)]
 void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dispatch.
@@ -30,6 +37,10 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
           uint3 dispatchThreadID : SV_DispatchThreadID, // 3D index of global thread ID in the dispatch.
           uint groupIndex : SV_GroupIndex)
 {
+    
+    uint initialSeed = InitSeed2(dispatchThreadID, 1920);
+
+
     
     int texWidth;
     int texHeight;
@@ -51,6 +62,7 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
     int2 finalLoc = dispatchThreadID.xy + int2(pixelOffsets.x, pixelOffsets.y);
     
     finalLoc %= uint2(1920, 1080);
+    
     
     uint inIndex = (dispatchThreadID.y) * 1920 + (dispatchThreadID.x);
     uint num = newSequences.Load(inIndex);

@@ -146,13 +146,12 @@ uint groupIndex : SV_GroupIndex)
     uint initialSeed = InitSeed2(dispatchThreadID, 1920);
     randSeeds[groupIndex] = initialSeed;
     
-    if(frameNum == 0)
+    if (frameNum == 0)
     {
         newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = initialSeed;
         return;
-
     }
-
+    
     randSeeds[groupIndex] = newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)];
     
     colors[groupIndex] = float3(CalcIntensity(prevFrame[dispatchThreadID.xy].rgb), groupThreadID.x, groupThreadID.y);
@@ -175,6 +174,5 @@ uint groupIndex : SV_GroupIndex)
     uint currentIndex = colors[groupIndex].z * BLOCK + colors[groupIndex].y;
     
     newSequences[outIndex] = randSeeds[currentIndex];
-    GroupMemoryBarrierWithGroupSync();
 
 }
