@@ -85,7 +85,7 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
         pixelOffsets.y = pixelOffsets.y - 256;
     }
     
-    int2 finalLoc = dispatchThreadID.xy) + int2(pixelOffsets.x, pixelOffsets.y);
+    int2 finalLoc = dispatchThreadID.xy + int2(pixelOffsets.x, pixelOffsets.y);
     
     finalLoc %= uint2(1920, 1080);
     
