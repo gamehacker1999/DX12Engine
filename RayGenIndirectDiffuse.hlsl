@@ -89,8 +89,8 @@ void IndirectDiffuseRayGen()
     }
 
     float alpha = 0.3;
-    color = nextRand(rndseed).xxx;
-    //gIndirectDiffuseOutput[launchIndex] = float4(lerp(prevValue.xyz, color, alpha),1);
-    gIndirectDiffuseOutput[launchIndex] = float4(color, 1.0);
+    //color = nextRand(rndseed).xxx;
+    gIndirectDiffuseOutput[launchIndex] = float4(lerp(prevValue.xyz, color, alpha),1);
+    ///gIndirectDiffuseOutput[launchIndex] = float4(color, 1.0);
 
 }

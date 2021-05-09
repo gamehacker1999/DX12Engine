@@ -57,7 +57,7 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
       
     retargetTex.GetDimensions(texWidth, texHeight);
     
-    if(frameNum ==0)
+    if(frameNum == 0)
     {
         uint inIndex = (dispatchThreadID.y) * 1920 + (dispatchThreadID.x);
         uint num = newSequences.Load(inIndex);
@@ -73,7 +73,6 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
     
     float2 pixelOffsets = retargetTex[uint2(samplePosX, samplePosY)].gb;
     
-
     pixelOffsets *= 255;
     
     if(pixelOffsets.x>128)
@@ -86,7 +85,7 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
         pixelOffsets.y = pixelOffsets.y - 256;
     }
     
-    int2 finalLoc = dispatchThreadID.xy + int2(pixelOffsets.x, pixelOffsets.y);
+    int2 finalLoc = dispatchThreadID.xy + uint2(offset.x * (texWidth - 1), offset.y*(texHeight - 1)) + int2(pixelOffsets.x, pixelOffsets.y);
     
     finalLoc %= uint2(1920, 1080);
     

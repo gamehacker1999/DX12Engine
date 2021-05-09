@@ -146,7 +146,7 @@ uint groupIndex : SV_GroupIndex)
     uint initialSeed = InitSeed(dispatchThreadID.x, dispatchThreadID.y);
     randSeeds[groupIndex] = initialSeed;
     
-    if (frameNum == 0)
+    if (frameNum == frameNum)
     {
         newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = initialSeed;
         return;

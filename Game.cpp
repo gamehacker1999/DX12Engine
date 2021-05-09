@@ -3897,7 +3897,7 @@ void Game::PopulateCommandList()
 	}
 	//RenderEditorWindow();
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	RenderGUI(deltaTime, totalTime);
+	//RenderGUI(deltaTime, totalTime);
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),
