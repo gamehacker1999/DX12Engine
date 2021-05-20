@@ -442,8 +442,8 @@ HRESULT Game::Init()
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(blurOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/movemask.bmp", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
-	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/movemask.bmp", retargetTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/movemask2.bmp", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
+	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/movemask2.bmp", retargetTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	blueNoiseTex.resource->SetName(L"bluenoise");
 	retargetTex.resource->SetName(L"Retarget");
 
@@ -1532,6 +1532,7 @@ void Game::LoadShaders()
 			rootParams[BlueNoiseDithering::PrevFrameNoisy].InitAsDescriptorTable(1, &rootRanges[1]);
 			rootParams[BlueNoiseDithering::RetargetTex].InitAsDescriptorTable(1, &rootRanges[2]);
 			rootParams[BlueNoiseDithering::NewSequences].InitAsUnorderedAccessView(0, 0);
+			rootParams[BlueNoiseDithering::RetargettedSequencesBNDS].InitAsUnorderedAccessView(1, 0);
 			rootParams[BlueNoiseDithering::FrameNum].InitAsConstantBufferView(0,1);
 
 			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
@@ -3539,6 +3540,7 @@ void Game::BNDSPrePass()
 	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::PrevFrameNoisy, rtCombineOutput.srvGPUHandle);
 	computeCommandList->SetComputeRootDescriptorTable(BlueNoiseDithering::RetargetTex, retargetTex.srvGPUHandle);
 	computeCommandList->SetComputeRootUnorderedAccessView(BlueNoiseDithering::NewSequences, sampleSequences.resource->GetGPUVirtualAddress());
+	computeCommandList->SetComputeRootUnorderedAccessView(BlueNoiseDithering::RetargettedSequencesBNDS, retargetedSequences.resource->GetGPUVirtualAddress());
 
 	UINT frameCount = numFrames;
 
@@ -3589,7 +3591,7 @@ void Game::BNDSRetargetingPass()
 	memcpy(bndsDataBegin, &bndsData, sizeof(BNDSExternalData));
 
 	computeCommandList->SetComputeRootConstantBufferView(RetargetingPass::RetargetingPassCBV, bndsCBResource->GetGPUVirtualAddress());
-	computeCommandList->Dispatch(width / 8, height / 8, 1);
+	computeCommandList->Dispatch(width / 4, height / 4, 1);
 
 }
 
@@ -3674,7 +3676,15 @@ void Game::PopulateCommandList()
 
 	BNDSPrePass();
 
+	auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
+
+	computeCommandList->ResourceBarrier(1, &uavBarrier);
+
 	BNDSRetargetingPass();
+
+	uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(retargetedSequences.resource.Get());
+
+	commandList->ResourceBarrier(1, &uavBarrier);
 
 	RenderVelocityBuffer();
 	
@@ -3804,26 +3814,31 @@ void Game::PopulateCommandList()
 		CreateIndirectDiffuseRays();
 		CreateIndirectSpecularRays();
 
+		uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(retargetedSequences.resource.Get());
+
+		commandList->ResourceBarrier(1, &uavBarrier);
+
+
+		uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
+
+		commandList->ResourceBarrier(1, &uavBarrier);
+
 		//RT combine
 		{
 			//transition render target to readable texture and then transition it back to render target
-			auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
-				rtOutPut.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			TransitionManagedResource(commandList, rtOutPut, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-			commandList->ResourceBarrier(1, &transition);
 
-			 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-				rtIndirectDiffuseOutPut.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			TransitionManagedResource(commandList, blurOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			TransitionManagedResource(commandList, depthTex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-			commandList->ResourceBarrier(1, &transition);
+			TransitionManagedResource(commandList, rtIndirectDiffuseOutPut, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-			 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-				rtIndirectSpecularOutPut.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			DenoiseRaytracedSignal(rtIndirectDiffuseOutPut);
 
-			commandList->ResourceBarrier(1, &transition);
+			TransitionManagedResource(commandList, rtIndirectSpecularOutPut, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			DenoiseRaytracedSignal(rtIndirectSpecularOutPut);
+
 
 			//transition render target to readable texture and then transition it back to render target
 			transition = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -3852,34 +3867,18 @@ void Game::PopulateCommandList()
 			commandList->DrawInstanced(3, 1, 0, 0);
 
 			//transition render target to readable texture and then transition it back to render target
-			 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-				rtOutPut.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			TransitionManagedResource(commandList, rtOutPut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-			commandList->ResourceBarrier(1, &transition);
 
-			 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-				rtIndirectDiffuseOutPut.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			TransitionManagedResource(commandList, rtIndirectDiffuseOutPut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-			commandList->ResourceBarrier(1, &transition);
+			TransitionManagedResource(commandList, rtIndirectSpecularOutPut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-			 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-				rtIndirectSpecularOutPut.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-			commandList->ResourceBarrier(1, &transition);
-
-			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-			TransitionManagedResource(commandList, blurOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
-			TransitionManagedResource(commandList, depthTex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-
-			DenoiseRaytracedSignal(rtCombineOutput);
 
 			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 			TransitionManagedResource(commandList, blurOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-			RenderPostProcessing(blurOutput);
+			RenderPostProcessing(rtCombineOutput);
 
 			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 			TransitionManagedResource(commandList, blurOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);

@@ -3,6 +3,7 @@ Texture2D blueNoise : register(t0);
 Texture2D prevFrame : register(t1);
 Texture2D retargetTex : register(t2);
 RWStructuredBuffer<uint> newSequences : register(u0);
+RWStructuredBuffer<uint> retargettedSequences : register(u1);
 SamplerState pointSampler : register(s0);
 
 #define X_OFFSET 0.2
@@ -146,13 +147,13 @@ uint groupIndex : SV_GroupIndex)
     uint initialSeed = InitSeed(dispatchThreadID.x, dispatchThreadID.y);
     randSeeds[groupIndex] = initialSeed;
     
-    if (frameNum == frameNum)
+    if (frameNum == 0)
     {
         newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = initialSeed;
         return;
     }
     
-    randSeeds[groupIndex] = newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)];
+    randSeeds[groupIndex] = retargettedSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)];
     
     colors[groupIndex] = float3(CalcIntensity(prevFrame[dispatchThreadID.xy].rgb), groupThreadID.x, groupThreadID.y);
 

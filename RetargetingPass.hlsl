@@ -45,7 +45,7 @@ uint InitSeed(uint val0, uint val1, uint backoff = 16)
     return v0;
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(4, 4, 1)]
 void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dispatch.
           uint3 groupThreadID : SV_GroupThreadID, // 3D index of local thread ID in a thread group.
           uint3 dispatchThreadID : SV_DispatchThreadID, // 3D index of global thread ID in the dispatch.
@@ -57,15 +57,6 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
       
     retargetTex.GetDimensions(texWidth, texHeight);
     
-    if(frameNum == 0)
-    {
-        uint inIndex = (dispatchThreadID.y) * 1920 + (dispatchThreadID.x);
-        uint num = newSequences.Load(inIndex);
-        outSequences[inIndex] = num;
-        
-        return;
-    }
-    
     float2 offset = GenerateR2Sequence(frameNum);
     
     uint samplePosX = (dispatchThreadID.x + offset.x * (texWidth - 1)) % texWidth;
@@ -75,7 +66,7 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
     
     pixelOffsets *= 255;
     
-    if(pixelOffsets.x>128)
+    if(pixelOffsets.x > 128)
     {
         pixelOffsets.x = pixelOffsets.x - 256;
     }
@@ -90,8 +81,8 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
     finalLoc %= uint2(1920, 1080);
     
     uint inIndex = (dispatchThreadID.y) * 1920 + (dispatchThreadID.x);
-    uint num = newSequences.Load(inIndex);
-    uint outIndex = uint(finalLoc.y) * 1920 + uint(finalLoc.x);
+    uint num = newSequences[inIndex];
+    uint outIndex = (finalLoc.y) * 1920 + (finalLoc.x);
     outSequences[outIndex] = num;
 
 }

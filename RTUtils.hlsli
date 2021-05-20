@@ -326,7 +326,7 @@ float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, flo
             TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
             
             
-            float3 color = giPayload.color * surfaceColor;
+            float3 color = giPayload.color;
             response += color;
 
         }

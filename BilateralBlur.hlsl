@@ -35,7 +35,7 @@ float4 BlurFunction(float2 uv, float r, float4 centerCol, float centerDepth, ino
     float blurFalloff = 1.f / (2.f * sigma * sigma);
     
     float difference = (depth - centerDepth);
-    float w = exp2(-r * r * blurFalloff - difference * difference);
+    float w = exp2(-r * r * blurFalloff - (difference * difference));
     
     totalWeight += w;
     
@@ -54,7 +54,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 {
     float4 centerCol = mainColor.Sample(pointSampler, input.uv);
     
-    return centerCol;
+    //return centerCol;
     float centerDepth = depthTex.Sample(pointSampler, input.uv).r;
     
     float4 finalCol = centerCol;

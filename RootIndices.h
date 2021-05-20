@@ -131,6 +131,7 @@ enum BlueNoiseDithering
 	RetargetTex,
 	PrevFrameNoisy,
 	NewSequences,
+	RetargettedSequencesBNDS,
 	FrameNum, 
 	BNDSNumParams
 };
