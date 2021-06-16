@@ -2994,12 +2994,12 @@ void Game::Update(float deltaTime, float totalTime)
 
 	auto kb = keyboard->GetState();
 	auto mouseState = mouse->GetState();
-	float xRand = (jitters[numFrames % 16].x * 2.0f -1.0f) / width;
-	float yRand = (jitters[numFrames % 16].y * 2.0f - 1.0f) / height;
+	float xRand = (jitters[numFrames % 16].x) / width;
+	float yRand = (jitters[numFrames % 16].y) / height;
 
-	mainCamera->JitterProjMatrix(0, 0);
+	mainCamera->JitterProjMatrix(xRand, yRand);
 
-	currentJitters = Vector2(0, 0);
+	currentJitters = Vector2(xRand, yRand);
 
 	// Quit if the escape key is pressed
 	if (kb.Escape)
@@ -3674,9 +3674,15 @@ void Game::PopulateCommandList()
 
 	residencySet->Open();
 
+
+	auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(retargetedSequences.resource.Get());
+
+	commandList->ResourceBarrier(1, &uavBarrier);
+
+
 	BNDSPrePass();
 
-	auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
+	uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
 
 	computeCommandList->ResourceBarrier(1, &uavBarrier);
 
@@ -3896,7 +3902,7 @@ void Game::PopulateCommandList()
 	}
 	//RenderEditorWindow();
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	//RenderGUI(deltaTime, totalTime);
+	RenderGUI(deltaTime, totalTime);
 	TransitionManagedResource(commandList, editorWindowTarget, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	transition = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].resource.Get(),

@@ -123,24 +123,24 @@ void FilterRoughness(float3 h, inout float2 roughness)
 //function that calculates the cook torrence brdf
 void CookTorrence(float3 n, float3 h, float roughness, float3 v, float3 f0, float3 l, out float3 F, out float D, out float G, float3x3 tbn)
 {
-    float3 halfvector = normalize(v + l);
-    float3 halfvectorTS = mul(halfvector, tbn);
-    float2 halfvector2D = halfvectorTS.xy;
-    float2 deltaU = ddx(halfvector2D);
-    float2 deltaV = ddy(halfvector2D);
-    float2 boundingRectangle = abs(deltaU) + abs(deltaV);
-    float2 variance = 0.25 * (boundingRectangle * boundingRectangle);
-    float2 kernelRoughness2 = min(2.0 * variance, 0.18);
-    float2 filteredRoughness2 = saturate(float2(roughness, roughness) + kernelRoughness2);
-    roughness = filteredRoughness2.x;
+    //float3 halfvector = normalize(v + l);
+    //float3 halfvectorTS = mul(halfvector, tbn);
+    //float2 halfvector2D = halfvectorTS.xy;
+    //float2 deltaU = ddx(halfvector2D);
+    //float2 deltaV = ddy(halfvector2D);
+    //float2 boundingRectangle = abs(deltaU) + abs(deltaV);
+    //float2 variance = 0.25 * (boundingRectangle * boundingRectangle);
+    //float2 kernelRoughness2 = min(2.0 * variance, 0.18);
+    //float2 filteredRoughness2 = saturate(float2(roughness, roughness) + kernelRoughness2);
+    //roughness = filteredRoughness2.x;
 	
-    //float roughness2 = roughness * roughness;
-    //float3 dndu = ddx(n);
-    //float3 dndv = ddy(n);
-    //float varience = 0.25 * (dot(dndu, dndu) + dot(dndv, dndv));
-    //float kernelRoughness2 = min(2.0 * varience, 0.18);
-    //float filteredRoughness = saturate(roughness2 + kernelRoughness2);
-    //roughness = filteredRoughness;
+    float roughness2 = roughness * roughness;
+    float3 dndu = ddx(n);
+    float3 dndv = ddy(n);
+    float varience = 0.25 * (dot(dndu, dndu) + dot(dndv, dndv));
+    float kernelRoughness2 = min(2.0 * varience, 0.18);
+    float filteredRoughness = saturate(roughness2 + kernelRoughness2);
+    roughness = filteredRoughness;
     D = SpecularDistribution(roughness, h, n);
 	F = Fresnel(h, v, f0);
 	G = GeometricShadowing(n, v, h, roughness) * GeometricShadowing(n, l, h, roughness);

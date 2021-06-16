@@ -46,6 +46,24 @@ float IntersectAABB(float3 origin, float3 direction, float3 extents)
     return max(max(min(minimum.x, maximum.x), min(minimum.y, maximum.y)), min(minimum.z, maximum.z));
 }
 
+float CalcLuma(float3 color)
+{
+    return (color.r * 0.3f + color.g * 0.59f + color.b * 0.11f);
+}
+
+float4 TonemapColor(float4 col)
+{
+    return float4(col.xyz / (1 + CalcLuma(col.xyz)), 1.f);
+
+}
+
+float4 InvertTonemapColor(float4 col)
+{
+    return float4(col.xyz / (1 - CalcLuma(col.xyz)), 1.f);
+}
+
+
+
 // The following code is licensed under the MIT license: https://gist.github.com/TheRealMJP/bc503b0b87b643d3505d41eab8b332ae
 
 // Samples a texture with Catmull-Rom filtering, using 9 texture fetches instead of 16.

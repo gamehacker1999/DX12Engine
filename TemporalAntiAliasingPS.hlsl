@@ -20,9 +20,13 @@ cbuffer TAAExternData : register(b1)
    matrix inverseView;
 };
 
+struct VertexToPixel
+{
+	float4 position:  SV_POSITION;
+	float2 uv:		  TEXCOORD;
+};
 
-
-float3 CalcPosition(float2 tex, float depth)
+float3 CalcPositionFromDepth(float2 tex, float depth)
 {
     float4 position = float4(tex.x * (2) - 1, tex.y * (-2) + 1, depth, 1.0f);
 
@@ -32,11 +36,6 @@ float3 CalcPosition(float2 tex, float depth)
     return position.xyz / position.w;
 }
 
-struct VertexToPixel
-{
-	float4 position:  SV_POSITION;
-	float2 uv:		  TEXCOORD;
-};
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
@@ -45,7 +44,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 	float4 previousColor = previousFrame.SampleLevel(pointSampler, input.uv, 0);
     float2 pixelSize = float2(1.0 / float(WIDTH), 1.0 / float(HEIGHT)); //Need to pass this later
 
-	if (frameNum == frameNum)
+	if (frameNum == 0)
 	{
 		return float4(currentColor, 1.0f);
 	}
@@ -55,15 +54,15 @@ float4 main(VertexToPixel input) : SV_TARGET
 
     const float4 nbh[9] =
     {
-        ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y - pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y))),
-		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y + pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y - pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y))),
-		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y + pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y - pixelSize.y))),
-		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y))),
-		ConvertToYCoCg(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y + pixelSize.y))),
+        ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y - pixelSize.y)))),
+		ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y)))),
+		ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y + pixelSize.y)))),
+		ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y - pixelSize.y)))),
+		ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y)))),
+		ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x, input.uv.y + pixelSize.y)))),
+		ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y - pixelSize.y)))),
+		ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y)))),
+		ConvertToYCoCg(TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y + pixelSize.y)))),
     };
     const float4 color = nbh[4];
 
@@ -82,7 +81,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     
     if (vel.x >= 1)
     {
-        float3 currentPosition = CalcPosition(input.uv, depthBuffer.Sample(basicSampler, input.uv).r);
+        float3 currentPosition = CalcPositionFromDepth(input.uv, depthBuffer.Sample(basicSampler, input.uv).r);
         float4 previousPosition = mul(float4(currentPosition, 1.0f), prevView);
         previousPosition = mul(previousPosition, prevProjection);
 
@@ -93,7 +92,7 @@ float4 main(VertexToPixel input) : SV_TARGET
         previousCoordinate -= vel;
 	
     float2 historySize = float2(WIDTH, HEIGHT);
-    float4 history = ConvertToYCoCg(previousFrame.Sample(basicSampler, previousCoordinate));
+    float4 history = ConvertToYCoCg(TonemapColor(previousFrame.Sample(basicSampler, previousCoordinate)));
     
     if(history.x != history.x)
     {   
@@ -111,6 +110,6 @@ float4 main(VertexToPixel input) : SV_TARGET
     float impulse = abs(color.x - history.x) / max(color.x, max(history.x, minimum.x));
     float factor = lerp(blendFactor * 0.5f, blendFactor * 2.0f, impulse * impulse);
 	
-    return ConvertToRGBA(lerp(history, color, factor));
+    return ConvertToRGBA(InvertTonemapColor(lerp(history, color, factor)));
 
 }

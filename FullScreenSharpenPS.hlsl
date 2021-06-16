@@ -23,6 +23,6 @@ float4 main(VertexToPixel input) : SV_TARGET
     float4 bottomLeft = taaOutput.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y + pixelSize.y));
 
 
-    return saturate(center); // + (4 * center) - up - down - left - right);
+    return (center); // + (4 * center) - up - down - left - right);
     //-topLeft - topRight - bottomLeft - bottomRight);
 }
