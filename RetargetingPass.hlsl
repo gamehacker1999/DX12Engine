@@ -1,3 +1,5 @@
+#include"Common.hlsl"
+
 RWStructuredBuffer<uint> outSequences : register(u0);
 RWStructuredBuffer<uint> newSequences : register(u1);
 Texture2D retargetTex : register(t0);
@@ -78,11 +80,11 @@ void main(uint3 groupID : SV_GroupID, // 3D index of the thread group in the dis
     
     int2 finalLoc = dispatchThreadID.xy + int2(pixelOffsets.x, pixelOffsets.y);
     
-    finalLoc %= uint2(1920, 1080);
+    finalLoc %= uint2(WIDTH, HEIGHT);
     
-    uint inIndex = (dispatchThreadID.y) * 1920 + (dispatchThreadID.x);
+    uint inIndex = (dispatchThreadID.y) * WIDTH + (dispatchThreadID.x);
     uint num = newSequences[inIndex];
-    uint outIndex = (finalLoc.y) * 1920 + (finalLoc.x);
+    uint outIndex = (finalLoc.y) * WIDTH + (finalLoc.x);
     outSequences[outIndex] = num;
 
 }

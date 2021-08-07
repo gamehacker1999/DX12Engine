@@ -19,6 +19,7 @@
 #include<Keyboard.h>
 #include<Mouse.h>
 #include"RootIndices.h"
+#include "DynamicBufferRing.h"
 
 #include <array>
 #include <io.h>
@@ -29,6 +30,19 @@
 #define ENTT_STANDARD_CPP
 #include<entity\registry.hpp>
 #include"Flocker.h"
+
+#define A_CPU
+#include<ffx_a.h>
+#include<ffx_fsr1.h>
+
+struct FSRConstants
+{
+	XMUINT4 Const0;
+	XMUINT4 Const1;
+	XMUINT4 Const2;
+	XMUINT4 Const3;
+	XMUINT4 Sample;
+};
 
 struct LightData
 {
@@ -41,6 +55,7 @@ struct LightingData
 {
 	Vector3 cameraPosition;
 	UINT lightCount;
+	Vector3 cameraForward;
 };
 
 struct LightCullingExternalData
@@ -84,6 +99,13 @@ struct BMFRPreProcessData
 	UINT IMAGE_HEIGHT;
 };
 
+struct Reservoir
+{
+	float y; //The output sample
+	float wsum; // the sum of weights
+	float M; //the number of samples seen so far
+	float W; //Probablistic weight
+};
 
 inline ID3D12Resource* CreateRBBuffer(ID3D12Resource* buffer, ID3D12Device* device, UINT bufferSize)
 {
@@ -110,6 +132,11 @@ struct RayTraceCameraData
 	Matrix proj;
 	Matrix iView;
 	Matrix iProj;
+	Matrix prevView;
+	Matrix prevProj;
+	float frameCount;
+	int doRestir;
+	int doOutput;
 };
 
 struct BNDSExternalData
@@ -187,6 +214,12 @@ public:
 
 
 	//-------------------------------------------------
+
+	//-----------------------------FSR functions
+
+	void CreateFSRPass();
+
+	//-------------------------------------------
 
 	void RaytracingPrePass();
 	void DepthPrePass();
@@ -279,6 +312,9 @@ private:
 	ManagedResource visibleLightIndicesBuffer;
 	UINT8* visibleLightIndicesResource;
 	UINT* visibleLightIndices;
+
+	ManagedResource currentReservoir;
+	ManagedResource intermediateReservoir;
 
 	//decals
 	ComPtr<ID3D12Resource> decalConstanceBufferResource;
@@ -447,12 +483,18 @@ private:
 	ComPtr<ID3D12RootSignature> velRootSig;
 	ComPtr<ID3D12PipelineState> velPSO;
 
+	//veloity vars
+	ComPtr<ID3D12RootSignature> restirSpatialReuseRootSig;
+	ComPtr<ID3D12PipelineState> restirSpatialReusePSO;
+
 	//---------------------Raytracing vars-------------------
 
 	bool raster;
 	bool isRaytracingAllowed;
 	bool inlineRaytracing;
 	bool rtToggle;
+	bool doRestir;
+	bool restirSpatialReuse;
 	ComPtr<ID3D12Resource> bottomLevelAs; //storage for bottom level as
 	nv_helpers_dx12::TopLevelASGenerator topLevelAsGenerator;
 	AccelerationStructureBuffers topLevelAsBuffers;
@@ -496,7 +538,7 @@ private:
 	//gbuffers resources
 	ManagedResource rtPosition;
 	ManagedResource rtNormals;
-	ManagedResource rtDiffuse;
+	ManagedResource rtRoughnessMetal;
 	ManagedResource rtAlbedo;
 	ManagedResource prevNormals;
 	ManagedResource prevPosition;
@@ -610,5 +652,15 @@ private:
 	bool entityManipulated;
 	bool addNewEntity;
 	int pickingIndex;
+
+	DynamicBufferRing dynamicBufferRing; //Ring buffer for dynamic resources
+
+	ManagedResource fsrIntermediateTexture;
+	ManagedResource fsrOutputTexture;
+
+	ComPtr<ID3D12RootSignature> fsrRootSig;
+	ComPtr<ID3D12PipelineState> fsrEASUPso;
+	ComPtr<ID3D12PipelineState> fsrRCASPso;
+
 };
 

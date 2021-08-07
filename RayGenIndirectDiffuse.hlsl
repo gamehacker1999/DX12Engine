@@ -3,16 +3,7 @@
 
 RWStructuredBuffer<uint> newSequences : register(u0, space1);
 
-
-struct RayTraceCameraData
-{
-    matrix view;
-    matrix proj;
-    matrix iView;
-    matrix iProj;
-};
-
-ConstantBuffer<RayTraceCameraData> cameraData : register(b0);
+ConstantBuffer<RayTraceExternData> externData : register(b0);
 
 [shader("raygeneration")]
 void IndirectDiffuseRayGen()
@@ -55,7 +46,7 @@ void IndirectDiffuseRayGen()
 // The first channel of the output contains shadows for the first/visibility bounce
 // The second channel of the output contains shadows in reflections
     float4 prevValue = gIndirectDiffuseOutput[reprojectedTexCoord];
-    uint rndseed = newSequences.Load((launchIndex.y) * 1920 + (launchIndex.x));
+    uint rndseed = newSequences.Load((launchIndex.y) * WIDTH + (launchIndex.x));
 
     if (prevValue.x != prevValue.x)
     {

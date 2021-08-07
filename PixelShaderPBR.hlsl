@@ -54,7 +54,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	uint index = entityIndex.index;
 
-	float4 surfaceColor = material[index+0].Sample(basicSampler,input.uv);
+	float4 surfaceColor = material[index+0].SampleBias(basicSampler,input.uv, -0.38f);
 
 	surfaceColor = pow(abs(surfaceColor), 2.2);
 
@@ -203,7 +203,18 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float3 prefilteredColor = prefilteredMap.SampleLevel(basicSampler, R, roughness * 4.0).rgb;
 
-	float3 specularIndirect = prefilteredColor * (ksIndirect * envBRDF.x + envBRDF.y);
+	float3 specularIndirectSingleScattering = (ksIndirect * envBRDF.x + envBRDF.y);
+    float ess = envBRDF.x + envBRDF.y;
+    float ems = 1.0f - ess;
+	
+    float3 Favg = ksIndirect + (1.0f / 21.f) * (1.0f - ksIndirect);
+	
+    float3 fms = specularIndirectSingleScattering * Favg / (1 - Favg * (1 - ess));
+	
+    float3 lss = specularIndirectSingleScattering * prefilteredColor;
+    float3 lms = fms * ems * irradiance;
+	
+    float3 specularIndirect = lss + lms;
 
 	float3 ambientIndirect = (kdIndirect * diffuseIndirect + specularIndirect); 
 

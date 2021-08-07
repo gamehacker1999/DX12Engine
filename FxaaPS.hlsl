@@ -15,7 +15,10 @@ struct VertexToPixel
 float4 main(VertexToPixel input) : SV_TARGET
 {
 
-    float2 add = float2(1.0, 1.0) / float2(WIDTH, HEIGHT);
+    float width, height;
+    
+    taaOutput.GetDimensions(width, height);
+    float2 add = float2(1.0, 1.0) / float2(width, height);
 			
     float3 rgbNW = taaOutput.Sample(pointSampler, (input.uv + float2(-add.x, -add.y)));
     float3 rgbNE = taaOutput.Sample(pointSampler, (input.uv + float2(add.x, -add.y)));

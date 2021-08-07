@@ -1,17 +1,14 @@
 #include "Common.hlsl"
 #include "RayGenIncludes.hlsli"
+#include "ReStirIncludes.hlsl"
 
 RWStructuredBuffer<uint> newSequences : register(u0, space1);
 
-struct RayTraceCameraData
-{
-    matrix view;
-    matrix proj;
-    matrix iView;
-    matrix iProj;
-};
 
-ConstantBuffer<RayTraceCameraData> cameraData: register(b0);
+ConstantBuffer<RayTraceExternData> externData : register(b0);
+
+RWStructuredBuffer<Reservoir> prevFrameRes : register(u0, space3);
+RWStructuredBuffer<Reservoir> intermediateReservoir : register(u1, space3);
 
 [shader("raygeneration")] 
 void RayGen() 
@@ -59,20 +56,142 @@ void RayGen()
     if (norm.x == 0 && norm.y == 0 && norm.z == 0)
     {
         color = albedo;
+        gOutput[launchIndex] = float4(color, 1);
+        return;
     }
-
     else
     {
-        uint rndseed = newSequences[launchIndex.y * 1920 + launchIndex.x];
+        uint rndseed = newSequences[launchIndex.y * WIDTH + launchIndex.x];
 
-        float3 V = normalize(cameraPosition - pos);
-        // Do explicit direct lighting to a random light in the scene
-        color += DirectLighting(rndseed, pos, norm, V, metalColor.r,
-		albedo, f0, roughness);
+        if(!externData.doRestir)
+        {
+            
+            int lightToSample = min(int(nextRand(rndseed) * glightCount), glightCount - 1);
+            Light light = lights.Load(lightToSample);
+            float3 V = normalize(cameraPosition - pos);
+            float3 color = float3(0, 0, 0);
+
+            if (light.type == LIGHT_TYPE_DIR)
+            {
+                color += DirectLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.r, albedo, f0);
+            }
+            else if (light.type == LIGHT_TYPE_POINT)
+            {
+                color += PointLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.r, albedo, f0);
+            }
+            else if (light.type == LIGHT_TYPE_SPOT)
+            {
+                color += SpotLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.r, albedo, f0);
+            }
+            gOutput[launchIndex] = float4(color, 1);
+            return;
+        }
+        
+        Reservoir prevReservoir = {0,0,0, 0}; // initialize previous reservoir
+
+		// if not first time fill with previous frame reservoir
+        if (externData.frameCount != 0)
+        {
+            //float3 color = float3(1, 0, 0);
+            //gOutput[launchIndex] = float4(color, 1);
+            //return;
+            float4 prevPos = mul(float4(pos, 1.0), mul(externData.prevView, externData.prevProj));
+            prevPos /= prevPos.w;
+            uint2 prevIndex = launchIndex;
+            prevIndex.x = ((prevPos.x + 1.f) / 2.f) * (float) dims.x;
+            prevIndex.y = ((1.f - prevPos.y) / 2.f) * (float) dims.y;
+
+            if (prevIndex.x >= 0 && prevIndex.x < dims.x && prevIndex.y >= 0 && prevIndex.y < dims.y)
+            {
+                prevReservoir = prevFrameRes[prevIndex.y * WIDTH + prevIndex.x];
+            }
+        }
+        
+        //Initial gather of information, algorithm 3 of the paper
+        Reservoir reservoir = { 0,0,0,0};
+        for (int i = 0; i < min(glightCount, 32); i++)
+        {
+            int lightToSample = min(int(nextRand(rndseed) * glightCount), glightCount - 1);
+            Light light = lights.Load(lightToSample);
+            
+            float L = saturate(normalize(light.position - pos));
+            
+            float ndotl = saturate(dot(norm.xyz, L)); // lambertian term
+
+	    		// p_hat of the light is f * Le * G / pdf   
+            float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.x, albedo, f0);
+            
+            float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
+            UpdateResrvoir(reservoir, lightToSample, p_hat, nextRand(rndseed));
+        }
+        
+        Light light = lights.Load(reservoir.y);
+            
+        float L = saturate(normalize(light.position - pos));
+            
+        float ndotl = saturate(dot(norm.xyz, L)); // lambertian term
+
+	    		// p_hat of the light is f * Le * G / pdf   
+        float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.x, albedo, f0);
+            
+        float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
+        
+        reservoir.W = (1.0 / max(p_hat, 0.00001)) * (reservoir.wsum / max(reservoir.M, 0.000001));
+        
+        if (ShootShadowRays(pos, L, 1, 1000000)<1.0f)
+        {
+            reservoir.W = 0;
+        }
+        
+        //Temporal reuse
+        Reservoir temporalRes = { 0, 0, 0, 0 };
+        
+        
+        UpdateResrvoir(temporalRes, reservoir.y, p_hat * reservoir.W * reservoir.M, nextRand(rndseed));
+
+        {
+            Light light = lights.Load(prevReservoir.y);
+            
+            float L = saturate(normalize(light.position - pos));
+            
+            float ndotl = saturate(dot(norm.xyz, L)); // lambertian term
+
+	    		// p_hat of the light is f * Le * G / pdf   
+            float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.x, albedo, f0);
+            prevReservoir.M = min(20.f * reservoir.M, prevReservoir.M); //As described in the paper, clamp the M value to 20*M
+            float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
+            UpdateResrvoir(temporalRes, prevReservoir.y, p_hat * prevReservoir.W * prevReservoir.M, nextRand(rndseed));
+
+        }
+        
+        temporalRes.M = reservoir.M + prevReservoir.M;
+        
+        {
+            Light light = lights.Load(temporalRes.y);
+            
+            float L = saturate(normalize(light.position - pos));
+            
+            float ndotl = saturate(dot(norm.xyz, L)); // lambertian term
+
+	    		// p_hat of the light is f * Le * G / pdf   
+            float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.x, albedo, f0);
+            float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 
+            temporalRes.W = (1.0 / max(p_hat, 0.00001)) * (temporalRes.wsum / max(temporalRes.M, 0.0001));
+            
+            reservoir = temporalRes;
+        
+            intermediateReservoir[launchIndex.y * WIDTH + launchIndex.x] = reservoir;
+        
+            if(externData.outPutColor)
+                gOutput[launchIndex] = float4(brdfVal * reservoir.W, 1);
+
+        }
+        
+
 
     } 
-    float alpha = 0.3;
+    //float alpha = 0.3;
 
-    gOutput[launchIndex] = float4(color * alpha, 1.0f) + (float4(prevValue.xyz * (1.f - alpha), 1.0f));
+    //gOutput[launchIndex] = float4(color * alpha, 1.0f) + (float4(prevValue.xyz * (1.f - alpha), 1.0f));
     
 }

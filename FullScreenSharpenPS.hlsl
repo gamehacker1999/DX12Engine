@@ -11,7 +11,7 @@ struct VertexToPixel
 
 float4 main(VertexToPixel input) : SV_TARGET
 {
-    float2 pixelSize = float2(1.0 / float(WIDTH), 1.0 / float(HEIGHT));
+    float2 pixelSize = float2(1.0 / float(DISPLAY_WIDTH), 1.0 / float(DISPLAY_HEIGHT));
     float4 center = taaOutput.Sample(pointSampler, input.uv);
     float4 left = taaOutput.Sample(pointSampler, float2(input.uv.x - pixelSize.x, input.uv.y));
     float4 down = taaOutput.Sample(pointSampler, float2(input.uv.x, input.uv.y + pixelSize.y));

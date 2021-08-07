@@ -40,7 +40,7 @@ enum RaytracingHeapRangesIndices
 	RTOutputTexture,
 	RTIndirectDiffuseOutputTexture,
 	RTIndirectSpecularOutputTexture,
-	RTDiffuseTexture,
+	RTRoughnessMetalTexture,
 	RTPositionTexture,
 	RTNormalTexture,
 	RTAlbedoTexture,
@@ -151,4 +151,19 @@ enum BilateralBlur
 	DepthTexBlur,
 	BilateralBlurExternalData,
 	BilateralBlurNumParams
+};
+
+enum RestrirSpatialReuseIndices
+{
+	RestirSpatialReuse_GBufferPos,
+	RestirSpatialReuse_GBufferNorm,
+	RestirSpatialReuse_GBufferDif,
+	RestirSpatialReuse_GBufferRoughMetal,
+	RestirSpatialReuse_OutColor,
+	RestirSpatialReuse_Reservoirs,
+	RestirSpatialReuse_SampleSequences,
+	RestirSpatialReuse_OutReservoirs,
+	RestirSpatialReuse_ExternData,
+	RestirSpatialReuse_Lights,
+	RestirSpatialReuse_NumIndices
 };

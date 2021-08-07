@@ -261,7 +261,7 @@ ComPtr<ID3D12PipelineState> CreatePipelineState();
 
 void TransitionManagedResource(const ComPtr<ID3D12GraphicsCommandList>& commandList, ManagedResource& resource, D3D12_RESOURCE_STATES afterState);
 
-void CopyResource(ComPtr<ID3D12GraphicsCommandList>& commandList, ManagedResource& dst, ManagedResource& src);
+void CopyResource(ComPtr<ID3D12GraphicsCommandList6>& commandList, ManagedResource& dst, ManagedResource& src);
 // Computes a compute shader dispatch size given a thread group size, and number of elements to process
 UINT DispatchSize(UINT tgSize, UINT numElements);
 

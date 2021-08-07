@@ -1,3 +1,4 @@
+#include "Common.hlsl"
 
 Texture2D blueNoise : register(t0);
 Texture2D prevFrame : register(t1);
@@ -149,11 +150,11 @@ uint groupIndex : SV_GroupIndex)
     
     if (frameNum == 0)
     {
-        newSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)] = initialSeed;
+        newSequences[(dispatchThreadID.y) * WIDTH + (dispatchThreadID.x)] = initialSeed;
         return;
     }
     
-    randSeeds[groupIndex] = retargettedSequences[(dispatchThreadID.y) * 1920 + (dispatchThreadID.x)];
+    randSeeds[groupIndex] = retargettedSequences[(dispatchThreadID.y) * WIDTH + (dispatchThreadID.x)];
     
     colors[groupIndex] = float3(CalcIntensity(prevFrame[dispatchThreadID.xy].rgb), groupThreadID.x, groupThreadID.y);
 
@@ -171,7 +172,7 @@ uint groupIndex : SV_GroupIndex)
     
     GroupMemoryBarrierWithGroupSync();
 
-    uint outIndex = blueNoiseColors[groupIndex].z * 1920 + blueNoiseColors[groupIndex].y;
+    uint outIndex = blueNoiseColors[groupIndex].z * WIDTH + blueNoiseColors[groupIndex].y;
     uint currentIndex = colors[groupIndex].z * BLOCK + colors[groupIndex].y;
     
     newSequences[outIndex] = randSeeds[currentIndex];

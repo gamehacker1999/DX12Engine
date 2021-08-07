@@ -18,5 +18,5 @@ float4 main(VertexToPixel input) : SV_TARGET
 
     float3 finalCol = directColor + indDiffuse + indSpec;
     
-    return float4(finalCol, 1.0f);
+    return float4(directColor, 1.0f);
 }

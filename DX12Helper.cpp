@@ -843,7 +843,7 @@ void TransitionManagedResource(const ComPtr<ID3D12GraphicsCommandList>& commandL
     resource.currentState = afterState;
 }
 
-void CopyResource(ComPtr<ID3D12GraphicsCommandList>& commandList, ManagedResource& dst, ManagedResource& src)
+void CopyResource(ComPtr<ID3D12GraphicsCommandList6>& commandList, ManagedResource& dst, ManagedResource& src)
 {
     auto destBefore = dst.currentState;
     auto srcBefore = src.currentState;

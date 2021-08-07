@@ -4,20 +4,27 @@
 // message handling function below can talk to our object
 DXCore* DXCore::DXCoreInstance = nullptr;
 
-DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windowWidth, 
-	unsigned int windowHeight, bool debugStats)
+DXCore::DXCore(HINSTANCE hInstance,
+	const char* titleBarText,
+	unsigned int windowWidth,
+	unsigned int windowHeight,
+	unsigned int renderWidth,
+	unsigned int renderHeight,
+	bool debugStats)
 {
 	DXCoreInstance = this;
 	this->hInstance = hInstance;
 	this->titleBarText = titleBarText;
 	this->width = windowWidth;
 	this->height = windowHeight;
+	this->renderHeight = renderHeight;
+	this->renderWidth = renderWidth;
 	this->titleBarStats = debugStats;
 
 	fpsFrameCount = 0;
 	fpsTimeElapsed = 0;
-	viewport.Height = static_cast<FLOAT>(height);
-	viewport.Width = static_cast<FLOAT>(width);
+	viewport.Height = static_cast<FLOAT>(renderHeight);
+	viewport.Width = static_cast<FLOAT>(renderWidth);
 	viewport.MinDepth = 0;
 	viewport.MaxDepth = 1.0f;
 	viewport.TopLeftX=0;
@@ -25,8 +32,8 @@ DXCore::DXCore(HINSTANCE hInstance, const char* titleBarText, unsigned int windo
 
 	scissorRect.left = 0;
 	scissorRect.top = 0;
-	scissorRect.right = static_cast<LONG>(width);
-	scissorRect.bottom = static_cast<LONG>(height);
+	scissorRect.right = static_cast<LONG>(renderWidth);
+	scissorRect.bottom = static_cast<LONG>(renderHeight);
 
 	mouse = std::make_unique<Mouse>();
 	keyboard = std::make_unique<Keyboard>();

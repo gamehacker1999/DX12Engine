@@ -21,9 +21,6 @@
 #include"ShaderBindingTableGenerator.h"
 #include"DXRHelper.h"
 
-
-
-
 using namespace Microsoft::WRL;
 // We can include the correct library files here
 // instead of in Visual Studio settings if we want
@@ -34,7 +31,9 @@ public:
 		const char* titleBarText,
 		unsigned int windowWidth,
 		unsigned int windowHeight,
-		bool debugStats);
+		unsigned int renderWidth = 1280,
+		unsigned int renderHeight = 720,
+		bool debugStats = true);
 
 	//static members for os level processing
 	static DXCore* DXCoreInstance;
@@ -80,6 +79,10 @@ protected:
 	// Size of the window's client area
 	unsigned int width;
 	unsigned int height;
+
+	// Size of the window's client area
+	unsigned int renderWidth;
+	unsigned int renderHeight;
 
 	static const int frameCount = 3;
 	//pipeline objects

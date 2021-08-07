@@ -19,8 +19,9 @@ Game::Game(HINSTANCE hInstance)
 		hInstance,		   // The application's handle
 		"DirectX Game",	   // Text for the window's title bar
 		1920,			   // Width of the window's client area
-		1080,			   // Height of the window's client area
-		true)			   // Show extra stats (fps) in title bar?
+		1080, 
+		1280, 
+		720)			   // Height of the window's client area
 {
 
 	prevMousePos = { 0,0 };
@@ -40,7 +41,7 @@ Game::Game(HINSTANCE hInstance)
 	lightCullingExternBegin = 0;
 	previousBuffer = nullptr;
 	lightCount = 0;
-	raster = false;
+	raster = true;
 	inlineRaytracing = true;
 
 	memset(fenceValues, 0, sizeof(UINT64) * frameIndex);
@@ -49,6 +50,8 @@ Game::Game(HINSTANCE hInstance)
 
 	isRaytracingAllowed = false;
 	rtToggle = true;
+	doRestir = false;
+	restirSpatialReuse = false;
 	enableSSS = false;
 	visibleLightIndices = nullptr;
 	visibleLightIndicesResource = 0;
@@ -85,6 +88,8 @@ Game::~Game()
 
 
 	delete[] jitters;
+
+	dynamicBufferRing.OnDestroy();
 
 	//delete[] denoised_pixels;
 	//inputBuffer->destroy();
@@ -184,9 +189,6 @@ HRESULT Game::Init()
 	}
 
 
-
-
-
 	gpuHeapRingBuffer = std::make_shared<GPUHeapRingBuffer>();
 
 	//residencyManager = std::make_shared<D3DX12Residency::ResidencyManager>();
@@ -197,14 +199,17 @@ HRESULT Game::Init()
 
 	sceneConstantBufferAlignmentSize = (sizeof(SceneConstantBuffer));
 
+	//Initializing the scene ring buffer
+	dynamicBufferRing.OnCreate(device, 3, 400 * 1024 * 1024);
+
 
 	//creating a final render target
 	D3D12_RESOURCE_DESC renderTexureDesc = {};
-	renderTexureDesc.Width = width;
-	renderTexureDesc.Height = height;
+	renderTexureDesc.Width = renderWidth;
+	renderTexureDesc.Height = renderHeight;
 	renderTexureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	renderTexureDesc.DepthOrArraySize = renderTargets[0].resource->GetDesc().DepthOrArraySize;
-	renderTexureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	renderTexureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET|D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 	renderTexureDesc.MipLevels = renderTargets[0].resource->GetDesc().MipLevels;
 	renderTexureDesc.SampleDesc.Quality = 0;
 	renderTexureDesc.SampleDesc.Count = 1;
@@ -279,7 +284,7 @@ HRESULT Game::Init()
 	));
 
 	taaInput.resource->SetName(L"taa input");
-
+	taaInput.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
@@ -330,9 +335,11 @@ HRESULT Game::Init()
 	));
 
 	tonemappingOutput.resource->SetName(L"tonemapping output");
+	tonemappingOutput.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 
-	//renderTexureDesc.Width = 1920;
-	//renderTexureDesc.Height = 720;
+	renderTexureDesc.Width = width;
+	renderTexureDesc.Height = height;
+
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
@@ -344,9 +351,6 @@ HRESULT Game::Init()
 
 	editorWindowTarget.resource->SetName(L"editor window");
 	editorWindowTarget.currentState = D3D12_RESOURCE_STATE_RENDER_TARGET;
-
-	renderTexureDesc.Width = width;
-	renderTexureDesc.Height = height;
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
@@ -370,8 +374,31 @@ HRESULT Game::Init()
 	));
 
 	fxaaOutput.resource->SetName(L"fxaa output");
+	fxaaOutput.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(fsrIntermediateTexture.resource.GetAddressOf())
+	));
 
+	fsrIntermediateTexture.resource->SetName(L"fsr intermediate");
+	fsrIntermediateTexture.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&renderTexureDesc,
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		&rtvClearVal,
+		IID_PPV_ARGS(fsrOutputTexture.resource.GetAddressOf())
+	));
+
+	fsrOutputTexture.resource->SetName(L"fsr output");
+	fsrOutputTexture.currentState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 
 
 	device->CreateRenderTargetView(finalRenderTarget.resource.Get(), nullptr, rtvDescriptorHeap.GetCPUHandle(rtvDescriptorHeap.GetLastResourceIndex()));
@@ -432,16 +459,21 @@ HRESULT Game::Init()
 
 
 	renderTargetSRVHeap.Create(100, true, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	renderTargetSRVHeap.CreateDescriptor(taaInput, RESOURCE_TYPE_SRV,0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(taaHistoryBuffer, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_SRV,0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(finalRenderTarget, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(taaOutput, RESOURCE_TYPE_SRV,0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(taaInput, RESOURCE_TYPE_SRV,0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(taaHistoryBuffer, RESOURCE_TYPE_SRV,  0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_SRV,0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(finalRenderTarget, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(taaOutput, RESOURCE_TYPE_SRV,0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(sharpenOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(tonemappingOutput, RESOURCE_TYPE_SRV,  0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(fxaaOutput, RESOURCE_TYPE_SRV,  0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(blurOutput, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtCombineOutput, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(blurOutput, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(fsrIntermediateTexture, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(fsrIntermediateTexture, RESOURCE_TYPE_UAV, 0, width, height, 0, 0);
+	renderTargetSRVHeap.CreateDescriptor(fsrOutputTexture, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(fsrOutputTexture, RESOURCE_TYPE_UAV, 0, width, height, 0, 0);
+
 	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/movemask2.bmp", blueNoiseTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	renderTargetSRVHeap.CreateDescriptor(L"../../Assets/Textures/movemask2.bmp", retargetTex, RESOURCE_TYPE_SRV, TEXTURE_TYPE_DEAULT);
 	blueNoiseTex.resource->SetName(L"bluenoise");
@@ -455,7 +487,7 @@ HRESULT Game::Init()
 	depthClearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
 	//creating the default resource heap for the depth stencil
-	auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R24G8_TYPELESS, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+	auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R24G8_TYPELESS, renderWidth, renderHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
@@ -465,10 +497,10 @@ HRESULT Game::Init()
 		IID_PPV_ARGS(depthStencilBuffer.resource.GetAddressOf())
 	));
 
-	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer, RESOURCE_TYPE_DSV, 0, width, height);
+	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer, RESOURCE_TYPE_DSV, 0, renderWidth, renderHeight);
 
 	//creating the default resource heap for the depth stencil
-	texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R24G8_TYPELESS, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+	texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R24G8_TYPELESS, renderWidth, renderHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
 		D3D12_HEAP_FLAG_NONE,
@@ -478,11 +510,11 @@ HRESULT Game::Init()
 		IID_PPV_ARGS(depthStencilBuffer2.resource.GetAddressOf())
 	));
 
-	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer2, RESOURCE_TYPE_DSV, 0, width, height);
+	dsDescriptorHeap.CreateDescriptor(depthStencilBuffer2, RESOURCE_TYPE_DSV, 0, renderWidth, renderHeight);
 
 	D3D12_RESOURCE_DESC depthTexDesc = {};
-	depthTexDesc.Width = width;
-	depthTexDesc.Height = height;
+	depthTexDesc.Width = renderWidth;
+	depthTexDesc.Height = renderHeight;
 	depthTexDesc.DepthOrArraySize = 1;
 	depthTexDesc.MipLevels = 1;
 	depthTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -504,7 +536,7 @@ HRESULT Game::Init()
 	));
 
 	depthTex.currentState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-	dsDescriptorHeap.CreateDescriptor(depthTex, RESOURCE_TYPE_DSV, 0, width, height);
+	dsDescriptorHeap.CreateDescriptor(depthTex, RESOURCE_TYPE_DSV, 0, renderWidth, renderHeight);
 
 	//depthDesc.Create(2, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	//depthDesc.CreateDescriptor(depthTex, RESOURCE_TYPE_SRV, 0, 0, 0, 0, 1);
@@ -521,10 +553,7 @@ HRESULT Game::Init()
 
 	mainCamera = std::make_shared<Camera>(XMFLOAT3(5.0f, 0.f, -3.0f), XMFLOAT3(-1.0f, 0.0f, 1.0f));
 
-	mainCamera->CreateProjectionMatrix((float)width / height); //creating the camera projection matrix
-
-
-
+	mainCamera->CreateProjectionMatrix((float)renderWidth / renderHeight); //creating the camera projection matrix
 
 	velocityBufferData.view = mainCamera->GetViewMatrix();
 	velocityBufferData.projection = mainCamera->GetProjectionMatrix();
@@ -547,8 +576,8 @@ HRESULT Game::Init()
 	bmfrPreProcData.prevView = mainCamera->GetViewMatrix();
 	bmfrPreProcData.prevProj = mainCamera->GetProjectionMatrix();
 	bmfrPreProcData.frame_number = -1;
-	bmfrPreProcData.IMAGE_HEIGHT = height;
-	bmfrPreProcData.IMAGE_WIDTH = width;
+	bmfrPreProcData.IMAGE_HEIGHT = renderHeight;
+	bmfrPreProcData.IMAGE_WIDTH = renderWidth;
 
 	memcpy(bmfrPreprocessBegin, &bmfrPreProcData, sizeof(bmfrPreProcData));
 
@@ -655,7 +684,7 @@ void Game::InitComputeEngine()
 
 void Game::InitializeGUI()
 {
-	gpuHeapRingBuffer->GetDescriptorHeap().CreateDescriptor(editorWindowTarget, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	gpuHeapRingBuffer->GetDescriptorHeap().CreateDescriptor(editorWindowTarget, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
 	gpuHeapRingBuffer->IncrementNumStaticResources(1);
 	ImGui_ImplDX12_Init(device.Get(), 3,
 		DXGI_FORMAT_R8G8B8A8_UNORM, gpuHeapRingBuffer->GetDescriptorHeap().GetHeapPtr(),
@@ -1406,6 +1435,102 @@ void Game::LoadShaders()
 			ThrowIfFailed(device->CreateGraphicsPipelineState(&passthroughPSODesc, IID_PPV_ARGS(passthroughPSO.GetAddressOf())));
 		}
 
+		{
+			CD3DX12_DESCRIPTOR_RANGE1 descriptorRange[2];
+			CD3DX12_ROOT_PARAMETER1 rootParams[3];
+
+			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+			descriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+			descriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0);
+
+			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
+			rootParams[0].InitAsConstantBufferView(0, 0);
+			rootParams[1].InitAsDescriptorTable(1, &descriptorRange[0]);
+			rootParams[2].InitAsDescriptorTable(1, &descriptorRange[1]);
+
+			ComPtr<ID3DBlob> signature;
+			ComPtr<ID3DBlob> error;
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSamplers[1];//(0, D3D12_FILTER_ANISOTROPIC);
+			staticSamplers[0].Init(0, D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+			rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams,
+				_countof(staticSamplers), staticSamplers, rootSignatureFlags);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+				signature.GetAddressOf(), error.GetAddressOf()));
+
+			ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+				IID_PPV_ARGS(fsrRootSig.GetAddressOf())));
+
+			ComPtr<ID3DBlob> shaderRCAS;
+			ComPtr<ID3DBlob> shaderEASU;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"FSR_RCASPass.cso", shaderRCAS.GetAddressOf()));
+			ThrowIfFailed(D3DReadFileToBlob(L"FSR_EASUPass.cso", shaderEASU.GetAddressOf()));
+
+			//creating a passthrough pipeline state
+			D3D12_COMPUTE_PIPELINE_STATE_DESC rcasPsoDesc = {};
+			rcasPsoDesc.pRootSignature = fsrRootSig.Get();
+			rcasPsoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderRCAS.Get());
+			
+			ThrowIfFailed(device->CreateComputePipelineState(&rcasPsoDesc, IID_PPV_ARGS(fsrRCASPso.GetAddressOf())));
+
+			//creating a passthrough pipeline state
+			D3D12_COMPUTE_PIPELINE_STATE_DESC easuPsoDesc = {};
+			easuPsoDesc.pRootSignature = fsrRootSig.Get();
+			easuPsoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderEASU.Get());
+
+			ThrowIfFailed(device->CreateComputePipelineState(&easuPsoDesc, IID_PPV_ARGS(fsrEASUPso.GetAddressOf())));
+		}
+
+		{
+			CD3DX12_DESCRIPTOR_RANGE1 descriptorRange[5];
+			CD3DX12_ROOT_PARAMETER1 rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_NumIndices];
+
+			descriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0);
+			descriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, 0);
+			descriptorRange[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2, 0);
+			descriptorRange[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3, 0);
+			descriptorRange[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4, 0);
+
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferPos].InitAsDescriptorTable(1, &descriptorRange[0]);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferNorm].InitAsDescriptorTable(1, &descriptorRange[1]);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferDif].InitAsDescriptorTable(1, &descriptorRange[2]);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferRoughMetal].InitAsDescriptorTable(1, &descriptorRange[3]);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_OutColor].InitAsDescriptorTable(1, &descriptorRange[4]);
+
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_Reservoirs].InitAsUnorderedAccessView(5, 0);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_SampleSequences].InitAsUnorderedAccessView(6, 0);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_OutReservoirs].InitAsUnorderedAccessView(7, 0);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_Lights].InitAsShaderResourceView(0, 2);
+
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_ExternData].InitAsConstants(3, 0, 0);
+
+			ComPtr<ID3DBlob> signature;
+			ComPtr<ID3DBlob> error;
+
+			rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams,
+				0, nullptr, rootSignatureFlags);
+
+			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+				signature.GetAddressOf(), error.GetAddressOf()));
+
+			ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+				IID_PPV_ARGS(restirSpatialReuseRootSig.GetAddressOf())));
+
+			ComPtr<ID3DBlob> shader;
+
+			ThrowIfFailed(D3DReadFileToBlob(L"ReStirSpatialReuseAndFinalShade.cso", shader.GetAddressOf()));
+
+			//creating a passthrough pipeline state
+			D3D12_COMPUTE_PIPELINE_STATE_DESC rcasPsoDesc = {};
+			rcasPsoDesc.pRootSignature = restirSpatialReuseRootSig.Get();
+			rcasPsoDesc.CS = CD3DX12_SHADER_BYTECODE(shader.Get());
+
+			ThrowIfFailed(device->CreateComputePipelineState(&rcasPsoDesc, IID_PPV_ARGS(restirSpatialReusePSO.GetAddressOf())));
+		}
+
 		//RT combine
 		{
 			CD3DX12_DESCRIPTOR_RANGE1 rtCombineDescriptorRange[3];
@@ -1682,15 +1807,6 @@ void Game::CreateBasicGeometry()
 		&bufferDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(taaCBResource.GetAddressOf())
-	));
-
-	ThrowIfFailed(device->CreateCommittedResource(
-		&GetAppResources().uploadHeapType,
-		D3D12_HEAP_FLAG_NONE,
-		&bufferDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
 		IID_PPV_ARGS(bndsCBResource.GetAddressOf())
 	));
 
@@ -1702,17 +1818,6 @@ void Game::CreateBasicGeometry()
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(bmfrPreProcessCBV.GetAddressOf())
-	));
-
-
-	ComPtr<ID3D12Resource> tempCBV;
-	ThrowIfFailed(device->CreateCommittedResource(
-		&GetAppResources().uploadHeapType,
-		D3D12_HEAP_FLAG_NONE,
-		&bufferDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(velocityCBVData.GetAddressOf())
 	));
 
 	ZeroMemory(&lightData, sizeof(lightData));
@@ -1729,8 +1834,8 @@ void Game::CreateBasicGeometry()
 		IID_PPV_ARGS(lightListResource.GetAddressOf())
 	));
 
-	int workGroupsX = (width + (width % TILE_SIZE)) / TILE_SIZE;
-	int workGroupsY = (height + (height % TILE_SIZE)) / TILE_SIZE;
+	int workGroupsX = (renderWidth + (renderWidth % TILE_SIZE)) / TILE_SIZE;
+	int workGroupsY = (renderHeight + (renderHeight % TILE_SIZE)) / TILE_SIZE;
 	size_t numberOfTiles = workGroupsX * workGroupsY;
 
 	visibleLightIndices = new UINT[workGroupsX * workGroupsY * 1024];
@@ -1772,54 +1877,78 @@ void Game::CreateBasicGeometry()
 
 	retargetedSequences.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width * height * sizeof(Reservoir), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr,
+		IID_PPV_ARGS(currentReservoir.resource.GetAddressOf())
+	));
+
+	currentReservoir.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr,
+		IID_PPV_ARGS(intermediateReservoir.resource.GetAddressOf())
+	));
+
+	intermediateReservoir.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
 	bndsCBResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&bndsDataBegin));
 
 	lights = new Light[MAX_LIGHTS];
 
 	ZeroMemory(lights, MAX_LIGHTS * sizeof(Light));
 
-	lights[lightCount].type = LIGHT_TYPE_DIR;
-	lights[lightCount].direction = XMFLOAT3(1, -1, 0);
-	lights[lightCount].color = XMFLOAT3(1, 1, 1);
-	lights[lightCount].intensity = 1;
-	lightCount++;
+	//lights[lightCount].type = LIGHT_TYPE_DIR;
+	//lights[lightCount].direction = XMFLOAT3(1, -1, 0);
+	//lights[lightCount].color = XMFLOAT3(1, 1, 1);
+	//lights[lightCount].intensity = 1;
+	//lightCount++;
 	
-	lights[lightCount].type = LIGHT_TYPE_AREA_RECT;
-	lights[lightCount].color = XMFLOAT3(1, 1, 1);
-	lights[lightCount].rectLight.height = 3;
-	lights[lightCount].rectLight.width = 3;
-	lights[lightCount].rectLight.rotY = 0;
-	lights[lightCount].rectLight.rotZ = 0;
-	lights[lightCount].rectLight.rotX = 0;
-	lights[lightCount].position = XMFLOAT3(-6, -2, 0);
-	lights[lightCount].intensity = 1;
-	lightCount++;
+	//lights[lightCount].type = LIGHT_TYPE_AREA_RECT;
+	//lights[lightCount].color = XMFLOAT3(1, 1, 1);
+	//lights[lightCount].rectLight.height = 3;
+	//lights[lightCount].rectLight.width = 3;
+	//lights[lightCount].rectLight.rotY = 0;
+	//lights[lightCount].rectLight.rotZ = 0;
+	//lights[lightCount].rectLight.rotX = 0;
+	//lights[lightCount].position = XMFLOAT3(-6, -2, 0);
+	//lights[lightCount].intensity = 1;
+	//lightCount++;
 	
-	lights[lightCount].type = LIGHT_TYPE_AREA_DISK;
-	lights[lightCount].color = XMFLOAT3(1, 1, 1);
-	lights[lightCount].rectLight.height = 2;
-	lights[lightCount].rectLight.width = 2;
-	lights[lightCount].rectLight.rotY = 0;
-	lights[lightCount].rectLight.rotZ = 0;
-	lights[lightCount].rectLight.rotX = 0;
-	lights[lightCount].position = XMFLOAT3(-2, -2, 0);
-	lights[lightCount].intensity = 10;
-	lightCount++;
+	//lights[lightCount].type = LIGHT_TYPE_AREA_DISK;
+	//lights[lightCount].color = XMFLOAT3(1, 1, 1);
+	//lights[lightCount].rectLight.height = 2;
+	//lights[lightCount].rectLight.width = 2;
+	//lights[lightCount].rectLight.rotY = 0;
+	//lights[lightCount].rectLight.rotZ = 0;
+	//lights[lightCount].rectLight.rotX = 0;
+	//lights[lightCount].position = XMFLOAT3(-2, -2, 0);
+	//lights[lightCount].intensity = 10;
+	//lightCount++;
 	
-	lights[lightCount].type = LIGHT_TYPE_POINT;
-	lights[lightCount].color = XMFLOAT3(1, 0, 0);
-	lights[lightCount].range = 20;
-	lights[lightCount].position = XMFLOAT3(3, 0, 0);
-	lights[lightCount].intensity = 0;
-	lightCount++;
+	//lights[lightCount].type = LIGHT_TYPE_POINT;
+	//lights[lightCount].color = XMFLOAT3(1, 0, 0);
+	//lights[lightCount].range = 20;
+	//lights[lightCount].position = XMFLOAT3(3, 0, 0);
+	//lights[lightCount].intensity = 1;
+	//lightCount++;
 	
-	for (int i = 0; i < 1; i++)
+	for (int i = 0; i < 500; i++)
 	{
 		lights[lightCount].type = LIGHT_TYPE_POINT;
 		lights[lightCount].color = GetRandomFloat3(0, 1);
-		lights[lightCount].range = 20;
-		lights[lightCount].position = GetRandomFloat3(-20, 20);
-		lights[lightCount].intensity = 1;
+		lights[lightCount].range = 100;
+		lights[lightCount].position = GetRandomFloat3(-50, 50);
+		lights[lightCount].intensity = 30;
 		lightCount++;
 	}
 
@@ -1828,6 +1957,7 @@ void Game::CreateBasicGeometry()
 
 	lightingData.cameraPosition = mainCamera->GetPosition();
 	lightingData.lightCount = lightCount;
+	lightingData.cameraForward = mainCamera->GetDirection();
 
 	lightingConstantBufferResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&lightingCbufferBegin));
 	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
@@ -1837,16 +1967,6 @@ void Game::CreateBasicGeometry()
 
 	lightListResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&lightBufferBegin));
 	memcpy(lightBufferBegin, lights, MAX_LIGHTS * sizeof(Light));
-
-	taaCBResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&taaDataBegin));
-	memcpy(taaDataBegin, &taaData, sizeof(TAAExternData));
-
-	for (size_t i = 0; i < 1000; i++)
-	{
-		UINT8* tempDataBegin;
-		velocityCBVData->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&tempDataBegin));
-		velocityDataBegin.emplace_back(tempDataBegin);
-	}
 
 	bmfrPreProcessCBV->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&bmfrPreprocessBegin));
 
@@ -1864,7 +1984,7 @@ void Game::CreateBasicGeometry()
 
 	//creating the vertex buffer
 	CD3DX12_RANGE readRange(0, 0); //we do not intend to read from this resource in the cpu
-	float aspectRatio = static_cast<float>(width / height);
+	float aspectRatio = static_cast<float>(renderWidth / renderHeight);
 
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mainCPUDescriptorHandle, 0, cbvDescriptorSize);
 	material1 = std::make_shared<Material>(
@@ -1975,7 +2095,7 @@ void Game::CreateBasicGeometry()
 	cerebrus->SetTag("cerebrus");
 
 	entity1->SetPosition(XMFLOAT3(0, -10, 1.5f));
-	entity1->SetScale(XMFLOAT3(100, 10, 100));
+	entity1->SetScale(XMFLOAT3(1000, 10, 1000));
 	entity2->SetPosition(XMFLOAT3(1, 0, 1.0f));
 	entity3->SetPosition(XMFLOAT3(-3, 0, 1.f));
 	entity4->SetPosition(XMFLOAT3(8, -8, 1.f));
@@ -2211,7 +2331,8 @@ void Game::CreateShaderBindingTable()
 
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
-		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
+		sbtGenerator.AddRayGenerationProgram(L"RayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)retargetedSequences.resource->GetGPUVirtualAddress(),
+			(void*)currentReservoir.resource->GetGPUVirtualAddress(), (void*)intermediateReservoir.resource->GetGPUVirtualAddress()});
 		sbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -2231,10 +2352,12 @@ void Game::CreateShaderBindingTable()
 		sbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
 
 		//compute the size of the SBT
-		UINT32 sbtSize = sbtGenerator.ComputeSBTSize();
+		UINT32 sbtSize = sbtGenerator.ComputeSBTSize()*2;
 
 		//upload heap for the sbt
-		sbtResource = nv_helpers_dx12::CreateBuffer(device.Get(), sbtSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, nv_helpers_dx12::kUploadHeapProps);
+		sbtResource = nv_helpers_dx12::CreateBuffer(device.Get(), AlignUp(sbtSize, 256u), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, nv_helpers_dx12::kUploadHeapProps);
+
+		sbtResource->SetName(L"SBT Resource");
 
 		if (!sbtResource)
 			throw std::logic_error("Could not create SBT resource");
@@ -2450,7 +2573,7 @@ void Game::OnResize()
 	// Update our projection matrix since the window size changed
 	XMMATRIX P = XMMatrixPerspectiveFovLH(
 		0.25f * 3.1415926535f,	// Field of View Angle
-		(float)width / height,	// Aspect ratio
+		(float)renderWidth / renderHeight,	// Aspect ratio
 		0.1f,				  	// Near clip plane distance
 		100.0f);			  	// Far clip plane distance
 	XMStoreFloat4x4(&projectionMatrix, XMMatrixTranspose(P)); // Transpose for HLSL!
@@ -2584,7 +2707,7 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTOutputTexture},
 		{1,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTIndirectDiffuseOutputTexture},
 		{2,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTIndirectSpecularOutputTexture},
-		{3,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTDiffuseTexture},
+		{3,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTRoughnessMetalTexture},
 		{4,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTPositionTexture},
 		{5,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTNormalTexture},
 		{6,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTAlbedoTexture},
@@ -2595,6 +2718,8 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_CBV, 1);
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 2, MAX_LIGHTS);
 	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_UAV, 0, 1);
+	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_UAV, 0, 3);
+	rsc.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_UAV, 1, 3);
 
 	return rsc.Generate(device.Get(), true);
 }
@@ -2638,8 +2763,8 @@ void Game::CreateRaytracingOutputBuffer()
 	resDes.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	resDes.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	resDes.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-	resDes.Width = width;
-	resDes.Height = height;
+	resDes.Width = renderWidth;
+	resDes.Height = renderHeight;
 	resDes.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	resDes.MipLevels = 1;
 	resDes.SampleDesc.Count = 1;
@@ -2671,9 +2796,9 @@ void Game::CreateRaytracingOutputBuffer()
 	rtNormals.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 	rtNormals.resourceType = RESOURCE_TYPE_UAV;
 
-	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtDiffuse.resource.GetAddressOf())));
-	rtDiffuse.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-	rtDiffuse.resourceType = RESOURCE_TYPE_UAV;
+	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtRoughnessMetal.resource.GetAddressOf())));
+	rtRoughnessMetal.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+	rtRoughnessMetal.resourceType = RESOURCE_TYPE_UAV;
 
 	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtPosition.resource.GetAddressOf())));
 	rtPosition.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2720,22 +2845,22 @@ void Game::CreateRaytracingDescriptorHeap()
 	rtDescriptorHeap.CreateDescriptor(rtOutPut, rtOutPut.resourceType);
 	rtDescriptorHeap.CreateDescriptor(rtIndirectDiffuseOutPut, rtOutPut.resourceType);
 	rtDescriptorHeap.CreateDescriptor(rtIndirectSpecularOutPut, rtOutPut.resourceType);
-	rtDescriptorHeap.CreateDescriptor(rtDiffuse, rtDiffuse.resourceType);
+	rtDescriptorHeap.CreateDescriptor(rtRoughnessMetal, rtRoughnessMetal.resourceType);
 	rtDescriptorHeap.CreateDescriptor(rtPosition, rtPosition.resourceType);
 	rtDescriptorHeap.CreateDescriptor(rtNormals, rtNormals.resourceType);
 	rtDescriptorHeap.CreateDescriptor(rtAlbedo, rtAlbedo.resourceType);
 	rtDescriptorHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_UAV);
-	renderTargetSRVHeap.CreateDescriptor(rtOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(rtIndirectDiffuseOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(rtIndirectSpecularOutPut, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(prevPosition, prevPosition.resourceType, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(prevNormals, prevNormals.resourceType, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(prevNoisy, prevNoisy.resourceType, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(currentNoisy, currentNoisy.resourceType, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(acceptBools, acceptBools.resourceType, 0, width, height, 0, 0);
-	renderTargetSRVHeap.CreateDescriptor(outPrevFramePixels, outPrevFramePixels.resourceType, 0, width, height, 0, 0);
-	renderTargetSRVHeap.CreateDescriptor(rtPosition, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
-	renderTargetSRVHeap.CreateDescriptor(rtNormals, RESOURCE_TYPE_SRV, 0, width, height, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtIndirectDiffuseOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtIndirectSpecularOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(prevPosition, prevPosition.resourceType, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(prevNormals, prevNormals.resourceType, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(prevNoisy, prevNoisy.resourceType, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(currentNoisy, currentNoisy.resourceType, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(acceptBools, acceptBools.resourceType, 0, renderWidth, renderHeight, 0, 0);
+	renderTargetSRVHeap.CreateDescriptor(outPrevFramePixels, outPrevFramePixels.resourceType, 0, renderWidth, renderHeight, 0, 0);
+	renderTargetSRVHeap.CreateDescriptor(rtPosition, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtNormals, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(tempRTIndDiffuse, RESOURCE_TYPE_UAV);
 	renderTargetSRVHeap.CreateDescriptor(tempRTIndSpec, RESOURCE_TYPE_UAV);
 	renderTargetSRVHeap.CreateDescriptor(depthTex, RESOURCE_TYPE_SRV, 0, 0, 0, 0, 1);
@@ -2747,7 +2872,7 @@ void Game::CreateRaytracingDescriptorHeap()
 		//D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(cameraData.resource.GetAddressOf())));
 
 	rtDescriptorHeap.CreateRaytracingAccelerationStructureDescriptor(topLevelAsBuffers);
-	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, sizeof(RayTraceCameraData));
+	rtDescriptorHeap.CreateDescriptor(cameraData, RESOURCE_TYPE_CBV, AlignUp(sizeof(RayTraceCameraData), 256u));
 	rtDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/skybox5.hdr", skyboxTexResource, RESOURCE_TYPE_SRV, TEXTURE_TYPE_HDR, false);
 
 	static UINT numStaticResources = 0;
@@ -2760,6 +2885,8 @@ void Game::CreateRaytracingDescriptorHeap()
 		device->CopyDescriptorsSimple(4, cpuHandle, otherCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	}
 
+	rtCamera.prevProj = mainCamera->GetProjectionMatrix();
+	rtCamera.prevView = mainCamera->GetViewMatrix();
 	ZeroMemory(&rtCamera, sizeof(rtCamera));
 	ThrowIfFailed(cameraData.resource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&cameraBufferBegin)));
 	memcpy(cameraBufferBegin, &rtCamera, sizeof(rtCamera));
@@ -2992,12 +3119,14 @@ void Game::CreateGbufferRaytracingPipeline()
 void Game::Update(float deltaTime, float totalTime)
 {
 
+	dynamicBufferRing.OnBeginFrame();
+
 	auto kb = keyboard->GetState();
 	auto mouseState = mouse->GetState();
-	float xRand = (jitters[numFrames % 16].x) / width;
-	float yRand = (jitters[numFrames % 16].y) / height;
+	float xRand = (jitters[numFrames % 16].x) / renderWidth;
+	float yRand = (jitters[numFrames % 16].y) / renderHeight;
 
-	mainCamera->JitterProjMatrix(xRand, yRand);
+	//mainCamera->JitterProjMatrix(xRand, yRand);
 
 	currentJitters = Vector2(xRand, yRand);
 
@@ -3032,7 +3161,7 @@ void Game::Update(float deltaTime, float totalTime)
 		bool intersects = false;
 		Vector4 origin;
 		Vector4 dir;
-		mainCamera->GetRayOriginAndDirection(mouseState.x, mouseState.y, width, height ,origin, dir);
+		mainCamera->GetRayOriginAndDirection(mouseState.x, mouseState.y, renderWidth, renderHeight ,origin, dir);
 		float minDist = FLT_MAX;
 		for (size_t i = 0; i < entities.size(); i++)
 		{
@@ -3078,17 +3207,13 @@ void Game::Update(float deltaTime, float totalTime)
 
 	lightingData.cameraPosition = mainCamera->GetPosition();
 	lightingData.lightCount = lightCount;
+	lightingData.cameraForward = mainCamera->GetDirection();
 
 	lightCullingExternData.view = mainCamera->GetViewMatrix();
 	lightCullingExternData.projection = mainCamera->GetProjectionMatrix();
 	lightCullingExternData.inverseProjection = mainCamera->GetInverseProjection();
 	lightCullingExternData.lightCount = lightCount;
 	lightCullingExternData.cameraPosition = mainCamera->GetPosition();
-
-	taaData.inverseProjection = mainCamera->GetInverseProjection();
-	taaData.inverseView = mainCamera->GetInverseView();
-
-	memcpy(taaDataBegin, &taaData, sizeof(TAAExternData));
 
 	memcpy(lightingCbufferBegin, &lightingData, sizeof(lightingData));
 	memcpy(lightBufferBegin, lights, sizeof(Light) * MAX_LIGHTS);
@@ -3107,6 +3232,8 @@ void Game::Update(float deltaTime, float totalTime)
 
 		rtCamera.view = mainCamera->GetViewMatrix();
 		rtCamera.proj = mainCamera->GetProjectionMatrix();
+		rtCamera.doRestir = doRestir;
+		rtCamera.doOutput = !restirSpatialReuse;
 		XMMATRIX viewTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.view));
 		XMStoreFloat4x4(&rtCamera.iView, XMMatrixTranspose(XMMatrixInverse(nullptr, viewTranspose)));
 		XMMATRIX projTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.proj));
@@ -3194,6 +3321,12 @@ void Game::Draw(float deltaTime, float totalTime)
 	bmfrPreProcData.prevProj = mainCamera->GetProjectionMatrix();
 	bmfrPreProcData.view = mainCamera->GetViewMatrix();
 
+	rtCamera.prevProj = mainCamera->GetProjectionMatrix();
+	rtCamera.prevView = mainCamera->GetViewMatrix();
+	rtCamera.frameCount = frameCount;
+	const FLOAT clearValue[4] = { 0.4f, 0.4f, 0.4f, 1.0f };
+	//commandList->ClearUnorderedAccessViewFloat(rtOutPut.uavGPUHandle, rtOutPut.uavCPUHandle, rtOutPut.resource.Get(), clearValue, 0, nullptr);
+
 	prevJitters = currentJitters;
 
 }
@@ -3216,6 +3349,7 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 
 	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, 0);
 	//commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	//commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	//setting the constant buffer descriptor table
 	ID3D12DescriptorHeap* ppHeaps[] = { gpuHeapRingBuffer->GetDescriptorHeap().GetHeapPtr() };
 
@@ -3224,6 +3358,15 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 	{
 		ImGui::Begin("Render Mode");
 		ImGui::Checkbox("Raster", &raster);
+		if (!raster)
+		{
+			ImGui::Checkbox("Use ReStir", &doRestir);
+
+			if (doRestir)
+			{
+				ImGui::Checkbox("Use Spatial Reuse", &restirSpatialReuse);
+			}
+		}
 		ImGui::End();
 	}
 
@@ -3413,6 +3556,12 @@ void Game::RenderEditorWindow()
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
 }
 
+void Game::CreateFSRPass()
+{
+
+
+}
+
 void Game::RaytracingPrePass()
 {
 	//doing the necessary copies
@@ -3558,7 +3707,7 @@ void Game::BNDSPrePass()
 
 	
 	computeCommandList->SetComputeRootConstantBufferView(BlueNoiseDithering::FrameNum, bndsCBResource->GetGPUVirtualAddress());
-	computeCommandList->Dispatch(width / 4, height / 4, 1);
+	computeCommandList->Dispatch(renderWidth / 4, renderHeight / 4, 1);
 
 	barrier = CD3DX12_RESOURCE_BARRIER::UAV(sampleSequences.resource.Get());
 	commandList->ResourceBarrier(1, &barrier);
@@ -3591,7 +3740,7 @@ void Game::BNDSRetargetingPass()
 	memcpy(bndsDataBegin, &bndsData, sizeof(BNDSExternalData));
 
 	computeCommandList->SetComputeRootConstantBufferView(RetargetingPass::RetargetingPassCBV, bndsCBResource->GetGPUVirtualAddress());
-	computeCommandList->Dispatch(width / 4, height / 4, 1);
+	computeCommandList->Dispatch(renderWidth / 4, renderHeight / 4, 1);
 
 }
 
@@ -3626,9 +3775,17 @@ void Game::RenderVelocityBuffer()
 
 		velocityBufferData.world = entities[i]->GetModelMatrix();
 		velocityBufferData.prevWorld = entities[i]->GetPrevModelMatrix();
-		memcpy(velocityDataBegin[i], &velocityBufferData, sizeof(velocityBufferData));
 
-		commandList->SetGraphicsRootConstantBufferView(0, velocityCBVData->GetGPUVirtualAddress());
+		{
+			D3D12_GPU_VIRTUAL_ADDRESS gpuAddr;
+
+			uint32_t* pDataBegin = 0;
+
+			dynamicBufferRing.AllocConstantBuffer(sizeof(VelocityConstantBuffer), reinterpret_cast<void**>(&pDataBegin), &gpuAddr);
+
+			memcpy(pDataBegin, &velocityBufferData, sizeof(VelocityConstantBuffer));
+			commandList->SetGraphicsRootConstantBufferView(0, gpuAddr);
+		}
 
 		auto model = entities[i]->GetModel();
 
@@ -3660,7 +3817,7 @@ void Game::LightCullingPass()
 	computeCommandList->SetComputeRootUnorderedAccessView(LightCullingRootIndices::VisibleLightIndicesUAV, visibleLightIndicesBuffer.resource->GetGPUVirtualAddress());
 	computeCommandList->SetComputeRootConstantBufferView(LightCullingRootIndices::LightCullingExternalDataCBV, lightCullingCBVResource->GetGPUVirtualAddress());
 
-	computeCommandList->Dispatch(width / TILE_SIZE, height / TILE_SIZE, 1);
+	computeCommandList->Dispatch(renderWidth / TILE_SIZE, renderHeight / TILE_SIZE, 1);
 
 	//ThrowIfFailed(computeCommandList->Close());
 
@@ -3723,13 +3880,9 @@ void Game::PopulateCommandList()
 
 	auto projectionMat = mainCamera->GetProjectionMatrix();
 
-	if (true)
+	if (raster)
 	{
-		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			taaInput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-		commandList->ResourceBarrier(1, &transition);
+		TransitionManagedResource(commandList, taaInput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 		//record commands
 		const float clearColor[] = { 0.4f, 0.6f, 0.75f, 0.0f };
@@ -3816,7 +3969,7 @@ void Game::PopulateCommandList()
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
 		CreateGBufferRays();
-		//CreateDirectRays();
+		CreateDirectRays();
 		CreateIndirectDiffuseRays();
 		CreateIndirectSpecularRays();
 
@@ -3840,18 +3993,14 @@ void Game::PopulateCommandList()
 
 			TransitionManagedResource(commandList, rtIndirectDiffuseOutPut, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-			DenoiseRaytracedSignal(rtIndirectDiffuseOutPut);
+			//DenoiseRaytracedSignal(rtIndirectDiffuseOutPut);
 
 			TransitionManagedResource(commandList, rtIndirectSpecularOutPut, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-			DenoiseRaytracedSignal(rtIndirectSpecularOutPut);
-
+			//DenoiseRaytracedSignal(rtIndirectSpecularOutPut);
 
 			//transition render target to readable texture and then transition it back to render target
-			transition = CD3DX12_RESOURCE_BARRIER::Transition(
-				taaInput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			TransitionManagedResource(commandList, taaInput, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-			commandList->ResourceBarrier(1, &transition);
 
 			ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
@@ -3866,7 +4015,7 @@ void Game::PopulateCommandList()
 			commandList->SetGraphicsRootSignature(rtCombineRootSig.Get());
 			commandList->SetPipelineState(rtCombinePSO.Get());
 
-			commandList->SetGraphicsRootDescriptorTable(0, taaInput.srvGPUHandle);
+			commandList->SetGraphicsRootDescriptorTable(0, rtOutPut.srvGPUHandle);
 			commandList->SetGraphicsRootDescriptorTable(1, rtIndirectDiffuseOutPut.srvGPUHandle);
 			commandList->SetGraphicsRootDescriptorTable(2, rtIndirectSpecularOutPut.srvGPUHandle);
 
@@ -3888,13 +4037,6 @@ void Game::PopulateCommandList()
 
 			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 			TransitionManagedResource(commandList, blurOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-
-			transition = CD3DX12_RESOURCE_BARRIER::Transition(taaInput.resource.Get(),
-				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
-			// Indicate that the back buffer will now be used to present.
-			commandList->ResourceBarrier(1, &transition);
-
 
 		}
 
@@ -3939,8 +4081,8 @@ void Game::DenoiseRaytracedSignal(ManagedResource& inputTexture)
 
 	commandList->SetGraphicsRootDescriptorTable(BilateralBlur::MainColorTex, inputTexture.srvGPUHandle);
 	commandList->SetGraphicsRootDescriptorTable(BilateralBlur::DepthTexBlur, depthTex.srvGPUHandle);
-	commandList->SetGraphicsRoot32BitConstant(BilateralBlur::BilateralBlurExternalData, width, 0);
-	commandList->SetGraphicsRoot32BitConstant(BilateralBlur::BilateralBlurExternalData, height, 1);
+	commandList->SetGraphicsRoot32BitConstant(BilateralBlur::BilateralBlurExternalData, renderWidth, 0);
+	commandList->SetGraphicsRoot32BitConstant(BilateralBlur::BilateralBlurExternalData, renderHeight, 1);
 
 	commandList->DrawInstanced(3, 1, 0, 0);
 }
@@ -3989,7 +4131,21 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 		commandList->SetGraphicsRoot32BitConstant(2, numFrames, 0);
 		commandList->SetGraphicsRootDescriptorTable(3, velocityBuffer.srvGPUHandle);
 		commandList->SetGraphicsRootDescriptorTable(4, depthTex.srvGPUHandle);
-		commandList->SetGraphicsRootConstantBufferView(5, taaCBResource->GetGPUVirtualAddress());
+
+		{
+			TAAExternData data = {};
+			data.inverseProjection = mainCamera->GetInverseProjection();
+			data.inverseView = mainCamera->GetInverseView();
+			data.prevView = mainCamera->GetViewMatrix();
+			data.prevProjection = mainCamera->GetProjectionMatrix();																										
+
+			uint32_t* pDataBegin = 0;
+			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress;																							
+			dynamicBufferRing.AllocConstantBuffer(sizeof(TAAExternData), reinterpret_cast<void**>(&pDataBegin), &gpuAddress);
+			memcpy(pDataBegin, &data, sizeof(TAAExternData));
+
+			commandList->SetGraphicsRootConstantBufferView(5, gpuAddress);
+		}
 
 		commandList->DrawInstanced(3, 1, 0, 0);
 
@@ -4032,12 +4188,7 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 
 		commandList->ResourceBarrier(1, &transition);
 
-		//transition render target to readable texture and then transition it back to render target
-		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			tonemappingOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-		commandList->ResourceBarrier(1, &transition);
+		TransitionManagedResource(commandList, tonemappingOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
@@ -4063,29 +4214,92 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 
 		commandList->ResourceBarrier(1, &transition);
 
-		//transition render target to readable texture and then transition it back to render target
-		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			tonemappingOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
+		TransitionManagedResource(commandList, tonemappingOutput, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-		commandList->ResourceBarrier(1, &transition);
+	}
+
+	D3D12_VIEWPORT viewport1 = {};
+	viewport1.Height = static_cast<FLOAT>(height);
+	viewport1.Width = static_cast<FLOAT>(width);
+	viewport1.MinDepth = 0;
+	viewport1.MaxDepth = 1.0f;
+	viewport1.TopLeftX = 0;
+	viewport1.TopLeftY = 0;
+
+	D3D12_RECT scissorRect1 = {};
+	scissorRect1.left = 0;
+	scissorRect1.top = 0;
+	scissorRect1.right = static_cast<LONG>(width);
+	scissorRect1.bottom = static_cast<LONG>(height);
+
+	commandList->RSSetViewports(1, &viewport1);
+	commandList->RSSetScissorRects(1, &scissorRect1);
+	//Add Fidelity super resolution here
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS cbHandle = {};
+		{
+			FSRConstants consts = {};
+			FsrEasuCon(reinterpret_cast<AU1*>(&consts.Const0), reinterpret_cast<AU1*>(&consts.Const1), reinterpret_cast<AU1*>(&consts.Const2), 
+				reinterpret_cast<AU1*>(&consts.Const3), static_cast<AF1>(renderWidth), static_cast<AF1>(renderHeight), 
+				static_cast<AF1>(renderWidth), static_cast<AF1>(renderHeight), (AF1)width, (AF1)height);
+			consts.Sample.x = 0;
+			uint32_t* pConstMem = 0;
+			dynamicBufferRing.AllocConstantBuffer(sizeof(FSRConstants), (void**)&pConstMem, &cbHandle);
+			memcpy(pConstMem, &consts, sizeof(FSRConstants));
+		}
+		// This value is the image region dimension that each thread group of the FSR shader operates on
+		static const int threadGroupWorkRegionDim = 16;
+		int dispatchX = (width + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
+		int dispatchY = (height + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
+		commandList->SetComputeRootSignature(fsrRootSig.Get());
+
+		//EASU pass
+		{
+			commandList->SetPipelineState(fsrEASUPso.Get());
+
+			//Tonemapping output will be the input texture
+			TransitionManagedResource(commandList, tonemappingOutput, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+			TransitionManagedResource(commandList, fsrIntermediateTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+
+			commandList->SetComputeRootConstantBufferView(0, cbHandle);
+			commandList->SetComputeRootDescriptorTable(1, tonemappingOutput.srvGPUHandle);
+			commandList->SetComputeRootDescriptorTable(2, fsrIntermediateTexture.uavGPUHandle);
+
+			commandList->Dispatch(dispatchX, dispatchY, 1);
+
+			TransitionManagedResource(commandList, fsrIntermediateTexture, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+			TransitionManagedResource(commandList, fsrOutputTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+		}
+
+		//RCAS Pass
+		{
+			FSRConstants consts1 = {};
+			FsrRcasCon(reinterpret_cast<AU1*>(&consts1.Const0), 0);
+			consts1.Sample.x = 0;
+			uint32_t* pConstMem = 0;
+			dynamicBufferRing.AllocConstantBuffer(sizeof(FSRConstants), (void**)&pConstMem, &cbHandle);
+			memcpy(pConstMem, &consts1, sizeof(FSRConstants));
+
+			commandList->SetPipelineState(fsrRCASPso.Get());
+
+			commandList->SetComputeRootConstantBufferView(0, cbHandle);
+			commandList->SetComputeRootDescriptorTable(1, fsrIntermediateTexture.srvGPUHandle);
+			commandList->SetComputeRootDescriptorTable(2, fsrOutputTexture.uavGPUHandle);
+
+			commandList->Dispatch(dispatchX, dispatchY, 1);
+
+			TransitionManagedResource(commandList, fsrOutputTexture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+		}
 	}
 
 	//fxaa
 	{
 		//transition render target to readable texture and then transition it back to render target
-		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			tonemappingOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		TransitionManagedResource(commandList, fxaaOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-		commandList->ResourceBarrier(1, &transition);
-
-		//transition render target to readable texture and then transition it back to render target
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			fxaaOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-		commandList->ResourceBarrier(1, &transition);
 
 		ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
@@ -4100,34 +4314,19 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 		commandList->SetGraphicsRootSignature(fxaaRootSig.Get());
 		commandList->SetPipelineState(fxaaPSO.Get());
 
-		commandList->SetGraphicsRootDescriptorTable(0, tonemappingOutput.srvGPUHandle);
+		commandList->SetGraphicsRootDescriptorTable(0, fsrOutputTexture.srvGPUHandle);
 
 		commandList->DrawInstanced(3, 1, 0, 0);
 
 		//transition render target to readable texture and then transition it back to render target
-		 transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			 tonemappingOutput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
+		TransitionManagedResource(commandList, fsrOutputTexture, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-		commandList->ResourceBarrier(1, &transition);
-
-		//transition render target to readable texture and then transition it back to render target
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			fxaaOutput.resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-		commandList->ResourceBarrier(1, &transition);
 	}
 
 	//Sharpen pass
 	{
 		//transition render target to readable texture and then transition it back to render target
-		auto transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			fxaaOutput.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-
-		commandList->ResourceBarrier(1, &transition);
-
+		TransitionManagedResource(commandList, fxaaOutput, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		
 		TransitionManagedResource(commandList, sharpenOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
@@ -4147,18 +4346,6 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 		commandList->SetGraphicsRootDescriptorTable(0, fxaaOutput.srvGPUHandle);
 
 		commandList->DrawInstanced(3, 1, 0, 0);
-
-
-		//transition render target to readable texture and then transition it back to render target
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			fxaaOutput.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-		commandList->ResourceBarrier(1, &transition);
-
-		TransitionManagedResource(commandList, sharpenOutput, D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-
 
 	}
 
@@ -4212,8 +4399,8 @@ void Game::CreateGBufferRays()
 	desc.HitGroupTable.StrideInBytes = GBsbtGenerator.GetHitGroupEntrySize();
 
 	//scene description
-	desc.Height = height;
-	desc.Width = width;
+	desc.Height = renderHeight;
+	desc.Width = renderWidth;
 	desc.Depth = 1;
 
 	commandList->SetPipelineState1(gbufferStateObject.Get());
@@ -4227,27 +4414,63 @@ void Game::CreateDirectRays()
 	//raygeneration location
 	desc.RayGenerationShaderRecord.StartAddress = sbtResource->GetGPUVirtualAddress();
 	//desc.RayGenerationShaderRecord.StartAddress = (desc.RayGenerationShaderRecord.StartAddress + 63) & ~63;
-	desc.RayGenerationShaderRecord.SizeInBytes = GBsbtGenerator.GetRayGenSectionSize();
+	desc.RayGenerationShaderRecord.SizeInBytes = sbtGenerator.GetRayGenSectionSize();
 
 	//miss shaders
-	desc.MissShaderTable.StartAddress = sbtResource->GetGPUVirtualAddress() + sbtGenerator.GetRayGenSectionSize();
+	desc.MissShaderTable.StartAddress = desc.RayGenerationShaderRecord.StartAddress + sbtGenerator.GetRayGenSectionSize();
 	desc.MissShaderTable.SizeInBytes = sbtGenerator.GetMissSectionSize();
-	//desc.MissShaderTable.StartAddress = (desc.MissShaderTable.StartAddress + 63) & ~63;
-	desc.MissShaderTable.StrideInBytes = sbtGenerator.GetMissEntrySize();
+	desc.MissShaderTable.StartAddress = AlignUp(desc.MissShaderTable.StartAddress, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
+	desc.MissShaderTable.StrideInBytes = AlignUp(sbtGenerator.GetMissEntrySize(), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
 	//hit groups
-	desc.HitGroupTable.StartAddress = sbtResource->GetGPUVirtualAddress() + sbtGenerator.GetRayGenSectionSize() + sbtGenerator.GetMissSectionSize();
-	//desc.HitGroupTable.StartAddress = (desc.HitGroupTable.StartAddress + 63) & ~63;
+	desc.HitGroupTable.StartAddress = desc.MissShaderTable.StartAddress + sbtGenerator.GetMissSectionSize();
+	//desc.HitGroupTable.StartAddress = AlignUp(desc.HitGroupTable.StartAddress, 1);
 	desc.HitGroupTable.SizeInBytes = sbtGenerator.GetHitGroupSectionSize();
-	desc.HitGroupTable.StrideInBytes = sbtGenerator.GetHitGroupEntrySize();
+	desc.HitGroupTable.StrideInBytes = AlignUp(sbtGenerator.GetHitGroupEntrySize(), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
 	//scene description
-	desc.Height = height;
-	desc.Width = width;
+	desc.Height = renderHeight;
+	desc.Width = renderWidth;
 	desc.Depth = 1;
 
 	commandList->SetPipelineState1(rtStateObject.Get());
 	commandList->DispatchRays(&desc);
+
+	WaitForPreviousFrame();
+	CopyResource(commandList, currentReservoir, intermediateReservoir);
+
+	//Restrir spatial reuse pass goes here
+	if (doRestir && restirSpatialReuse)
+	{
+		commandList->SetComputeRootSignature(restirSpatialReuseRootSig.Get());
+		commandList->SetPipelineState(restirSpatialReusePSO.Get());
+
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferDif, rtAlbedo.uavGPUHandle);
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferNorm, rtNormals.uavGPUHandle);
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferRoughMetal, rtRoughnessMetal.uavGPUHandle);
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferPos, rtPosition.uavGPUHandle);
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_OutColor, rtOutPut.uavGPUHandle);
+
+		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_Reservoirs, intermediateReservoir.resource->GetGPUVirtualAddress());
+		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_OutReservoirs, currentReservoir.resource->GetGPUVirtualAddress());
+		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_SampleSequences, sampleSequences.resource->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(RestrirSpatialReuseIndices::RestirSpatialReuse_Lights, lightListResource->GetGPUVirtualAddress());
+
+		auto camPos = mainCamera->GetPosition();
+
+		commandList->SetComputeRoot32BitConstants(RestrirSpatialReuseIndices::RestirSpatialReuse_ExternData, 3, &camPos, 0);
+
+		auto dispatchX = renderWidth / 16;
+		auto dispatchY = renderHeight / 16;
+
+		commandList->Dispatch(dispatchX, dispatchY, 1);
+
+		//CopyResource(commandList, currentReservoir, intermediateReservoir);
+
+	}
+
+	//else
+		//CopyResource(commandList, currentReservoir, intermediateReservoir);
 }
 
 void Game::CreateIndirectDiffuseRays()
@@ -4272,8 +4495,8 @@ void Game::CreateIndirectDiffuseRays()
 	desc.HitGroupTable.StrideInBytes = indirectDiffuseSbtGenerator.GetHitGroupEntrySize();
 
 	//scene description
-	desc.Height = height;
-	desc.Width = width;
+	desc.Height = renderHeight;
+	desc.Width = renderWidth;
 	desc.Depth = 1;
 
 	commandList->SetPipelineState1(indirectDiffuseRtStateObject.Get());
@@ -4302,8 +4525,8 @@ void Game::CreateIndirectSpecularRays()
 	desc.HitGroupTable.StrideInBytes = indirectSpecularSbtGenerator.GetHitGroupEntrySize();
 
 	//scene description
-	desc.Height = height;
-	desc.Width = width;
+	desc.Height = renderHeight;
+	desc.Width = renderWidth;
 	desc.Depth = 1;
 
 	commandList->SetPipelineState1(indirectSpecularRtStateObject.Get());

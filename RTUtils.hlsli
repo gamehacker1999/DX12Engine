@@ -28,7 +28,8 @@ ConstantBuffer<Index> entityIndex : register(b0);
 cbuffer LightingData : register(b1)
 {
     float3 cameraPosition;
-    uint lightCount;
+    uint glightCount;
+    float3 cameraForward;
 };
 
 
@@ -198,7 +199,7 @@ float ShootShadowRays(float3 origin, float3 direction, float minT, float maxT)
 
     TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
 
-    return shadowPayload.isHit ? 0.3 : 1.0f;
+    return shadowPayload.isHit ? 0.0 : 1.0f;
 }
 
 //function that calculates the cook torrence brdf
@@ -281,7 +282,7 @@ float3 DirectLighting(float rndseed, float3 pos, float3 norm, float3 V, float me
 {
     float3 color = float3(0, 0, 0);
 
-    for (int i = 0; i < lightCount; i++)
+    for (int i = 0; i < glightCount; i++)
     {
         if (lights[i].type == LIGHT_TYPE_DIR)
         {

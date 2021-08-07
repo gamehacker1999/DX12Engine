@@ -1,14 +1,6 @@
 #include "RayGenIncludes.hlsli"
 
-struct RayTraceCameraData
-{
-    matrix view;
-    matrix proj;
-    matrix iView;
-    matrix iProj;
-};
-
-ConstantBuffer<RayTraceCameraData> cameraData : register(b0);
+ConstantBuffer<RayTraceExternData> cameraData : register(b0);
 RWStructuredBuffer<uint> newSequences : register(u0, space1);
 
 
@@ -65,7 +57,7 @@ void IndirectSpecularRayGen()
     }
     else
     {
-        uint rndseed = newSequences.Load(launchIndex.y * 1920 + launchIndex.x);
+        uint rndseed = newSequences.Load(launchIndex.y * WIDTH + launchIndex.x);
 
         float3 V = normalize(cameraPosition - pos);
 

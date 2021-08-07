@@ -1,7 +1,11 @@
 #ifndef COMMON_HLSL
 #define COMMON_HLSL
-#define WIDTH 1920.0f
-#define HEIGHT 1080.0f
+
+#define WIDTH 1280.0f
+#define HEIGHT 720.0f
+
+#define DISPLAY_WIDTH 1920.0f
+#define DISPLAY_HEIGHT 1080.0f
 
 // Hit information, aka ray payload
 // This sample only carries a shading color and hit distance.
