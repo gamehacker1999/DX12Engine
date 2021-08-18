@@ -108,7 +108,7 @@ inline Vector2* GenerateHaltonJitters()
 
 	for (size_t i = 0; i < 16; i++)
 	{
-		jitters[i] = Vector2((halton(i, 2) - 0.5) * 2, (halton(i, 3) - 0.5) * 2);
+		jitters[i] = Vector2((2.0f*halton(i+1, 2)-1.0f), (2.0f*halton(i+1, 3) - 1.0f));
 	}
 
 	return jitters;

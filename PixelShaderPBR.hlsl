@@ -199,7 +199,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	float3 irradiance = irradianceMap.Sample(basicSampler, N).rgb;
 
-	float3 diffuseIndirect = surfaceColor.rgb * irradiance/ 3.14169;
+	float3 diffuseIndirect = surfaceColor.rgb * irradiance;
 
 	float3 prefilteredColor = prefilteredMap.SampleLevel(basicSampler, R, roughness * 4.0).rgb;
 
@@ -216,12 +216,12 @@ float4 main(VertexToPixel input) : SV_TARGET
 	
     float3 specularIndirect = lss + lms;
 
-	float3 ambientIndirect = (kdIndirect * diffuseIndirect + specularIndirect); 
+	float3 ambientIndirect = (diffuseIndirect); 
 
     float3 color = Lo;
 	
 	if(indLighting.enableIndirectLighting)
-		color += ambientIndirect;
+        color+= ambientIndirect;
 	
     //color *= shadow;
 	color = pow(abs(color), 1.f / 1);

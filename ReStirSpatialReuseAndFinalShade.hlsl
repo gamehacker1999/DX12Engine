@@ -20,8 +20,8 @@ cbuffer RestirData : register(b0)
 };
 
 
-#define NUM_NEIGHBORS 5
-#define SAMPLE_RADIUS 5
+#define NUM_NEIGHBORS 100
+#define SAMPLE_RADIUS 30
 
 inline float halton(int i, int b)
 {
@@ -45,7 +45,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     
     uint2 pixelPos = DTid.xy;
     
-    Reservoir r = reservoirs[pixelPos.y * WIDTH + pixelPos.x];
+    Reservoir r = reservoirs[pixelPos.y * uint(WIDTH) + pixelPos.x];
     Reservoir reservoirNew = { 0, 0, 0, 0 };
   
     if (outColor[pixelPos].x != outColor[pixelPos].x)
@@ -55,7 +55,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
 
     }
 	
-    uint rndSeed = newSequences[pixelPos.y * WIDTH + pixelPos.x];
+    uint rndSeed = newSequences[pixelPos.y * uint(WIDTH) + pixelPos.x];
     
     float3 pos = gBufferPos[pixelPos].xyz;
     float3 norm = gBufferNorm[pixelPos].xyz;
@@ -100,7 +100,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     for (int i = 0; i < NUM_NEIGHBORS;i++)
     {
         float2 xi = Hammersley(i, NUM_NEIGHBORS);
-
+        
         float radius = SAMPLE_RADIUS * nextRand(rndSeed);
         float angle = 2.0f * M_PI * nextRand(rndSeed);
         
@@ -108,45 +108,45 @@ void main( uint3 DTid : SV_DispatchThreadID )
         
         neighborIndex.x += radius * cos(angle);
         neighborIndex.y += radius * sin(angle);
+         
         
-        if (neighborIndex.x < 0 || neighborIndex.x >= WIDTH || neighborIndex.y < 0 || neighborIndex.y >= HEIGHT)
+        //neighborOffset.x = int(nextRand(rndSeed) * SAMPLE_RADIUS * 2.f) - SAMPLE_RADIUS;
+        //neighborOffset.y = int(nextRand(rndSeed) * SAMPLE_RADIUS * 2.f) - SAMPLE_RADIUS;
+        //
+        //neighborIndex.x = max(0, min(WIDTH - 1, WIDTH + neighborOffset.x));
+        //neighborIndex.y = max(0, min(HEIGHT - 1, HEIGHT + neighborOffset.y));
+         
+        uint2 u_neighbor = uint2(neighborIndex);
+        if (u_neighbor.x < 0 || u_neighbor.x >= WIDTH || u_neighbor.y < 0 || u_neighbor.y >= HEIGHT)
         {
             continue;
         }
         
         // The angle between normals of the current pixel to the neighboring pixel exceeds 25 degree		
-        if (acos(dot(gBufferNorm[pixelPos].xyz, gBufferNorm[neighborIndex].xyz)) > 0.4)
+        if ((dot(gBufferNorm[pixelPos].xyz, gBufferNorm[u_neighbor].xyz)) < 0.906)
         {
             continue;
         }
         
-		// Exceed 10% of current pixel's depth
-        if (gBufferNorm[neighborIndex].w > 1.1 * gBufferNorm[pixelPos].w || gBufferNorm[neighborIndex].w < 0.9 * gBufferNorm[pixelPos].w)
+	//  Exceed 10% of current pixel's depth
+        if (gBufferNorm[u_neighbor].w > 1.1 * gBufferNorm[pixelPos].w || gBufferNorm[u_neighbor].w < 0.9 * gBufferNorm[pixelPos].w)
         {
             continue;
         }
         
+        Reservoir neighborRes = reservoirs[u_neighbor.y * uint(WIDTH) + u_neighbor.x];
+         
+         Light light = lights.Load(neighborRes.y);
+         
+         float L = saturate(normalize(light.position - pos));
+             
+         float ndotl = saturate(dot(norm.xyz, L)); // lambertian term
         
-      // neighborOffset.x = int(nextRand(rndSeed) * SAMPLE_RADIUS * 2.f) - SAMPLE_RADIUS;
-      // neighborOffset.y = int(nextRand(rndSeed) * SAMPLE_RADIUS * 2.f) - SAMPLE_RADIUS;
-      //
-      // neighborIndex.x = max(0, min(WIDTH - 1, WIDTH + neighborOffset.x));
-      // neighborIndex.y = max(0, min(HEIGHT - 1, HEIGHT + neighborOffset.y));
-
-        Reservoir neighborRes = reservoirs[neighborIndex.y * WIDTH + neighborIndex.x];
-        
-        Light light = lights.Load(neighborRes.y);
-        
-        float L = saturate(normalize(light.position - pos));
-            
-        float ndotl = saturate(dot(norm.xyz, L)); // lambertian term
-
-	    		// p_hat of the light is f * Le * G / pdf   
-        float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, camPos, roughness, metalColor.x, albedo, f0);
-        float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
-        UpdateResrvoir(reservoirNew, neighborRes.y, p_hat * neighborRes.W * neighborRes.M, nextRand(rndSeed));
-        
-        lightSamplesCount += neighborRes.M;
+         float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, camPos, roughness, metalColor.x, albedo, f0);
+         float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
+         UpdateResrvoir(reservoirNew, neighborRes.y, p_hat * neighborRes.W * neighborRes.M, nextRand(rndSeed));
+         
+         lightSamplesCount += neighborRes.M;
     }
     
     reservoirNew.M = lightSamplesCount;
@@ -160,9 +160,14 @@ void main( uint3 DTid : SV_DispatchThreadID )
 	    		// p_hat of the light is f * Le * G / pdf   
     float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, camPos, roughness, metalColor.x, albedo, f0);
     float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
-    reservoirNew.W = (1.0 / max(p_hat, 0.00001)) * (reservoirNew.wsum / max(reservoirNew.M, 0.0001));
     
-    outReservoir[pixelPos.y * WIDTH + pixelPos.x] = reservoirNew;
+    if(p_hat == 0)
+        reservoirNew.W == 0;
+    
+    else
+        reservoirNew.W = (1.0 / max(p_hat, 0.00001)) * (reservoirNew.wsum / max(reservoirNew.M, 0.0001));
+    
+    outReservoir[pixelPos.y * uint(WIDTH) + pixelPos.x] = reservoirNew;
     
     outColor[pixelPos] = float4(brdfVal * reservoirNew.W, 1);
 

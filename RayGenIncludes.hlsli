@@ -12,6 +12,7 @@ struct RayTraceExternData
     float frameCount;
     int doRestir;
     int outPutColor;
+    int doRestirGI;
 };
 
 

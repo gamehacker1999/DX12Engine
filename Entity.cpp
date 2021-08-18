@@ -89,6 +89,7 @@ void Entity::Draw(const ComPtr<ID3D12GraphicsCommandList>& commandList, std::sha
 		model->Draw(commandList);
 	}
 
+	prevModelMatrix = modelMatrix;
 }
 
 /*void Entity::SetRigidBody(std::shared_ptr<RigidBody> body)
@@ -355,7 +356,6 @@ void Entity::PrepareConstantBuffers(D3DX12Residency::ResidencyManager resManager
 
 void Entity::Update(float deltaTime)
 {
-	prevModelMatrix = modelMatrix;
 }
 
 void Entity::GetInput(float deltaTime)

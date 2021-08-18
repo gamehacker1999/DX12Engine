@@ -83,7 +83,10 @@ void RayGen()
             {
                 color += SpotLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.r, albedo, f0);
             }
-            gOutput[launchIndex] = float4(color, 1);
+            
+            float pdf = 1.0f / float(glightCount);
+            float w = 1.0f / pdf;
+            gOutput[launchIndex] = float4(color*w, 1);
             return;
         }
         
@@ -113,6 +116,7 @@ void RayGen()
         {
             int lightToSample = min(int(nextRand(rndseed) * glightCount), glightCount - 1);
             Light light = lights.Load(lightToSample);
+            float p = 1.0f / float(glightCount);
             
             float L = saturate(normalize(light.position - pos));
             
@@ -121,8 +125,11 @@ void RayGen()
 	    		// p_hat of the light is f * Le * G / pdf   
             float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.x, albedo, f0);
             
-            float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
-            UpdateResrvoir(reservoir, lightToSample, p_hat, nextRand(rndseed));
+            float w = length(brdfVal) / p;
+            UpdateResrvoir(reservoir, lightToSample, w, nextRand(rndseed));
+            
+            intermediateReservoir[launchIndex.y * WIDTH + launchIndex.x] = reservoir;
+
         }
         
         Light light = lights.Load(reservoir.y);
@@ -136,7 +143,11 @@ void RayGen()
             
         float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
         
-        reservoir.W = (1.0 / max(p_hat, 0.00001)) * (reservoir.wsum / max(reservoir.M, 0.000001));
+        if(p_hat == 0)
+            reservoir.W = 0;
+        
+        else
+            reservoir.W = (1.0 / max(p_hat, 0.00001)) * (reservoir.wsum / max(reservoir.M, 0.000001));
         
         if (ShootShadowRays(pos, L, 1, 1000000)<1.0f)
         {
@@ -158,7 +169,13 @@ void RayGen()
 
 	    		// p_hat of the light is f * Le * G / pdf   
             float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.x, albedo, f0);
-            prevReservoir.M = min(20.f * reservoir.M, prevReservoir.M); //As described in the paper, clamp the M value to 20*M
+            
+            if (prevReservoir.M > 20 * reservoir.M)
+            {
+                prevReservoir.wsum *= 20 * reservoir.M / prevReservoir.M;
+                prevReservoir.M = 20 * reservoir.M;
+            }
+            //prevReservoir.M = min(20.f * reservoir.M, prevReservoir.M); //As described in the paper, clamp the M value to 20*M
             float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 1
             UpdateResrvoir(temporalRes, prevReservoir.y, p_hat * prevReservoir.W * prevReservoir.M, nextRand(rndseed));
 
@@ -176,7 +193,14 @@ void RayGen()
 	    		// p_hat of the light is f * Le * G / pdf   
             float3 brdfVal = PointLightPBRRaytrace(light, norm, pos, cameraPosition, roughness, metalColor.x, albedo, f0);
             float p_hat = length(brdfVal); // technically p_hat is divided by pdf, but point light pdf is 
-            temporalRes.W = (1.0 / max(p_hat, 0.00001)) * (temporalRes.wsum / max(temporalRes.M, 0.0001));
+            if (p_hat == 0)
+            {
+                temporalRes.W = 0;
+            }
+            else
+            {
+                temporalRes.W = (temporalRes.wsum / temporalRes.M) / p_hat;
+            }
             
             reservoir = temporalRes;
         

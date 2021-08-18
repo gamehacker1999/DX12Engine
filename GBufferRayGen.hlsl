@@ -27,7 +27,7 @@ void GBufferRayGen()
     ray.TMax = 100000;
     TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, payload);
 
-    float depthW = abs(dot(normalize(cameraForward), payload.position - cameraPosition));
+    float depthW = abs(dot(normalize(cameraForward), (payload.position - cameraPosition)));
     
     gRoughnessMetallic[launchIndex] = payload.roughnessMetallic;
     gPosition[launchIndex] = float4(payload.position, 1.f);

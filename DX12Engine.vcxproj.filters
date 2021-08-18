@@ -451,6 +451,9 @@
     <FxCompile Include="ReStirSpatialReuseAndFinalShade.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="ReStirGISpatialReuseAndFinalShade.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

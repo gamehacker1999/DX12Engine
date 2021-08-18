@@ -165,5 +165,6 @@ enum RestrirSpatialReuseIndices
 	RestirSpatialReuse_OutReservoirs,
 	RestirSpatialReuse_ExternData,
 	RestirSpatialReuse_Lights,
+	RestirSpatialReuse_AccelStruct,
 	RestirSpatialReuse_NumIndices
 };

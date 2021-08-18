@@ -51,6 +51,7 @@ Game::Game(HINSTANCE hInstance)
 	isRaytracingAllowed = false;
 	rtToggle = true;
 	doRestir = false;
+	doRestirGI = false;
 	restirSpatialReuse = false;
 	enableSSS = false;
 	visibleLightIndices = nullptr;
@@ -1504,6 +1505,7 @@ void Game::LoadShaders()
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_SampleSequences].InitAsUnorderedAccessView(6, 0);
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_OutReservoirs].InitAsUnorderedAccessView(7, 0);
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_Lights].InitAsShaderResourceView(0, 2);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_AccelStruct].InitAsShaderResourceView(0, 0);
 
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_ExternData].InitAsConstants(3, 0, 0);
 
@@ -1519,16 +1521,31 @@ void Game::LoadShaders()
 			ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
 				IID_PPV_ARGS(restirSpatialReuseRootSig.GetAddressOf())));
 
-			ComPtr<ID3DBlob> shader;
+			{
+				ComPtr<ID3DBlob> shader;
 
-			ThrowIfFailed(D3DReadFileToBlob(L"ReStirSpatialReuseAndFinalShade.cso", shader.GetAddressOf()));
+				ThrowIfFailed(D3DReadFileToBlob(L"ReStirSpatialReuseAndFinalShade.cso", shader.GetAddressOf()));
 
-			//creating a passthrough pipeline state
-			D3D12_COMPUTE_PIPELINE_STATE_DESC rcasPsoDesc = {};
-			rcasPsoDesc.pRootSignature = restirSpatialReuseRootSig.Get();
-			rcasPsoDesc.CS = CD3DX12_SHADER_BYTECODE(shader.Get());
+				//creating a passthrough pipeline state
+				D3D12_COMPUTE_PIPELINE_STATE_DESC rcasPsoDesc = {};
+				rcasPsoDesc.pRootSignature = restirSpatialReuseRootSig.Get();
+				rcasPsoDesc.CS = CD3DX12_SHADER_BYTECODE(shader.Get());
 
-			ThrowIfFailed(device->CreateComputePipelineState(&rcasPsoDesc, IID_PPV_ARGS(restirSpatialReusePSO.GetAddressOf())));
+				ThrowIfFailed(device->CreateComputePipelineState(&rcasPsoDesc, IID_PPV_ARGS(restirSpatialReusePSO.GetAddressOf())));
+			}
+
+			{
+				ComPtr<ID3DBlob> shader;
+
+				ThrowIfFailed(D3DReadFileToBlob(L"ReStirGISpatialReuseAndFinalShade.cso", shader.GetAddressOf()));
+
+				//creating a passthrough pipeline state
+				D3D12_COMPUTE_PIPELINE_STATE_DESC rcasPsoDesc = {};
+				rcasPsoDesc.pRootSignature = restirSpatialReuseRootSig.Get();
+				rcasPsoDesc.CS = CD3DX12_SHADER_BYTECODE(shader.Get());
+
+				ThrowIfFailed(device->CreateComputePipelineState(&rcasPsoDesc, IID_PPV_ARGS(restirGISpatialReusePSO.GetAddressOf())));
+			}
 		}
 
 		//RT combine
@@ -1853,7 +1870,7 @@ void Game::CreateBasicGeometry()
 
 	visibleLightIndicesBuffer.currentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
-	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width*height*4, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(renderWidth*renderHeight*4, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
@@ -1877,7 +1894,7 @@ void Game::CreateBasicGeometry()
 
 	retargetedSequences.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
-	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(width * height * sizeof(Reservoir), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(renderWidth * renderHeight * sizeof(Reservoir), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&GetAppResources().defaultHeapType,
@@ -1900,6 +1917,30 @@ void Game::CreateBasicGeometry()
 	));
 
 	intermediateReservoir.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+	bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(AlignUp(renderWidth * renderHeight * sizeof(GIReservoir), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr,
+		IID_PPV_ARGS(indirectDiffuseTemporalReservoir.resource.GetAddressOf())
+	));
+
+	indirectDiffuseTemporalReservoir.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+	ThrowIfFailed(device->CreateCommittedResource(
+		&GetAppResources().defaultHeapType,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr,
+		IID_PPV_ARGS(indirectDiffuseSpatialReservoir.resource.GetAddressOf())
+	));
+
+	indirectDiffuseSpatialReservoir.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
 	bndsCBResource->Map(0, &GetAppResources().zeroZeroRange, reinterpret_cast<void**>(&bndsDataBegin));
 
@@ -1942,13 +1983,13 @@ void Game::CreateBasicGeometry()
 	//lights[lightCount].intensity = 1;
 	//lightCount++;
 	
-	for (int i = 0; i < 500; i++)
+	for (int i = 0; i < 200; i++)
 	{
 		lights[lightCount].type = LIGHT_TYPE_POINT;
 		lights[lightCount].color = GetRandomFloat3(0, 1);
-		lights[lightCount].range = 100;
+		lights[lightCount].range = 50;
 		lights[lightCount].position = GetRandomFloat3(-50, 50);
-		lights[lightCount].intensity = 30;
+		lights[lightCount].intensity = 1;
 		lightCount++;
 	}
 
@@ -2381,7 +2422,7 @@ void Game::CreateShaderBindingTable()
 		//the ray generation shader needs external data therefore it needs the pointer to the heap
 		//the miss and hit group shaders don't have any data
 		indirectDiffuseSbtGenerator.AddRayGenerationProgram(L"IndirectDiffuseRayGen", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress()
-			, (void*)retargetedSequences.resource->GetGPUVirtualAddress() });
+			, (void*)retargetedSequences.resource->GetGPUVirtualAddress(), (void*)indirectDiffuseTemporalReservoir.resource->GetGPUVirtualAddress(), (void*)indirectDiffuseSpatialReservoir.resource->GetGPUVirtualAddress() });
 		indirectDiffuseSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
 
 		for (size_t i = 0; i < entities.size(); i++)
@@ -3123,10 +3164,13 @@ void Game::Update(float deltaTime, float totalTime)
 
 	auto kb = keyboard->GetState();
 	auto mouseState = mouse->GetState();
-	float xRand = (jitters[numFrames % 16].x) / renderWidth;
-	float yRand = (jitters[numFrames % 16].y) / renderHeight;
+	float xRand = (jitters[numFrames % 16].x) / (float(renderWidth));
+	float yRand = (jitters[numFrames % 16].y) / (float(renderHeight));
 
-	//mainCamera->JitterProjMatrix(xRand, yRand);
+	//xRand = xRand / renderWidth;
+	//yRand = yRand / renderHeight;
+
+	mainCamera->JitterProjMatrix(xRand, yRand);
 
 	currentJitters = Vector2(xRand, yRand);
 
@@ -3161,7 +3205,7 @@ void Game::Update(float deltaTime, float totalTime)
 		bool intersects = false;
 		Vector4 origin;
 		Vector4 dir;
-		mainCamera->GetRayOriginAndDirection(mouseState.x, mouseState.y, renderWidth, renderHeight ,origin, dir);
+		mainCamera->GetRayOriginAndDirection(mouseState.x, mouseState.y, width, height ,origin, dir);
 		float minDist = FLT_MAX;
 		for (size_t i = 0; i < entities.size(); i++)
 		{
@@ -3233,6 +3277,7 @@ void Game::Update(float deltaTime, float totalTime)
 		rtCamera.view = mainCamera->GetViewMatrix();
 		rtCamera.proj = mainCamera->GetProjectionMatrix();
 		rtCamera.doRestir = doRestir;
+		rtCamera.doRestirGI = doRestirGI;
 		rtCamera.doOutput = !restirSpatialReuse;
 		XMMATRIX viewTranspose = XMMatrixTranspose(XMLoadFloat4x4(&rtCamera.view));
 		XMStoreFloat4x4(&rtCamera.iView, XMMatrixTranspose(XMMatrixInverse(nullptr, viewTranspose)));
@@ -3362,10 +3407,14 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 		{
 			ImGui::Checkbox("Use ReStir", &doRestir);
 
-			if (doRestir)
+			if (doRestir || doRestirGI)
 			{
 				ImGui::Checkbox("Use Spatial Reuse", &restirSpatialReuse);
 			}
+
+			
+			ImGui::Checkbox("Use Restir GI", &doRestirGI);
+			
 		}
 		ImGui::End();
 	}
@@ -4453,7 +4502,7 @@ void Game::CreateDirectRays()
 
 		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_Reservoirs, intermediateReservoir.resource->GetGPUVirtualAddress());
 		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_OutReservoirs, currentReservoir.resource->GetGPUVirtualAddress());
-		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_SampleSequences, sampleSequences.resource->GetGPUVirtualAddress());
+		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_SampleSequences, retargetedSequences.resource->GetGPUVirtualAddress());
 		commandList->SetComputeRootShaderResourceView(RestrirSpatialReuseIndices::RestirSpatialReuse_Lights, lightListResource->GetGPUVirtualAddress());
 
 		auto camPos = mainCamera->GetPosition();
@@ -4485,7 +4534,7 @@ void Game::CreateIndirectDiffuseRays()
 	//miss shaders
 	desc.MissShaderTable.StartAddress = indirectDiffuseSbtResource->GetGPUVirtualAddress() + indirectDiffuseSbtGenerator.GetRayGenSectionSize();
 	desc.MissShaderTable.SizeInBytes = indirectDiffuseSbtGenerator.GetMissSectionSize();
-	//desc.MissShaderTable.StartAddress = (desc.MissShaderTable.StartAddress + 63) & ~63;
+	//desc.MissShaderTable.StartAddress = AlignUp(desc.MissShaderTable.StartAddress, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
 	desc.MissShaderTable.StrideInBytes = indirectDiffuseSbtGenerator.GetMissEntrySize();
 
 	//hit groups
@@ -4501,6 +4550,35 @@ void Game::CreateIndirectDiffuseRays()
 
 	commandList->SetPipelineState1(indirectDiffuseRtStateObject.Get());
 	commandList->DispatchRays(&desc);
+	WaitForPreviousFrame();
+
+	//Restrir spatial reuse pass goes here
+	if (doRestirGI && restirSpatialReuse)
+	{
+		commandList->SetComputeRootSignature(restirSpatialReuseRootSig.Get());
+		commandList->SetPipelineState(restirGISpatialReusePSO.Get());
+
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferDif, rtAlbedo.uavGPUHandle);
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferNorm, rtNormals.uavGPUHandle);
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferRoughMetal, rtRoughnessMetal.uavGPUHandle);
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferPos, rtPosition.uavGPUHandle);
+		commandList->SetComputeRootDescriptorTable(RestrirSpatialReuseIndices::RestirSpatialReuse_OutColor, rtIndirectDiffuseOutPut.uavGPUHandle);
+
+		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_Reservoirs, indirectDiffuseTemporalReservoir.resource->GetGPUVirtualAddress());
+		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_OutReservoirs, indirectDiffuseSpatialReservoir.resource->GetGPUVirtualAddress());
+		commandList->SetComputeRootUnorderedAccessView(RestrirSpatialReuseIndices::RestirSpatialReuse_SampleSequences, retargetedSequences.resource->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(RestrirSpatialReuseIndices::RestirSpatialReuse_Lights, lightListResource->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(RestrirSpatialReuseIndices::RestirSpatialReuse_AccelStruct, topLevelAsBuffers.pResult->GetGPUVirtualAddress());
+
+		auto camPos = mainCamera->GetPosition();
+
+		commandList->SetComputeRoot32BitConstants(RestrirSpatialReuseIndices::RestirSpatialReuse_ExternData, 3, &camPos, 0);
+
+		auto dispatchX = renderWidth / 16;
+		auto dispatchY = renderHeight / 16;
+
+		commandList->Dispatch(dispatchX, dispatchY, 1);
+	}
 }
 
 void Game::CreateIndirectSpecularRays()

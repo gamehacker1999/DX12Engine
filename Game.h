@@ -107,6 +107,24 @@ struct Reservoir
 	float W; //Probablistic weight
 };
 
+struct Sample
+{
+	Vector3 visiblePos;
+	Vector3 visibleNormal;
+	Vector3 samplePos;
+	Vector3 sampleNormal;
+	Vector3 color;
+	Vector3 RandomNums;
+};
+
+struct GIReservoir
+{
+	Sample sample;
+	float wsum; // the sum of weights
+	float M; //the number of samples seen so far
+	float W; //Probablistic weight
+};
+
 inline ID3D12Resource* CreateRBBuffer(ID3D12Resource* buffer, ID3D12Device* device, UINT bufferSize)
 {
 	if (buffer != nullptr)
@@ -137,6 +155,7 @@ struct RayTraceCameraData
 	float frameCount;
 	int doRestir;
 	int doOutput;
+	int doRestirGI;
 };
 
 struct BNDSExternalData
@@ -313,8 +332,13 @@ private:
 	UINT8* visibleLightIndicesResource;
 	UINT* visibleLightIndices;
 
+	//direct lighting ReStir structures
 	ManagedResource currentReservoir;
 	ManagedResource intermediateReservoir;
+
+	//Indirect diffuse ReStir struct
+	ManagedResource indirectDiffuseTemporalReservoir;
+	ManagedResource indirectDiffuseSpatialReservoir;
 
 	//decals
 	ComPtr<ID3D12Resource> decalConstanceBufferResource;
@@ -483,9 +507,12 @@ private:
 	ComPtr<ID3D12RootSignature> velRootSig;
 	ComPtr<ID3D12PipelineState> velPSO;
 
-	//veloity vars
+	//Restir vars
 	ComPtr<ID3D12RootSignature> restirSpatialReuseRootSig;
 	ComPtr<ID3D12PipelineState> restirSpatialReusePSO;
+
+	//Restir GI vars
+	ComPtr<ID3D12PipelineState> restirGISpatialReusePSO;
 
 	//---------------------Raytracing vars-------------------
 
@@ -494,6 +521,7 @@ private:
 	bool inlineRaytracing;
 	bool rtToggle;
 	bool doRestir;
+	bool doRestirGI;
 	bool restirSpatialReuse;
 	ComPtr<ID3D12Resource> bottomLevelAs; //storage for bottom level as
 	nv_helpers_dx12::TopLevelASGenerator topLevelAsGenerator;

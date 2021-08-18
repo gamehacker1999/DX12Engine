@@ -54,6 +54,9 @@ void IndirectSpecularRayGen()
     if (norm.x == 0 && norm.y == 0 && norm.z == 0)
     {
         color = float3(0, 0, 0);
+        gIndirectSpecularOutput[launchIndex] = float4(color, 1.0f);
+        return;
+
     }
     else
     {

@@ -51,8 +51,10 @@ void Miss(inout HitInfo payload : SV_RayPayload)
     
     color = pow(color, 2.2);
     
+    payload.currentPosition = WorldRayOrigin() + RayTCurrent()* WorldRayDirection();
     payload.color = color;
     payload.diffuseColor = color;
-    payload.currentPosition = float3(0, 0, 0);
-    payload.normal = float3(0, 0, 0);
+    //payload.currentPosition = float3(0, 0, 0);
+    payload.normal = -WorldRayDirection();
+    payload.normal = normalize(payload.normal);
 }
