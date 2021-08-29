@@ -20,7 +20,7 @@ cbuffer RestirData : register(b0)
 };
 
 
-#define NUM_NEIGHBORS 9
+#define NUM_NEIGHBORS 3
 #define SAMPLE_RADIUS 30
 
 inline float halton(int i, int b)
@@ -55,14 +55,15 @@ float CalculateJacobian(Sample q, Sample r)
     
     float num = length((q.visiblePos - q.samplePos));
     num *= num;
-    
+
     float denom = length((r.visiblePos - q.samplePos));
     
     denom *= denom;
     
-    float term2 = num / max(denom, 0.0001);
+    float term2 = num / max(denom,0.001);
     
-    float jacobian = term1 * term2;
+    term2 = clamp(term2, 0.01, 1);
+    float jacobian =term2;
     
     return jacobian;
 

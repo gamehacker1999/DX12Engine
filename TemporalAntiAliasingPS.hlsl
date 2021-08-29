@@ -47,7 +47,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     currentFrame.GetDimensions(w, h);
     float2 pixelSize = float2(1.0 / float(w), 1.0 / float(h)); //Need to pass this later
 
-	if (frameNum == 0)
+	if (frameNum == frameNum)
 	{
 		return float4(currentColor, 1.0f);
 	}
@@ -98,30 +98,16 @@ float4 main(VertexToPixel input) : SV_TARGET
         
     float2 previousCoordinate = input.uv;
     
-    if (vel.x >= 1)
-    {
-        float3 currentPosition = CalcPositionFromDepth(input.uv, depthBuffer.Sample(basicSampler, input.uv).r);
-        float4 previousPosition = mul(float4(currentPosition, 1.0f), prevView);
-        previousPosition = mul(previousPosition, prevProjection);
-    
-        previousCoordinate = (previousPosition.xy / previousPosition.w) * float2(0.5f, -0.5f)+0.5;
-    
-    }
-    
-    else
      previousCoordinate += vel;
-    
-    
-	
+    	
     float2 historySize = float2(WIDTH, HEIGHT);
-    float4 history = ConvertToYCoCg(TonemapColor(previousFrame.Sample(basicSampler, previousCoordinate)));
+    float4 history = ConvertToYCoCg(TonemapColor(SampleTextureCatmullRom(previousFrame, basicSampler, previousCoordinate, historySize)));
     
     if(history.x != history.x)
     {   
         history = float4(0, 0, 0, 1);
     }
-	
-    
+	 
     const float3 origin = history.rgb - 0.5f * (minimum.rgb + maximum.rgb);
     const float3 direction = average.rgb - history.rgb;
     const float3 extents = maximum.rgb - 0.5f * (minimum.rgb + maximum.rgb);

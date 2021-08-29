@@ -54,7 +54,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 
 	uint index = entityIndex.index;
 
-	float4 surfaceColor = material[index+0].SampleBias(basicSampler,input.uv, -0.38f);
+	float4 surfaceColor = material[index+0].SampleBias(basicSampler,input.uv, -1.0f);
 
 	surfaceColor = pow(abs(surfaceColor), 2.2);
 

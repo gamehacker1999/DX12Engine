@@ -65,7 +65,7 @@ float3 TemporalReprojection(uint2 launchDims, float4 history, float4 color)
 
 
     }
-    return ((lerp(history, color, factor)));
+    return ((lerp(history, color, factor))).xyz;
 }
 
 [shader("raygeneration")]
@@ -97,7 +97,6 @@ void IndirectDiffuseRayGen()
     float3 color = float3(0, 0, 0);    
     float2 motionVector = motionBuffer[launchIndex].rg;
     motionVector.y = 1.f - motionVector.y;
-    motionVector = motionVector * 2.f - 1.0f;
     
     float2 screenTexCoord = launchIndex / dims;
     float2 reprojectedTexCoord = screenTexCoord + motionVector;
@@ -204,8 +203,6 @@ void IndirectDiffuseRayGen()
                 prevReservoir = prevFrameRes[prevIndex.y * WIDTH + prevIndex.x];
             }
             
-            history= gIndirectDiffuseOutput[prevIndex];
-
         }
 
         float sourcePDF = saturate(dot(norm, normalize(L))) / M_PI; //PDF of diffuse ray is n.l/pi

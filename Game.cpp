@@ -3170,7 +3170,7 @@ void Game::Update(float deltaTime, float totalTime)
 	//xRand = xRand / renderWidth;
 	//yRand = yRand / renderHeight;
 
-	mainCamera->JitterProjMatrix(xRand, yRand);
+	//mainCamera->JitterProjMatrix(xRand, yRand);
 
 	currentJitters = Vector2(xRand, yRand);
 
