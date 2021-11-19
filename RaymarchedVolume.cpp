@@ -126,7 +126,8 @@ std::shared_ptr<Mesh>& RaymarchedVolume::GetMesh()
 
 void RaymarchedVolume::PrepareForDraw(Matrix view, Matrix proj, Vector3 camPosition, float totalTime)
 {
-	XMStoreFloat4x4(&volumeData.model,XMMatrixTranspose(XMMatrixTranslationFromVector(XMLoadFloat3(&position))));
+	XMFLOAT3 scale(00, 00, 00);
+	XMStoreFloat4x4(&volumeData.model,XMMatrixTranspose(XMMatrixScalingFromVector(XMLoadFloat3(&scale))* XMMatrixTranslationFromVector(XMLoadFloat3(&position))));
 	XMStoreFloat4x4(&volumeData.inverseModel, XMMatrixTranspose(XMMatrixInverse(nullptr, XMMatrixTranslationFromVector(XMLoadFloat3(&position)))));
 	volumeData.view = view;
 	Matrix viewTrans;

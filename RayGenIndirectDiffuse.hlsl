@@ -62,8 +62,6 @@ float3 TemporalReprojection(uint2 launchDims, float4 history, float4 color)
         prevFrameRes[launchDims.y * WIDTH + launchDims.x].wsum = 0;
         prevFrameRes[launchDims.y * WIDTH + launchDims.x].W = 0;
 
-
-
     }
     return ((lerp(history, color, factor))).xyz;
 }
@@ -157,7 +155,7 @@ void IndirectDiffuseRayGen()
         float3 randomVars = float3(nextRand(rndseed), nextRand(rndseed), 0);
         float3 L = GetCosHemisphereSample(randomVars.x, randomVars.y, norm);
         L = normalize(L);
-        HitInfo giPayload = { float3(0, 0, 0), 0, rndseed, pos, norm, albedo };
+        HitInfo giPayload = { float4(0, 0, 0, 0), 0, rndseed, pos, norm, 0.01,albedo };
        
         RayDesc ray;
         ray.Origin = pos;

@@ -56,6 +56,8 @@ struct LightingData
 	Vector3 cameraPosition;
 	UINT lightCount;
 	Vector3 cameraForward;
+	float totalTime;
+	float fogDense;
 };
 
 struct LightCullingExternalData
@@ -203,6 +205,7 @@ public:
 	//create dxr pipeline
 	void CreateRayTracingPipeline();
 	void CreateRayTracingDirectLightingPipeline();
+	void CreateRaytracingTransparencyPipeline();
 	void CreateRayTracingIndirectDiffusePipeline();
 	void CreateRayTracingIndirectSpecularPipeline();
 	void CreateGbufferRaytracingPipeline();
@@ -214,7 +217,7 @@ public:
 	void CreateDirectRays();
 	void CreateIndirectDiffuseRays();
 	void CreateIndirectSpecularRays();
-
+	void CreateTransparencyRays();
 	void CreateLTCTexture();
 	void PrefilterLTCTextures();
 
@@ -538,26 +541,33 @@ private:
 	ComPtr<ID3D12StateObject> rtStateObject;
 	ComPtr<ID3D12StateObject> indirectDiffuseRtStateObject;
 	ComPtr<ID3D12StateObject> indirectSpecularRtStateObject;
+	ComPtr<ID3D12StateObject> rtTransparentStateObject;
 	ComPtr<ID3D12StateObject> gbufferStateObject;
 
 	//pipeline state properties, for the shader table
 	ComPtr<ID3D12StateObjectProperties> rtStateObjectProps;
+	ComPtr<ID3D12StateObjectProperties> rtTransparentStateObjectProps;
 	ComPtr<ID3D12StateObjectProperties> indirectDiffuseRtStateObjectProps;
 	ComPtr<ID3D12StateObjectProperties> indirectSpecularRtStateObjectProps;
 	ComPtr<ID3D12StateObjectProperties> GBrtStateObjectProps;
 
 	//dxil libs for the shaders
 	ComPtr<IDxcBlob> rayGenLib;
+	ComPtr<IDxcBlob> transparencyRayGenLib;
 	ComPtr<IDxcBlob> indirectDiffuseRayGenLib;
 	ComPtr<IDxcBlob> indirectSpecularRayGenLib;
 	ComPtr<IDxcBlob> missLib;
 	ComPtr<IDxcBlob> hitLib;
+
+	ComPtr<IDxcBlob> transparentRayGenLib;
+	ComPtr<IDxcBlob> transparentHitLib;
 
 	ComPtr<IDxcBlob> GBrayGenLib;
 	ComPtr<IDxcBlob> GBmissLib;
 	ComPtr<IDxcBlob> GBhitLib;
 
 	ManagedResource rtOutPut;
+	ManagedResource rtTransparentOutput;
 	ManagedResource rtIndirectDiffuseOutPut;
 	ManagedResource rtIndirectSpecularOutPut;
 
@@ -579,6 +589,8 @@ private:
 	//SBT variables
 	nv_helpers_dx12::ShaderBindingTableGenerator sbtGenerator;
 	ComPtr<ID3D12Resource> sbtResource;
+	nv_helpers_dx12::ShaderBindingTableGenerator transparentSbtGenerator;
+	ComPtr<ID3D12Resource> transparentSbtResource;
 	nv_helpers_dx12::ShaderBindingTableGenerator indirectDiffuseSbtGenerator;
 	ComPtr<ID3D12Resource> indirectDiffuseSbtResource;
 	nv_helpers_dx12::ShaderBindingTableGenerator indirectSpecularSbtGenerator;
@@ -690,5 +702,8 @@ private:
 	ComPtr<ID3D12PipelineState> fsrEASUPso;
 	ComPtr<ID3D12PipelineState> fsrRCASPso;
 
+
+	//fog
+	float fogDensity;
 };
 

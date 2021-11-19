@@ -30,6 +30,8 @@ cbuffer LightingData : register(b1)
     float3 cameraPosition;
     uint glightCount;
     float3 cameraForward;
+    float totalTime;
+    float fogDensity;
 };
 
 
@@ -213,7 +215,7 @@ float ShootShadowRays(float3 origin, float3 direction, float minT, float maxT)
     ray.TMin = minT;
     ray.TMax = maxT;
 
-    TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 1, 2, 1, ray, shadowPayload);
+    TraceRay(SceneBVH, RAY_FLAG_NONE, RAYTRACING_INSTANCE_OPAQUE, 1, 2, 1, ray, shadowPayload);
 
     return shadowPayload.isHit ? 0.0 : 1.0f;
 }
@@ -328,7 +330,7 @@ float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, flo
         float3 L = GetCosHemisphereSample(rndseed, norm);
         L = normalize(L);
 
-        HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+        HitInfo giPayload = { float4(0, 0, 0, 0), rayDepth, rndseed, pos, norm, 0.01, surfaceColor };
     
         RayDesc ray;
         ray.Origin = pos;
@@ -336,7 +338,7 @@ float3 IndirectDiffuseLighting(inout float rndseed, float3 pos, float3 norm, flo
         ray.TMin = 0.01;
         ray.TMax = 100000;
     
-        TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+        TraceRay(SceneBVH, RAY_FLAG_NONE, RAYTRACING_INSTANCE_OPAQUE, 0, 2, 0, ray, giPayload);
         
         
         float3 color = giPayload.color * surfaceColor;
@@ -361,7 +363,7 @@ float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, fl
          float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
          float3 L = normalize(2 * dot(V, H) * H - V);
      
-         HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+        HitInfo giPayload = { float4(0, 0, 0, 0), rayDepth, rndseed, pos, norm, 0.01, surfaceColor };
      
          RayDesc ray;
          ray.Origin = pos;
@@ -369,7 +371,7 @@ float3 IndirectSpecularLighting(inout float rndseed, float3 pos, float3 norm, fl
          ray.TMin = 0.01;
          ray.TMax = 100000;
      
-         TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+        TraceRay(SceneBVH, RAY_FLAG_NONE, RAYTRACING_INSTANCE_OPAQUE, 0, 2, 0, ray, giPayload);
 	
 	 // Compute some dot products needed for shading
          float NdotL = saturate(dot(norm, L));
@@ -410,7 +412,7 @@ float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, 
         {
             float3 L = GetCosHemisphereSample(rndseed, norm);
         
-            HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+            HitInfo giPayload = { float4(0, 0, 0, 0), rayDepth, rndseed, pos, norm, 0.01, surfaceColor };
        
             RayDesc ray;
             ray.Origin = pos;
@@ -418,7 +420,7 @@ float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, 
             ray.TMin = 0.01;
             ray.TMax = 100000;
         
-            TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+            TraceRay(SceneBVH, RAY_FLAG_NONE, RAYTRACING_INSTANCE_OPAQUE, 0, 2, 0, ray, giPayload);
             
             response += giPayload.color * surfaceColor / max((probDiffuse), 0.0001f);
 
@@ -436,7 +438,7 @@ float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, 
             float3 H = ImportanceSamplingGGX(randVals, norm, roughness);
             float3 L = normalize(2 * dot(V, H) * H - V);
         
-            HitInfo giPayload = { float3(0, 0, 0), rayDepth, rndseed, pos, norm, surfaceColor };
+            HitInfo giPayload = { float4(0, 0, 0, 0), rayDepth, rndseed, pos, norm, 0.01, surfaceColor };
        
             RayDesc ray;
             ray.Origin = pos;
@@ -444,7 +446,7 @@ float3 IndirectLighting(inout float rndseed, float3 pos, float3 norm, float3 V, 
             ray.TMin = 0.01;
             ray.TMax = 100000;
        
-            TraceRay(SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 2, 0, ray, giPayload);
+            TraceRay(SceneBVH, RAY_FLAG_NONE, RAYTRACING_INSTANCE_OPAQUE, 0, 2, 0, ray, giPayload);
 		
 	   // Compute some dot products needed for shading
             float NdotL = saturate(dot(norm, L));

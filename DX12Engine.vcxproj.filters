@@ -513,5 +513,8 @@
     <None Include="ReStirIncludes.hlsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="RayGenTransparency.hlsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

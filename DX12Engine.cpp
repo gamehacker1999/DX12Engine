@@ -2,6 +2,10 @@
 #include <Windows.h>
 #include "Game.h"
 #include<crtdbg.h>
+
+extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 4; }
+
+extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\"; }
 // --------------------------------------------------------
 // Entry point for a graphical (non-console) Windows application
 // --------------------------------------------------------

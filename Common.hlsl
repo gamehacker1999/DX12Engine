@@ -7,6 +7,12 @@
 #define DISPLAY_WIDTH 1920.0f
 #define DISPLAY_HEIGHT 1080.0f
 
+//This should match the RaytracingInstanceMask in Game.h
+#define RAYTRACING_INSTANCE_OPAQUE  1
+#define RAYTRACING_INSTANCE_TRANSCLUCENT  2
+#define RAYTRACING_INSTANCE_ALL 0xFF
+
+
 // Hit information, aka ray payload
 // This sample only carries a shading color and hit distance.
 // Note that the payload should be kept as small as possible,
@@ -14,18 +20,19 @@
 // D3D12_RAYTRACING_SHADER_CONFIG pipeline subobjet.
 struct HitInfo
 {
-  float3 color;
-  float rayDepth;
-  uint rndseed;
-  float3 currentPosition;
-  float3 normal;
-  float3 diffuseColor;
+    float3 color;
+    float rayDepth;
+    uint rndseed;
+    float3 currentPosition;
+    float3 normal;
+    float tCurrent;
+    float4 diffuseColor;
 };
 
 struct GbufferPayload
 {
     float4 roughnessMetallic;
-    float3 albedo;
+    float4 albedo;
     float3 position;
     float3 normal;
 };

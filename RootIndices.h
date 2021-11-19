@@ -45,6 +45,7 @@ enum RaytracingHeapRangesIndices
 	RTNormalTexture,
 	RTAlbedoTexture,
 	RTMotionBuffer,
+	RTTransparentOutput,
 	RTAccelerationStruct,
 	RTCameraData,
 	RTMissTexture,

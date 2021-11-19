@@ -24,6 +24,7 @@
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3dcompiler.lib")
+#pragma comment(lib, "dxcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "dxguid.lib")
 
@@ -203,11 +204,20 @@ struct AccelerationStructureBuffers
 	UINT srvIndex;
 };
 
+//These should match the defines in Common.hlsl
+enum RaytracingInstanceMask
+{
+	RAYTRACING_INSTANCE_OPAQUE = 1 << 0,
+	RAYTRACING_INSTANCE_TRANSCLUCENT = 1 << 1,
+	RAYTRACING_INSTANCE_ALL = 0xFF
+};
+
 struct EntityInstance
 {
 	UINT entityIndex;
 	ComPtr<ID3D12Resource> bottomLevelBuffer;
 	DirectX::XMMATRIX modelMatrix;
+	RaytracingInstanceMask instanceMask;
 };
 
 inline Vector3 GetRandomFloat3(float minRange, float maxRange)

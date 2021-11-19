@@ -33,6 +33,81 @@ cbuffer VolumeData :register(b0)
 	float focalLength;
 	float time;
 };
+// this noise lookup inspired by iq's 3D noise lookup in his clouds shader
+
+float hash(float n)
+{
+    return frac(sin(n) * 43758.5453);
+}
+
+float noise(float3 x)
+{
+    // The noise function returns a value in the range -1.0f -> 1.0f
+
+    float3 p = floor(x);
+    float3 f = frac(x);
+
+    f = f * f * (3.0 - 2.0 * f);
+    float n = p.x + p.y * 57.0 + 113.0 * p.z;
+
+    return lerp(lerp(lerp(hash(n + 0.0), hash(n + 1.0), f.x),
+                   lerp(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
+               lerp(lerp(hash(n + 113.0), hash(n + 114.0), f.x),
+                   lerp(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+}
+
+
+float fbm(float3 p)
+{
+    return abs(
+           noise(p * 1.) * .6) +
+           noise(p * 2.) * .3 +
+           noise(p * 4.) * .25 +
+           noise(p * 8.) * .125;
+}
+// makes a sphere
+// x - length(p) is inverse distance function 
+// points with length less than x get positive values, outside of x radius values become negative
+// high enough values from the FBM can outweigh the negative distance values
+float scene(float3 p)
+{
+    return .5 - length(p) * 0.05 + fbm(p * .0321);
+}
+
+
+float3 Translate(float3 pos, float3 translate)
+{
+    return pos -= translate;
+}
+
+// Taken from https://iquilezles.org/www/articles/distfunctions/distfunctions.htm
+float sdSphere(float3 p, float3 origin, float s)
+{
+    p = Translate(p, origin);
+    return length(p) - s;
+}
+
+// Taken from https://iquilezles.org/www/articles/distfunctions/distfunctions.htm
+float sdPlane(float3 p)
+{
+    return p.y;
+}
+
+float sdSmoothUnion(float d1, float d2, float k)
+{
+    float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    return lerp(d2, d1, h) - k * h * (1.0 - h);
+}
+
+float QueryVolumetricDistanceField(in float3 pos)
+{
+    float3 fbmCoord = (pos + 2.0 * float3(1, 0.0, 1)) / 1.5f;
+    float sdfValue = sdSphere(pos, float3(-8.0, 2.0 + 20.0 * sin(1), -1), 5.6);
+    sdfValue = sdSmoothUnion(sdfValue, sdSphere(pos, float3(8.0, 8.0 + 12.0 * cos(1), 3), 5.6), 3.0f);
+    sdfValue = sdSmoothUnion(sdfValue, sdSphere(pos, float3(5.0 * sin(1), 3.0, 0), 8.0), 3.0) + 7.0 * fbm(fbmCoord / 3.2);
+    sdfValue = sdSmoothUnion(sdfValue, sdPlane(pos + float3(0, 0.4, 0)), 22.0);
+    return sdfValue;
+}
 
 float SphereHit(float3 p)
 {
@@ -43,7 +118,7 @@ float4 RaymarchHit(float3 position, float3 direction)
 {
 	for (int i = 0; i < 64; i++)
 	{
-		float distance = SphereHit(position);
+        float distance = QueryVolumetricDistanceField(position);
 		if (distance<0.01)
 			return float4(1, 0, 0, 1);
 
@@ -131,13 +206,13 @@ float4 main(VertexToPixel input) : SV_TARGET
 {
 	float t0, t1;
 
-	/*float3 worldPosition = input.worldPos;
+	float3 worldPosition = input.worldPos;
 
 	float3 viewDirection = normalize(input.worldPos - cameraPosition);
 
 	return RaymarchHit(worldPosition, viewDirection);
 	//if (RaymarchHit(worldPosition, viewDirection)) return float4(1, 0, 0, 1);
-	//else return float4(0, 0, 0, 0);*/
+	//else return float4(0, 0, 0, 0);
 
 	Ray ray;
 	ray.origin = cameraPosition;//mul(float4(0,0,0,1),viewInv).xyz;

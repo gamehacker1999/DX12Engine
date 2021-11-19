@@ -61,6 +61,7 @@ Game::Game(HINSTANCE hInstance)
 	mouseButtons.Reset();
 	entityNames.resize(10000000);
 
+	fogDensity = 1.f;
 	lights = nullptr;
 
 }
@@ -1550,18 +1551,20 @@ void Game::LoadShaders()
 
 		//RT combine
 		{
-			CD3DX12_DESCRIPTOR_RANGE1 rtCombineDescriptorRange[3];
-			CD3DX12_ROOT_PARAMETER1 rtCombineRootParams[3];
+			CD3DX12_DESCRIPTOR_RANGE1 rtCombineDescriptorRange[4];
+			CD3DX12_ROOT_PARAMETER1 rtCombineRootParams[4];
 
 			//particleDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 			rtCombineDescriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
 			rtCombineDescriptorRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0);
 			rtCombineDescriptorRange[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0);
+			rtCombineDescriptorRange[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 0);
 
 			//particleRootParams[0].InitAsDescriptorTable(1, &particleDescriptorRange[0], D3D12_SHADER_VISIBILITY_VERTEX);
 			rtCombineRootParams[0].InitAsDescriptorTable(1, &rtCombineDescriptorRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
 			rtCombineRootParams[1].InitAsDescriptorTable(1, &rtCombineDescriptorRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
 			rtCombineRootParams[2].InitAsDescriptorTable(1, &rtCombineDescriptorRange[2], D3D12_SHADER_VISIBILITY_PIXEL);
+			rtCombineRootParams[3].InitAsDescriptorTable(1, &rtCombineDescriptorRange[3], D3D12_SHADER_VISIBILITY_PIXEL);
 
 
 			ComPtr<ID3DBlob> rtCombineSignature;
@@ -1982,8 +1985,29 @@ void Game::CreateBasicGeometry()
 	//lights[lightCount].position = XMFLOAT3(3, 0, 0);
 	//lights[lightCount].intensity = 1;
 	//lightCount++;
+
+	lights[lightCount].type = LIGHT_TYPE_POINT;
+	lights[lightCount].color = XMFLOAT3(1, 0, 0);
+	lights[lightCount].range = 50;
+	lights[lightCount].position = XMFLOAT3(30, 30, 0);
+	lights[lightCount].intensity = 3;
+	lightCount++;
+
+	lights[lightCount].type = LIGHT_TYPE_POINT;
+	lights[lightCount].color = XMFLOAT3(0, 1, 0);
+	lights[lightCount].range = 50;
+	lights[lightCount].position = XMFLOAT3(-30, 30, 0);
+	lights[lightCount].intensity = 3;
+	lightCount++;
+
+	lights[lightCount].type = LIGHT_TYPE_POINT;
+	lights[lightCount].color = XMFLOAT3(1, 0, 0);
+	lights[lightCount].range = 50;
+	lights[lightCount].position = XMFLOAT3(0, 30, -30);
+	lights[lightCount].intensity = 3;
+	lightCount++;
 	
-	for (int i = 0; i < 200; i++)
+	for (int i = 0; i < 100; i++)
 	{
 		lights[lightCount].type = LIGHT_TYPE_POINT;
 		lights[lightCount].color = GetRandomFloat3(0, 1);
@@ -2032,7 +2056,7 @@ void Game::CreateBasicGeometry()
 		L"../../Assets/Textures/GoldDiffuse.png", L"../../Assets/Textures/GoldNormal.png",
 		L"../../Assets/Textures/GoldRoughness.png", L"../../Assets/Textures/GoldMetallic.png");
 	material2 = std::make_shared<Material>(
-		L"../../Assets/Textures/LayeredDiffuse.png", L"../../Assets/Textures/LayeredNormal.png",
+		L"../../Assets/Textures/TransparentTest.png", L"../../Assets/Textures/DefaultNormal.jpg",
 		L"../../Assets/Textures/LayeredRoughness.png", L"../../Assets/Textures/LayeredMetallic.png");
 
 	std::shared_ptr<Material> material3 = std::make_shared<Material>(
@@ -2110,11 +2134,11 @@ void Game::CreateBasicGeometry()
 	entity1->AddMaterial(material1->materialIndex);
 
 	entity2 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, "entity2");
-	entity2->AddModel("../../Assets/Models/sphere.obj");
+	entity2->AddModel("../../Assets/Models/cube.obj");
 	entity2->AddMaterial(material2->materialIndex);
 
 	entity3 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, "entity3");
-	entity3->AddModel("../../Assets/Models/sphere.obj");
+	entity3->AddModel("../../Assets/Models/cube.obj");
 	entity3->AddMaterial(material2->materialIndex);
 
 	entity4 = std::make_shared<Entity>(registry, pbrPipelineState, rootSignature, "entity4");
@@ -2407,6 +2431,55 @@ void Game::CreateShaderBindingTable()
 		sbtGenerator.Generate(sbtResource.Get(), rtStateObjectProps.Get());
 	}
 
+		//Direct Transparent Lighting
+	{
+		//shader binding tables define the raygen, miss, and hit group shaders
+		//these resources are interpreted by the shader
+		transparentSbtGenerator.Reset();
+
+		//getting the descriptor heap handle
+		D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = rtDescriptorHeap.GetHeap()->GetGPUDescriptorHandleForHeapStart();
+
+		//reinterpreting the above pointer as a void pointer
+		auto heapPointer = reinterpret_cast<UINT64*>(gpuHandle.ptr);
+
+		//the ray generation shader needs external data therefore it needs the pointer to the heap
+		//the miss and hit group shaders don't have any data
+		transparentSbtGenerator.AddRayGenerationProgram(L"RayGenTransparency", { heapPointer,(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(), (void*)retargetedSequences.resource->GetGPUVirtualAddress(),
+			(void*)currentReservoir.resource->GetGPUVirtualAddress(), (void*)intermediateReservoir.resource->GetGPUVirtualAddress()});
+		transparentSbtGenerator.AddMissProgram(L"Miss", { heapPointer });
+
+		for (size_t i = 0; i < entities.size(); i++)
+		{
+			auto meshes = entities[i]->GetModel()->GetMeshes();
+			for (size_t j = 0; j < meshes.size(); j++)
+			{
+				UINT64 materialIndex = meshes[j]->GetMaterialID();
+				auto matIndexPtr = reinterpret_cast<UINT*>(materialIndex);
+				transparentSbtGenerator.AddHitGroup(L"HitGroup", { (void*)meshes[j]->GetVertexBufferResource()->GetGPUVirtualAddress(),
+					(void*)lightingConstantBufferResource->GetGPUVirtualAddress(), (void*)lightListResource->GetGPUVirtualAddress(),heapPointer, matIndexPtr });
+				transparentSbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
+			}
+		}
+
+		transparentSbtGenerator.AddMissProgram(L"ShadowMiss", {});
+		transparentSbtGenerator.AddHitGroup(L"ShadowHitGroup", {});
+
+		//compute the size of the SBT
+		UINT32 sbtSize = transparentSbtGenerator.ComputeSBTSize()*2;
+
+		//upload heap for the sbt
+		transparentSbtResource = nv_helpers_dx12::CreateBuffer(device.Get(), AlignUp(sbtSize, 256u), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, nv_helpers_dx12::kUploadHeapProps);
+
+		transparentSbtResource->SetName(L"SBT Resource");
+
+		if (!transparentSbtResource)
+			throw std::logic_error("Could not create SBT resource");
+
+		//compile the sbt from the above info
+		transparentSbtGenerator.Generate(transparentSbtResource.Get(), rtTransparentStateObjectProps.Get());
+	}
+
 	//Indirect Diffuse
 	{
 		//shader binding tables define the raygen, miss, and hit group shaders
@@ -2668,7 +2741,7 @@ void Game::CreateTopLevelAS(const std::vector<EntityInstance>& instances, bool u
 		topLevelAsGenerator = nv_helpers_dx12::TopLevelASGenerator();
 		for (int i = 0; i < instances.size(); i++)
 		{
-			topLevelAsGenerator.AddInstance(instances[i].bottomLevelBuffer.Get(), instances[i].modelMatrix, static_cast<UINT>(i), static_cast<UINT>(i * 2), D3D12_RAYTRACING_INSTANCE_FLAG_NONE, 0xFF);
+			topLevelAsGenerator.AddInstance(instances[i].bottomLevelBuffer.Get(), instances[i].modelMatrix, static_cast<UINT>(i), static_cast<UINT>(i * 2), D3D12_RAYTRACING_INSTANCE_FLAG_NONE, instances[i].instanceMask);
 		}
 
 		UINT64 scratchSize, resultSize, instanceDescsSize;
@@ -2723,7 +2796,8 @@ void Game::CreateAccelerationStructures()
 
 	for (UINT i = 0; i < bottomLevelBuffers.size(); i++)
 	{
-		EntityInstance instance = { i ,bottomLevelBuffers[i].pResult, entities[i]->GetRawModelMatrix() };
+		RaytracingInstanceMask mask = i == 1 || i == 2 ? RAYTRACING_INSTANCE_TRANSCLUCENT : RAYTRACING_INSTANCE_OPAQUE;
+		EntityInstance instance = { i ,bottomLevelBuffers[i].pResult, entities[i]->GetRawModelMatrix(), mask };
 		bottomLevelBufferInstances.emplace_back(instance);
 	}
 
@@ -2752,6 +2826,7 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 		{4,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTPositionTexture},
 		{5,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTNormalTexture},
 		{6,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTAlbedoTexture},
+		{7,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTTransparentOutput},
 		{0,1,2,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTMotionBuffer},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,RaytracingHeapRangesIndices::RTAccelerationStruct},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,RaytracingHeapRangesIndices::RTCameraData},
@@ -2814,6 +2889,10 @@ void Game::CreateRaytracingOutputBuffer()
 	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtOutPut.resource.GetAddressOf())));
 	rtOutPut.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 	rtOutPut.resourceType = RESOURCE_TYPE_UAV;
+
+	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtTransparentOutput.resource.GetAddressOf())));
+	rtTransparentOutput.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+	rtTransparentOutput.resourceType = RESOURCE_TYPE_UAV;
 
 	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtIndirectDiffuseOutPut.resource.GetAddressOf())));
 	rtIndirectDiffuseOutPut.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2891,9 +2970,11 @@ void Game::CreateRaytracingDescriptorHeap()
 	rtDescriptorHeap.CreateDescriptor(rtNormals, rtNormals.resourceType);
 	rtDescriptorHeap.CreateDescriptor(rtAlbedo, rtAlbedo.resourceType);
 	rtDescriptorHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_UAV);
+	rtDescriptorHeap.CreateDescriptor(rtTransparentOutput, rtTransparentOutput.resourceType);
 	renderTargetSRVHeap.CreateDescriptor(rtOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtIndirectDiffuseOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtIndirectSpecularOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
+	renderTargetSRVHeap.CreateDescriptor(rtTransparentOutput, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(prevPosition, prevPosition.resourceType, 0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(prevNormals, prevNormals.resourceType, 0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(prevNoisy, prevNoisy.resourceType, 0, renderWidth, renderHeight, 0, 1);
@@ -2937,6 +3018,7 @@ void Game::CreateRaytracingDescriptorHeap()
 void Game::CreateRayTracingPipeline()
 {
 	CreateRayTracingDirectLightingPipeline();
+	CreateRaytracingTransparencyPipeline();
 	CreateRayTracingIndirectDiffusePipeline();
 	CreateRayTracingIndirectSpecularPipeline();
 }
@@ -2992,6 +3074,59 @@ void Game::CreateRayTracingDirectLightingPipeline()
 	// Cast the state object into a properties object, allowing to later access
 	// the shader pointers by name
 	ThrowIfFailed(rtStateObject->QueryInterface(IID_PPV_ARGS(rtStateObjectProps.GetAddressOf())));
+}
+
+void Game::CreateRaytracingTransparencyPipeline()
+{
+	nv_helpers_dx12::RayTracingPipelineGenerator pipeline(device.Get());
+
+	//the raytracing pipeline contains all the shader code
+	transparencyRayGenLib = nv_helpers_dx12::CompileShaderLibrary(L"../../RayGenTransparency.hlsl");
+	missLib = nv_helpers_dx12::CompileShaderLibrary(L"../../Miss.hlsl");
+	hitLib = nv_helpers_dx12::CompileShaderLibrary(L"../../Hit.hlsl");
+
+
+	//add the libraies to pipeliene
+	pipeline.AddLibrary(transparencyRayGenLib.Get(), { L"RayGenTransparency" });
+	pipeline.AddLibrary(missLib.Get(), { L"Miss" });
+	pipeline.AddLibrary(hitLib.Get(), { L"ClosestHit",L"PlaneClosestHit" });
+
+	//creating the root signatures
+	rayGenRootSig = CreateRayGenRootSignature();
+	missRootSig = CreateMissRootSignature();
+	closestHitRootSignature = CreateClosestHitRootSignature();
+
+	shadowRayLib = nv_helpers_dx12::CompileShaderLibrary(L"../../ShadowRay.hlsl");
+	pipeline.AddLibrary(shadowRayLib.Get(), { L"ShadowClosestHit",L"ShadowMiss" });
+	shadowRootSig = CreateClosestHitRootSignature();
+
+	//adding a hit group to the pipeline
+	pipeline.AddHitGroup(L"HitGroup", L"ClosestHit");
+	pipeline.AddHitGroup(L"PlaneHitGroup", L"PlaneClosestHit");
+	pipeline.AddHitGroup(L"ShadowHitGroup", L"ShadowClosestHit");
+
+	//associating the root signatures with the shaders
+	//shaders can share root signatures
+	pipeline.AddRootSignatureAssociation(rayGenRootSig.Get(), { L"RayGenTransparency" });
+	pipeline.AddRootSignatureAssociation(missRootSig.Get(), { L"Miss",L"ShadowMiss" });
+	pipeline.AddRootSignatureAssociation(closestHitRootSignature.Get(), { L"HitGroup" ,L"PlaneHitGroup",L"ShadowHitGroup" }); // the intersection, anyhit, and closest hit shaders are bundled together in a hit group
+	//pipeline.AddRootSignatureAssociation(shadowRootSig.Get(), { L"ShadowHitGroup" });
+
+	//payload size defines the maximum size of the data carried by the rays
+	pipeline.SetMaxPayloadSize(20 * sizeof(float));
+
+	//max attrrib size, for now I am using the built in triangle attribs
+	pipeline.SetMaxAttributeSize(4 * sizeof(float));
+
+	//setting the recursion depth
+	pipeline.SetMaxRecursionDepth(30);
+
+	//creating the state obj
+	rtTransparentStateObject = pipeline.Generate();
+
+	// Cast the state object into a properties object, allowing to later access
+	// the shader pointers by name
+	ThrowIfFailed(rtTransparentStateObject->QueryInterface(IID_PPV_ARGS(rtTransparentStateObjectProps.GetAddressOf())));
 }
 
 void Game::CreateRayTracingIndirectDiffusePipeline()
@@ -3252,6 +3387,8 @@ void Game::Update(float deltaTime, float totalTime)
 	lightingData.cameraPosition = mainCamera->GetPosition();
 	lightingData.lightCount = lightCount;
 	lightingData.cameraForward = mainCamera->GetDirection();
+	lightingData.totalTime += deltaTime;
+	lightingData.fogDense = fogDensity;
 
 	lightCullingExternData.view = mainCamera->GetViewMatrix();
 	lightCullingExternData.projection = mainCamera->GetProjectionMatrix();
@@ -3414,6 +3551,8 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 
 			
 			ImGui::Checkbox("Use Restir GI", &doRestirGI);
+
+			ImGui::SliderFloat("FogDesnity", &fogDensity, 0, 1.0f);
 			
 		}
 		ImGui::End();
@@ -4019,8 +4158,10 @@ void Game::PopulateCommandList()
 
 		CreateGBufferRays();
 		CreateDirectRays();
-		CreateIndirectDiffuseRays();
-		CreateIndirectSpecularRays();
+		//CreateIndirectDiffuseRays();
+		//CreateIndirectSpecularRays();
+
+		CreateTransparencyRays();
 
 		uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(retargetedSequences.resource.Get());
 
@@ -4050,6 +4191,7 @@ void Game::PopulateCommandList()
 			//transition render target to readable texture and then transition it back to render target
 			TransitionManagedResource(commandList, taaInput, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
+			TransitionManagedResource(commandList, rtTransparentOutput, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
 			ID3D12DescriptorHeap* ppHeaps[] = { renderTargetSRVHeap.GetHeapPtr() };
 
@@ -4067,6 +4209,8 @@ void Game::PopulateCommandList()
 			commandList->SetGraphicsRootDescriptorTable(0, rtOutPut.srvGPUHandle);
 			commandList->SetGraphicsRootDescriptorTable(1, rtIndirectDiffuseOutPut.srvGPUHandle);
 			commandList->SetGraphicsRootDescriptorTable(2, rtIndirectSpecularOutPut.srvGPUHandle);
+			commandList->SetGraphicsRootDescriptorTable(3, rtTransparentOutput.srvGPUHandle);
+
 
 			commandList->DrawInstanced(3, 1, 0, 0);
 
@@ -4077,6 +4221,8 @@ void Game::PopulateCommandList()
 			TransitionManagedResource(commandList, rtIndirectDiffuseOutPut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 			TransitionManagedResource(commandList, rtIndirectSpecularOutPut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+			TransitionManagedResource(commandList, rtTransparentOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 
 			TransitionManagedResource(commandList, rtCombineOutput, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -4608,6 +4754,36 @@ void Game::CreateIndirectSpecularRays()
 	desc.Depth = 1;
 
 	commandList->SetPipelineState1(indirectSpecularRtStateObject.Get());
+	commandList->DispatchRays(&desc);
+}
+
+void Game::CreateTransparencyRays()
+{
+	//creating a dispatch rays description
+	D3D12_DISPATCH_RAYS_DESC desc = {};
+	//raygeneration location
+	desc.RayGenerationShaderRecord.StartAddress = transparentSbtResource->GetGPUVirtualAddress();
+	//desc.RayGenerationShaderRecord.StartAddress = (desc.RayGenerationShaderRecord.StartAddress + 63) & ~63;
+	desc.RayGenerationShaderRecord.SizeInBytes = transparentSbtGenerator.GetRayGenSectionSize();
+
+	//miss shaders
+	desc.MissShaderTable.StartAddress = transparentSbtResource->GetGPUVirtualAddress() + transparentSbtGenerator.GetRayGenSectionSize();
+	desc.MissShaderTable.SizeInBytes = transparentSbtGenerator.GetMissSectionSize();
+	//desc.MissShaderTable.StartAddress = (desc.MissShaderTable.StartAddress + 63) & ~63;
+	desc.MissShaderTable.StrideInBytes = transparentSbtGenerator.GetMissEntrySize();
+
+	//hit groups
+	desc.HitGroupTable.StartAddress = transparentSbtResource->GetGPUVirtualAddress() + transparentSbtGenerator.GetRayGenSectionSize() + transparentSbtGenerator.GetMissSectionSize();
+	//desc.HitGroupTable.StartAddress = (desc.HitGroupTable.StartAddress + 63) & ~63;
+	desc.HitGroupTable.SizeInBytes = transparentSbtGenerator.GetHitGroupSectionSize();
+	desc.HitGroupTable.StrideInBytes = transparentSbtGenerator.GetHitGroupEntrySize();
+
+	//scene description
+	desc.Height = renderHeight;
+	desc.Width = renderWidth;
+	desc.Depth = 1;
+
+	commandList->SetPipelineState1(rtTransparentStateObject.Get());
 	commandList->DispatchRays(&desc);
 }
 
