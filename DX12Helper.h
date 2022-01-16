@@ -98,7 +98,7 @@ inline float halton(int i, int b)
 	{
 		f = f / float(b);
 		r = r + f * float(i % b);
-		i = i / b;
+		i = static_cast<uint32_t>(floorf(static_cast<float>(i) / static_cast<float>(b)));
 	}
 	return r;
 }

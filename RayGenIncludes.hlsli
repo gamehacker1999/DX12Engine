@@ -25,5 +25,6 @@ RWTexture2D<float4> gPosition : register(u4);
 RWTexture2D<float4> gNormal : register(u5);
 RWTexture2D<float4> gAlbedo : register(u6);
 RWTexture2D<float4> gOutputTransparency : register(u7);
+RWTexture2D<float4> gIndirectDiffuseOutputHistory : register(u8);
 RWTexture2D<float4> motionBuffer : register(u0, space2);
 

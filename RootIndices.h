@@ -46,6 +46,7 @@ enum RaytracingHeapRangesIndices
 	RTAlbedoTexture,
 	RTMotionBuffer,
 	RTTransparentOutput,
+	RTDiffuseIndirectHistory,
 	RTAccelerationStruct,
 	RTCameraData,
 	RTMissTexture,
@@ -167,5 +168,6 @@ enum RestrirSpatialReuseIndices
 	RestirSpatialReuse_ExternData,
 	RestirSpatialReuse_Lights,
 	RestirSpatialReuse_AccelStruct,
+	RestirSpatialReuse_History,
 	RestirSpatialReuse_NumIndices
 };

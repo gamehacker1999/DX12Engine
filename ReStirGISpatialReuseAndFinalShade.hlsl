@@ -48,8 +48,8 @@ float CalculateJacobian(Sample q, Sample r)
     float cosPhi1 = abs(dot(normalize(r.visiblePos - q.samplePos), normal));
     float cosPhi2 = abs(dot(normalize(q.visiblePos - q.samplePos), normal));
 
-    cosPhi1 = clamp(cosPhi1, 0.3, 1);
-    cosPhi2 = clamp(cosPhi2, 0.3, 1);
+    //cosPhi1 = clamp(cosPhi1, -0.5, 0.5);
+    //cosPhi2 = clamp(cosPhi2, -0.5, 0.5);
 
     float term1 = cosPhi1 / max(0.0001, cosPhi2);
     
@@ -60,10 +60,15 @@ float CalculateJacobian(Sample q, Sample r)
     
     denom *= denom;
     
+    //num = clamp(num, 0.1, 1);
+    //denom = clamp(denom, 0.5, 1);
+    
     float term2 = num / max(denom,0.001);
     
-    term2 = clamp(term2, 0.01, 1);
-    float jacobian =term2;
+    //term2 = clamp(term2, 0.01, 1);
+    float jacobian =term1*term2;
+    
+    jacobian = clamp(jacobian, 0.06, 1);
     
     return jacobian;
 

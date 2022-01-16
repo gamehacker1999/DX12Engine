@@ -58,6 +58,7 @@ struct LightingData
 	Vector3 cameraForward;
 	float totalTime;
 	float fogDense;
+	UINT frameCount;
 };
 
 struct LightCullingExternalData
@@ -77,6 +78,7 @@ struct TAAExternData
 	Matrix prevProjection;
 	Matrix inverseProjection;
 	Matrix inverseView;
+	bool enableTAA;
 };
 
 
@@ -411,6 +413,7 @@ private:
 	ManagedResource taaInput;
 	ManagedResource taaHistoryBuffer;
 	ManagedResource rtCombineOutput;
+	ManagedResource restirDiffuseGIHistory;
 	UINT numFrames;
 	XMFLOAT2* jitters;
 	Vector2 prevJitters;
@@ -628,6 +631,9 @@ private:
 
 	ManagedResource ltcPrefilterTexture;
 
+	DescriptorHeapWrapper noiseDescriptorHeap;
+	ManagedResource blueNoiseTexture;
+
 	DescriptorHeapWrapper prefilterRTVHeap;
 	
 	//-------------------------------------------------------
@@ -705,5 +711,8 @@ private:
 
 	//fog
 	float fogDensity;
+
+	//taa
+	bool enableTAA;
 };
 

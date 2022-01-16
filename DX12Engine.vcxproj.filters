@@ -454,6 +454,9 @@
     <FxCompile Include="ReStirGISpatialReuseAndFinalShade.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="PixelShaderPBRStochasticAlpha.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

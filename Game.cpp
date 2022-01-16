@@ -64,6 +64,8 @@ Game::Game(HINSTANCE hInstance)
 	fogDensity = 1.f;
 	lights = nullptr;
 
+	enableTAA = false;
+
 }
 
 Game::~Game()
@@ -719,13 +721,14 @@ void Game::LoadShaders()
 {
 
 	//this describes the type of constant buffer and which register to map the data to
-	CD3DX12_DESCRIPTOR_RANGE1 ranges[5];
+	CD3DX12_DESCRIPTOR_RANGE1 ranges[6];
 	CD3DX12_ROOT_PARAMETER1 rootParams[EntityRootIndices::EntityNumRootIndices]; // specifies the descriptor table
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 3, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 3);
+	ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 4, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	rootParams[EntityRootIndices::EntityVertexCBV].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 	rootParams[EntityRootIndices::EnableIndirectLighting].InitAsConstants(2, 2, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityPixelCBV].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -737,6 +740,7 @@ void Game::LoadShaders()
 	rootParams[EntityRootIndices::EntityEnvironmentSRV].InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::EntityLTCSRV].InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParams[EntityRootIndices::AccelerationStructureSRV].InitAsShaderResourceView(0, 4, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_PIXEL);
+	//rootParams[EntityRootIndices::EntityNoiseTextures].InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL);
 
 	CD3DX12_STATIC_SAMPLER_DESC staticSamplers[2];//(0, D3D12_FILTER_ANISOTROPIC);
 	staticSamplers[0].Init(0);
@@ -809,6 +813,10 @@ void Game::LoadShaders()
 		psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
 		psoDesc.SampleDesc.Count = 1;
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
+	}
+
+	{
+
 	}
 
 	{
@@ -1487,7 +1495,7 @@ void Game::LoadShaders()
 		}
 
 		{
-			CD3DX12_DESCRIPTOR_RANGE1 descriptorRange[5];
+			CD3DX12_DESCRIPTOR_RANGE1 descriptorRange[6];
 			CD3DX12_ROOT_PARAMETER1 rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_NumIndices];
 
 			descriptorRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0);
@@ -1495,12 +1503,14 @@ void Game::LoadShaders()
 			descriptorRange[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2, 0);
 			descriptorRange[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3, 0);
 			descriptorRange[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4, 0);
+			descriptorRange[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);
 
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferPos].InitAsDescriptorTable(1, &descriptorRange[0]);
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferNorm].InitAsDescriptorTable(1, &descriptorRange[1]);
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferDif].InitAsDescriptorTable(1, &descriptorRange[2]);
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_GBufferRoughMetal].InitAsDescriptorTable(1, &descriptorRange[3]);
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_OutColor].InitAsDescriptorTable(1, &descriptorRange[4]);
+			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_History].InitAsDescriptorTable(1, &descriptorRange[5]);
 
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_Reservoirs].InitAsUnorderedAccessView(5, 0);
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_SampleSequences].InitAsUnorderedAccessView(6, 0);
@@ -1509,6 +1519,8 @@ void Game::LoadShaders()
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_AccelStruct].InitAsShaderResourceView(0, 0);
 
 			rootParams[RestrirSpatialReuseIndices::RestirSpatialReuse_ExternData].InitAsConstants(3, 0, 0);
+
+
 
 			ComPtr<ID3DBlob> signature;
 			ComPtr<ID3DBlob> error;
@@ -2827,6 +2839,7 @@ ComPtr<ID3D12RootSignature> Game::CreateRayGenRootSignature()
 		{5,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTNormalTexture},
 		{6,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTAlbedoTexture},
 		{7,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTTransparentOutput},
+		{8,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTDiffuseIndirectHistory},
 		{0,1,2,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,RaytracingHeapRangesIndices::RTMotionBuffer},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,RaytracingHeapRangesIndices::RTAccelerationStruct},
 		{0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,RaytracingHeapRangesIndices::RTCameraData},
@@ -2897,6 +2910,10 @@ void Game::CreateRaytracingOutputBuffer()
 	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtIndirectDiffuseOutPut.resource.GetAddressOf())));
 	rtIndirectDiffuseOutPut.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 	rtIndirectDiffuseOutPut.resourceType = RESOURCE_TYPE_UAV;
+
+	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(restirDiffuseGIHistory.resource.GetAddressOf())));
+	restirDiffuseGIHistory.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+	restirDiffuseGIHistory.resourceType = RESOURCE_TYPE_UAV;
 
 	ThrowIfFailed(device->CreateCommittedResource(&nv_helpers_dx12::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(rtIndirectSpecularOutPut.resource.GetAddressOf())));
 	rtIndirectSpecularOutPut.currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2971,6 +2988,7 @@ void Game::CreateRaytracingDescriptorHeap()
 	rtDescriptorHeap.CreateDescriptor(rtAlbedo, rtAlbedo.resourceType);
 	rtDescriptorHeap.CreateDescriptor(velocityBuffer, RESOURCE_TYPE_UAV);
 	rtDescriptorHeap.CreateDescriptor(rtTransparentOutput, rtTransparentOutput.resourceType);
+	rtDescriptorHeap.CreateDescriptor(restirDiffuseGIHistory, restirDiffuseGIHistory.resourceType);
 	renderTargetSRVHeap.CreateDescriptor(rtOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtIndirectDiffuseOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
 	renderTargetSRVHeap.CreateDescriptor(rtIndirectSpecularOutPut, RESOURCE_TYPE_SRV, 0, renderWidth, renderHeight, 0, 1);
@@ -3305,7 +3323,8 @@ void Game::Update(float deltaTime, float totalTime)
 	//xRand = xRand / renderWidth;
 	//yRand = yRand / renderHeight;
 
-	//mainCamera->JitterProjMatrix(xRand, yRand);
+	if(enableTAA)
+		mainCamera->JitterProjMatrix(xRand, yRand);
 
 	currentJitters = Vector2(xRand, yRand);
 
@@ -3389,6 +3408,7 @@ void Game::Update(float deltaTime, float totalTime)
 	lightingData.cameraForward = mainCamera->GetDirection();
 	lightingData.totalTime += deltaTime;
 	lightingData.fogDense = fogDensity;
+	lightingData.frameCount++;
 
 	lightCullingExternData.view = mainCamera->GetViewMatrix();
 	lightCullingExternData.projection = mainCamera->GetProjectionMatrix();
@@ -3540,6 +3560,7 @@ void Game::RenderGUI(float deltaTime, float totalTime)
 	{
 		ImGui::Begin("Render Mode");
 		ImGui::Checkbox("Raster", &raster);
+		ImGui::Checkbox("Use TAA", &enableTAA);
 		if (!raster)
 		{
 			ImGui::Checkbox("Use ReStir", &doRestir);
@@ -4087,6 +4108,7 @@ void Game::PopulateCommandList()
 		commandList->SetGraphicsRootShaderResourceView(EntityRootIndices::EntityLightIndices, visibleLightIndicesBuffer.resource->GetGPUVirtualAddress());
 		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityEnvironmentSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(skybox->environmentTexturesIndex));
 		commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityLTCSRV, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(ltcLUT.heapOffset));
+		//commandList->SetGraphicsRootDescriptorTable(EntityRootIndices::EntityNoiseTextures, gpuHeapRingBuffer->GetDescriptorHeap().GetGPUHandle(blueNoiseTexture.heapOffset));
 		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EnableIndirectLighting, raster, 0);
 		commandList->SetGraphicsRoot32BitConstant(EntityRootIndices::EnableIndirectLighting, inlineRaytracing, 1);
 
@@ -4158,7 +4180,7 @@ void Game::PopulateCommandList()
 
 		CreateGBufferRays();
 		CreateDirectRays();
-		//CreateIndirectDiffuseRays();
+		CreateIndirectDiffuseRays();
 		//CreateIndirectSpecularRays();
 
 		CreateTransparencyRays();
@@ -4332,7 +4354,8 @@ void Game:: RenderPostProcessing(ManagedResource& inputTexture)
 			data.inverseProjection = mainCamera->GetInverseProjection();
 			data.inverseView = mainCamera->GetInverseView();
 			data.prevView = mainCamera->GetViewMatrix();
-			data.prevProjection = mainCamera->GetProjectionMatrix();																										
+			data.prevProjection = mainCamera->GetProjectionMatrix();	
+			data.enableTAA = enableTAA;
 
 			uint32_t* pDataBegin = 0;
 			D3D12_GPU_VIRTUAL_ADDRESS gpuAddress;																							
@@ -4698,6 +4721,8 @@ void Game::CreateIndirectDiffuseRays()
 	commandList->DispatchRays(&desc);
 	WaitForPreviousFrame();
 
+	CopyResource(commandList, restirDiffuseGIHistory, rtIndirectDiffuseOutPut);
+
 	//Restrir spatial reuse pass goes here
 	if (doRestirGI && restirSpatialReuse)
 	{
@@ -4725,6 +4750,8 @@ void Game::CreateIndirectDiffuseRays()
 
 		commandList->Dispatch(dispatchX, dispatchY, 1);
 	}
+
+
 }
 
 void Game::CreateIndirectSpecularRays()
@@ -4881,6 +4908,18 @@ void Game::CreateLTCTexture()
 	{
 		gpuHeapRingBuffer->AllocateStaticDescriptors(3, ltcDescriptorHeap);
 		ltcLUT.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 3;
+	}
+
+	//create noise textures here
+	{
+		noiseDescriptorHeap.Create(1, false, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		noiseDescriptorHeap.CreateDescriptor(L"../../Assets/Textures/obluenoise256.png", blueNoiseTexture, RESOURCE_TYPE_SRV);
+
+		if (gpuHeapRingBuffer != nullptr)
+		{
+			gpuHeapRingBuffer->AllocateStaticDescriptors(1, noiseDescriptorHeap);
+			blueNoiseTexture.heapOffset = gpuHeapRingBuffer->GetNumStaticResources() - 1;
+		}
 	}
 }
 

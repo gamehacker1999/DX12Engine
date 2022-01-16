@@ -23,15 +23,15 @@ float3 TemporalReprojection(uint2 launchDims, float4 history, float4 color)
     float2 pixelSize = float2(1.0 / float(w), 1.0 / float(h)); //Need to pass this later
     const float4 nbh[9] =
     {
-        ((gIndirectDiffuseOutput[uint2(launchDims.x - 1, launchDims.y - 1)])),
-		((gIndirectDiffuseOutput[uint2(launchDims.x - 1, launchDims.y)])),
-		((gIndirectDiffuseOutput[uint2(launchDims.x - 1, launchDims.y + 1)])),
-		((gIndirectDiffuseOutput[uint2(launchDims.x, launchDims.y - 1)])),
-		((gIndirectDiffuseOutput[uint2(launchDims.x, launchDims.y)])),
-		((gIndirectDiffuseOutput[uint2(launchDims.x, launchDims.y + 1)])),
-		((gIndirectDiffuseOutput[uint2(launchDims.x + 1, launchDims.y - 1)])),
-		((gIndirectDiffuseOutput[uint2(launchDims.x + 1, launchDims.y)])),
-		((gIndirectDiffuseOutput[uint2(launchDims.x + 1, launchDims.y + 1)]))
+        ((gIndirectDiffuseOutputHistory[uint2(launchDims.x - 1, launchDims.y - 1)])),
+		((gIndirectDiffuseOutputHistory[uint2(launchDims.x - 1, launchDims.y)])),
+		((gIndirectDiffuseOutputHistory[uint2(launchDims.x - 1, launchDims.y + 1)])),
+		((gIndirectDiffuseOutputHistory[uint2(launchDims.x, launchDims.y - 1)])),
+		((gIndirectDiffuseOutputHistory[uint2(launchDims.x, launchDims.y)])),
+		((gIndirectDiffuseOutputHistory[uint2(launchDims.x, launchDims.y + 1)])),
+		((gIndirectDiffuseOutputHistory[uint2(launchDims.x + 1, launchDims.y - 1)])),
+		((gIndirectDiffuseOutputHistory[uint2(launchDims.x + 1, launchDims.y)])),
+		((gIndirectDiffuseOutputHistory[uint2(launchDims.x + 1, launchDims.y + 1)]))
     };
 
     const float4 minimum = min(min(min(min(min(min(min(min(nbh[0], nbh[1]), nbh[2]), nbh[3]), nbh[4]), nbh[5]), nbh[6]), nbh[7]), nbh[8]);
@@ -44,7 +44,7 @@ float3 TemporalReprojection(uint2 launchDims, float4 history, float4 color)
 
     history = lerp(history, average, saturate(IntersectAABB(origin, direction, extents)));
 
-    float blendFactor = 1.0f;
+    float blendFactor = 0.05f;
 
     float impulse = abs(color.x - history.x) / max(color.x, max(history.x, minimum.x));
     float factor = lerp(blendFactor * 0.5f, blendFactor * 2.0f, impulse * impulse);
@@ -199,6 +199,14 @@ void IndirectDiffuseRayGen()
             if (prevIndex.x >= 0 && prevIndex.x < dims.x && prevIndex.y >= 0 && prevIndex.y < dims.y)
             {
                 prevReservoir = prevFrameRes[prevIndex.y * WIDTH + prevIndex.x];
+                
+                history = gIndirectDiffuseOutputHistory[prevIndex];
+                
+                if (history.x != history.x)
+                {
+                    history = float4(0, 0, 0, 1);
+                }
+
             }
             
         }
@@ -234,13 +242,20 @@ void IndirectDiffuseRayGen()
             float3 finalBrdfVal = albedo / M_PI * (prevReservoir.sample.color) * saturate(dot(newL, prevReservoir.sample.visibleNormal));
 
             gIndirectDiffuseOutput[launchIndex] = float4(finalBrdfVal * prevReservoir.W, 1.0);
-        //}
-         //if (externData.frameCount != 0)
-         //{ 
-         //    gIndirectDiffuseOutput[launchIndex] = float4(TemporalReprojection(launchIndex, history, gIndirectDiffuseOutput[launchIndex]), 1);
-         //}
-
         }
+         if (externData.frameCount != externData.frameCount)
+         { 
+             gIndirectDiffuseOutput[launchIndex] = float4(TemporalReprojection(launchIndex, history, gIndirectDiffuseOutput[launchIndex]), 1);
+                
+                if (gIndirectDiffuseOutput[launchIndex].x != gIndirectDiffuseOutput[launchIndex].x)
+                {
+                    gIndirectDiffuseOutput[launchIndex] = float4(0, 0, 0, 1);
+
+                }
+
+         }
+
+        
 
     }
 }

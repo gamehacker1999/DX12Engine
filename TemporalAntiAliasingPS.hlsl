@@ -14,10 +14,11 @@ cbuffer ExternalData : register(b0)
 
 cbuffer TAAExternData : register(b1)
 {
-   matrix prevView;
-   matrix prevProjection;
-   matrix inverseProjection;
-   matrix inverseView;
+    matrix prevView;
+    matrix prevProjection;
+    matrix inverseProjection;
+    matrix inverseView;
+    bool enableTAA;
 };
 
 struct VertexToPixel
@@ -47,13 +48,12 @@ float4 main(VertexToPixel input) : SV_TARGET
     currentFrame.GetDimensions(w, h);
     float2 pixelSize = float2(1.0 / float(w), 1.0 / float(h)); //Need to pass this later
 
-	if (frameNum == frameNum)
+	if (frameNum == 0 || !enableTAA)
 	{
 		return float4(currentColor, 1.0f);
 	}
 
     float3 final = lerp(previousColor, currentColor, 0.05);
-    //return float4(final, 1.0);
 
     const float4 nbh[9] =
     {
@@ -82,7 +82,7 @@ float4 main(VertexToPixel input) : SV_TARGET
 		TonemapColor(currentFrame.Sample(pointSampler, float2(input.uv.x + pixelSize.x, input.uv.y + pixelSize.y))) * (1.0f / 16.0f),
     };
     
-    float3 blurredColor = float3(0, 0, 0);
+    float3 blurredColor = color;
     
     for (int i = 0; i < 9;i++)
     {
@@ -92,22 +92,21 @@ float4 main(VertexToPixel input) : SV_TARGET
     const float4 minimum = min(min(min(min(min(min(min(min(nbh[0], nbh[1]), nbh[2]), nbh[3]), nbh[4]), nbh[5]), nbh[6]), nbh[7]), nbh[8]);
     const float4 maximum = max(max(max(max(max(max(max(max(nbh[0], nbh[1]), nbh[2]), nbh[3]), nbh[4]), nbh[5]), nbh[6]), nbh[7]), nbh[8]);
     const float4 average = (nbh[0] + nbh[1] + nbh[2] + nbh[3] + nbh[4] + nbh[5] + nbh[6] + nbh[7] + nbh[8]) * 1.0f/9.0f;
-	
+    float2 previousCoordinate = input.uv;
+
 	//sample velocity uv  
     float2 vel = velocityBuffer.SampleLevel(pointSampler, input.uv, 0).xy;
-        
-    float2 previousCoordinate = input.uv;
-    
-     previousCoordinate += vel;
-    	
-    float2 historySize = float2(WIDTH, HEIGHT);
-    float4 history = ConvertToYCoCg(TonemapColor(SampleTextureCatmullRom(previousFrame, basicSampler, previousCoordinate, historySize)));
-    
-    if(history.x != history.x)
+    previousCoordinate += vel;
+	
+    float2 historySize = float2(w, h);
+    float4 history = ConvertToYCoCg(TonemapColor(SampleTextureCatmullRom(previousFrame, pointSampler, previousCoordinate, historySize)));
+    //float4 history = previousFrame.Sample(pointSampler, previousCoordinate);
+
+    if (any(history != history))
     {   
-        history = float4(0, 0, 0, 1);
+        return color;
     }
-	 
+     
     const float3 origin = history.rgb - 0.5f * (minimum.rgb + maximum.rgb);
     const float3 direction = average.rgb - history.rgb;
     const float3 extents = maximum.rgb - 0.5f * (minimum.rgb + maximum.rgb);
@@ -118,7 +117,7 @@ float4 main(VertexToPixel input) : SV_TARGET
     float impulse = abs(color.x - history.x) / max(color.x, max(history.x, minimum.x));
     float factor = lerp(blendFactor * 0.8f, blendFactor * 2.0f, impulse * impulse);
     
-    if(factor == 1.f)
+    if(factor >= 1.f)
         return float4(InvertTonemapColor(float4(blurredColor, 1.0f)));
     
     float4 finalColor = ConvertToRGBA(InvertTonemapColor(lerp(history, color, factor)));
